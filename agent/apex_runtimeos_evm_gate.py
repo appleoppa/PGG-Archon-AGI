@@ -150,7 +150,7 @@ def build_evm_gate_report(
     if not memory_persisted:
         missing.append("memory_persisted_or_marked_temporary")
 
-    if evm_value >= EVM_PASS_THRESHOLD and trace_written and validation_passed:
+    if evm_value >= EVM_PASS_THRESHOLD and trace_written and validation_passed and memory_persisted:
         gate_status = "PASS"
     elif evm_value < EVM_WARN_THRESHOLD:
         gate_status = "BLOCK"

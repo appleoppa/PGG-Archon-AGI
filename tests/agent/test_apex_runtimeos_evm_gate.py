@@ -54,6 +54,13 @@ def test_evm_gate_warns_when_evidence_missing_even_if_score_high():
     assert "memory_persisted_or_marked_temporary" in report["missing_completion_evidence"]
 
 
+def test_evm_gate_warns_when_memory_evidence_missing_even_if_score_high():
+    report = build_evm_gate_report({"Err": 0.0}, trace_written=True, validation_passed=True, memory_persisted=False)
+    assert report["evm_value"] >= 0.75
+    assert report["status"] == "WARN"
+    assert report["missing_completion_evidence"] == ["memory_persisted_or_marked_temporary"]
+
+
 def test_evm_gate_reduction_uses_after_vector():
     report = build_evm_gate_report({"Err": 0.8}, after_defects={"Err": 0.2}, trace_written=True, validation_passed=True)
     assert report["governance_reduction"] > 0
