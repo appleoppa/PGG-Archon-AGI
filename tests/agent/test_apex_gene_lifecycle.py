@@ -54,7 +54,7 @@ def _create_gene_db(path):
             """
             INSERT INTO evolution_genes VALUES(
                 'gene-2','cycle-1','2026-05-26T00:01:00',2,'defect','name','knowledge','[]','repair',1,
-                '{}','gate','rule','active','A','verified','boundary','hash-2'
+                '{}','gate','rule','active','A','verified_r2_batch2','boundary','hash-2'
             )
             """
         )

@@ -48,11 +48,16 @@ def _table_exists(conn: sqlite3.Connection, table: str) -> bool:
     return row is not None
 
 
+def _is_verified_status(value: str) -> bool:
+    text = str(value or "").strip().lower()
+    return text in {"verified", "passed", "pass", "ok", "validated", "verification_passed"} or text.startswith("verified_")
+
+
 def _map_sqlite_gene(row: sqlite3.Row) -> Dict[str, Any]:
     raw_status = str(row["status"] or "").strip().lower()
     verification = str(row["verification_status"] or "").strip().lower() if "verification_status" in row.keys() else ""
     lifecycle_status = raw_status
-    if verification in {"verified", "passed", "pass", "ok", "validated", "verification_passed"}:
+    if _is_verified_status(verification):
         lifecycle_status = "verified"
     elif raw_status not in ALLOWED_GENE_STATUSES:
         lifecycle_status = raw_status
@@ -61,8 +66,8 @@ def _map_sqlite_gene(row: sqlite3.Row) -> Dict[str, Any]:
         "status": lifecycle_status,
         "evidence_hash": row["gene_hash"],
         "evidence": row["evidence_grade"],
-        "validation_passed": verification in {"verified", "passed", "pass", "ok", "validated", "verification_passed"},
-        "verified_at": row["created_at"] if verification in {"verified", "passed", "pass", "ok", "validated", "verification_passed"} else "",
+        "validation_passed": _is_verified_status(verification),
+        "verified_at": row["created_at"] if _is_verified_status(verification) else "",
         "retirement_reason": row["boundary"] if lifecycle_status == "retired" else "",
         "source_table": row["source_table"],
     }

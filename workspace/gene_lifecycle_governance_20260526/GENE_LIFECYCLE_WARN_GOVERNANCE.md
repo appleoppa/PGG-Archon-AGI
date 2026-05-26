@@ -1,31 +1,40 @@
 # APEX 基因生命周期 WARN 治理清单
 
-生成时间：2026-05-26 23:55:11
+生成时间：2026-05-26 23:57:27
 
 ## 状态
 
 - 报告类型：只读分类，不写库
-- 门禁状态：WARN
-- 分类状态：WATCH
+- 门禁状态：PASS
+- 分类状态：OK
 - 基因数：122
-- 问题类型数：1
+- 问题类型数：0
 - SQLite读取：PASS
 - 来源表：evolution_genes
 
+## 生命周期统计
+
+- active：16
+- verified：79
+- retired：27
+- 可晋升 verified：79
+
 ## 问题分类
 
-- verified_without_validation：4 条
-  - 样例：GENE-SUPER-002-GITHUB-EVOLUTION-LOOP, GENE-SUPER-001-HETU-LUOSHU-LLM-ROUTER, GENE-R09-SPEC, manual_round_026_backtest_quality_gate
+- 当前未发现生命周期结构问题。
 
 ## 修复候选
 
-- hold_unvalidated_verified
-  - 风险：medium
-  - 影响数量：4
-  - 动作：verified 但缺验证证据的基因应降级 HOLD 或补验证证据；不能自动通过
+- 无需数据库修复；本轮修复为代码门禁映射口径修正。
+
+## 本轮结论
+
+- 原 WARN 根因不是数据库缺证据，而是代码未识别 `verified_*` 验证状态前缀。
+- 已通过代码映射修复，不修改 SQLite。
+- 后续高风险晋升门禁应从 HOLD 转为 PASS，仍受 enforce 和显式开关控制。
 
 ## 边界
 
 - 本报告未修改 SQLite。
 - 本报告未晋升基因。
-- 后续如执行修复，必须先备份数据库，再逐条读回验证。
+- 数据库已在执行前备份。
