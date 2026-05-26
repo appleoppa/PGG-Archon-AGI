@@ -4,6 +4,9 @@ import json
 from pathlib import Path
 
 from jsonschema import Draft202012Validator
+import yaml
+
+from runtime.skills.registry_validator import validate_skill_registry_policy
 
 
 SCHEMA_PATH = Path("runtime/skills/manifest.schema.json")
@@ -61,3 +64,30 @@ def test_skill_manifest_rejects_unknown_scope():
     }
     errors = list(Draft202012Validator(_schema()).iter_errors(manifest))
     assert errors
+
+
+def test_skill_registry_keeps_desktop_and_external_materials_reference_only():
+    registry = yaml.safe_load(Path("runtime/skills/registry.yaml").read_text(encoding="utf-8"))
+    report = validate_skill_registry_policy(registry)
+    assert report["schema"] == "ApexRuntimeOSSkillRegistryPolicyReport/v1"
+    assert report["status"] == "PASS"
+    assert report["policy"] == "deny_by_default"
+    assert report["reference_only_high_risk_count"] >= 4
+    assert "desktop-super-evolution-source" in report["reference_only_high_risk_ids"]
+    assert "external-github-evolution-source" in report["reference_only_high_risk_ids"]
+    assert report["side_effects"] == "read_only_report"
+    assert "does not execute" in report["boundary"]
+
+
+def test_skill_registry_blocks_high_risk_material_outside_reference_only():
+    registry = {
+        "schema": "ApexRuntimeOSSkillRegistry/v1",
+        "policy": "deny_by_default",
+        "trusted": [{"id": "bad-github-ingest", "source": "external/github-evolution", "status": "trusted"}],
+        "sandboxed": [],
+        "candidate": [],
+        "reference_only": [],
+    }
+    report = validate_skill_registry_policy(registry)
+    assert report["status"] == "BLOCK"
+    assert any(item["code"] == "high_risk_source_not_reference_only" for item in report["violations"])

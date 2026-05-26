@@ -8,3 +8,15 @@ reference_only:
     description: Desktop 超级进化 materials are source references, not executable skills.
     source: /Users/appleoppa/Desktop/超级进化
     status: reference_only
+  - id: external-super-evolution-core-source
+    description: external/super-evolution-core archived materials are source references only; obfuscated or unknown code must not be executed.
+    source: external/super-evolution-core
+    status: reference_only
+  - id: external-github-evolution-source
+    description: external/github-evolution materials are source references only; GitHub ingestion remains read-only until manifest, sandbox, tests, and license review pass.
+    source: external/github-evolution
+    status: reference_only
+  - id: external-z-dashen-apex-source
+    description: external/z-dashen APEX materials are source references only; formulas may be reimplemented as validated read-only gates, not trusted runtime code.
+    source: external/z-dashen
+    status: reference_only
