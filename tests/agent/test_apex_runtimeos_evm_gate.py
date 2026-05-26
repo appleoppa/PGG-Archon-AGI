@@ -58,7 +58,32 @@ def test_evm_gate_warns_when_memory_evidence_missing_even_if_score_high():
     report = build_evm_gate_report({"Err": 0.0}, trace_written=True, validation_passed=True, memory_persisted=False)
     assert report["evm_value"] >= 0.75
     assert report["status"] == "WARN"
+    assert report["memory_evidence_present"] is False
     assert report["missing_completion_evidence"] == ["memory_persisted_or_marked_temporary"]
+
+
+def test_evm_gate_passes_with_temporary_memory_marker_when_score_high():
+    report = build_evm_gate_report({"Err": 0.0}, trace_written=True, validation_passed=True, memory_marked_temporary=True)
+    assert report["evm_value"] >= 0.75
+    assert report["status"] == "PASS"
+    assert report["memory_persisted"] is False
+    assert report["memory_marked_temporary"] is True
+    assert report["memory_evidence_present"] is True
+    assert report["missing_completion_evidence"] == []
+
+
+def test_evm_gate_from_runtimeos_status_uses_completed_rollback_as_temporary_marker():
+    report = build_evm_gate_from_runtimeos_status({
+        "pending_rollbacks": 0,
+        "stable_ready_count": 1,
+        "cron_dryrun": {"bad_lines": 0},
+        "health_report": {"alert_count": 1},
+        "rollback_events": {"count": 1, "status": {"done": 1}},
+    })
+    assert report["evm_value"] >= 0.75
+    assert report["memory_marked_temporary"] is True
+    assert report["memory_persisted"] is False
+    assert report["status"] == "PASS"
 
 
 def test_evm_gate_reduction_uses_after_vector():

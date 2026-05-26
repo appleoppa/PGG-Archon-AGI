@@ -126,6 +126,7 @@ def build_evm_gate_report(
     after_defects: Mapping[str, Any] | None = None,
     trace_written: bool = False,
     memory_persisted: bool = False,
+    memory_marked_temporary: bool = False,
     validation_passed: bool = False,
 ) -> Dict[str, Any]:
     """Build a deterministic EVM gate report.
@@ -147,10 +148,11 @@ def build_evm_gate_report(
         missing.append("trace_written")
     if not validation_passed:
         missing.append("validation_passed")
-    if not memory_persisted:
+    memory_evidence_present = bool(memory_persisted) or bool(memory_marked_temporary)
+    if not memory_evidence_present:
         missing.append("memory_persisted_or_marked_temporary")
 
-    if evm_value >= EVM_PASS_THRESHOLD and trace_written and validation_passed and memory_persisted:
+    if evm_value >= EVM_PASS_THRESHOLD and trace_written and validation_passed and memory_evidence_present:
         gate_status = "PASS"
     elif evm_value < EVM_WARN_THRESHOLD:
         gate_status = "BLOCK"
@@ -172,6 +174,8 @@ def build_evm_gate_report(
         "defect_descriptions": DEFECT_DESCRIPTIONS,
         "trace_written": bool(trace_written),
         "memory_persisted": bool(memory_persisted),
+        "memory_marked_temporary": bool(memory_marked_temporary),
+        "memory_evidence_present": memory_evidence_present,
         "validation_passed": bool(validation_passed),
         "missing_completion_evidence": missing,
         "side_effects": "read_only_report",
@@ -181,11 +185,23 @@ def build_evm_gate_report(
 
 def build_evm_gate_from_runtimeos_status(status: Mapping[str, Any]) -> Dict[str, Any]:
     defects = infer_defects_from_runtimeos_status(status)
-    # Summary generation itself is a trace and validation signal, but not a durable
-    # memory/gene persistence signal.  Therefore default report can PASS only when
-    # residual defects are genuinely low and validation is explicit, while memory
-    # persistence remains visible as missing evidence.
-    return build_evm_gate_report(defects, trace_written=True, validation_passed=True, memory_persisted=False)
+    rollback_events = status.get("rollback_events") if isinstance(status.get("rollback_events"), Mapping) else {}
+    rollback_done = 0
+    if isinstance(rollback_events, Mapping):
+        raw_status = rollback_events.get("status") if isinstance(rollback_events.get("status"), Mapping) else {}
+        rollback_done = int(raw_status.get("done") or 0) if isinstance(raw_status, Mapping) else 0
+    pending_rollbacks = int(status.get("pending_rollbacks") or 0)
+    memory_marked_temporary = rollback_done > 0 and pending_rollbacks == 0
+    # Summary generation itself is a trace and validation signal.  Memory is not
+    # called persisted unless the durable store remains in use; a completed
+    # rollback can only count as a temporary/rolled-back evidence marker.
+    return build_evm_gate_report(
+        defects,
+        trace_written=True,
+        validation_passed=True,
+        memory_persisted=False,
+        memory_marked_temporary=memory_marked_temporary,
+    )
 
 
 __all__ = [
