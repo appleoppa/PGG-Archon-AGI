@@ -12,6 +12,7 @@ from agent.apex_runtimeos_autonomy import (
     record_cron_dryrun_result,
     run_autopromotion_scheduler,
     score_autowrite_candidates,
+    summarize_autonomy_status,
     summarize_cron_dryrun_ledger,
 )
 
@@ -402,3 +403,11 @@ def test_watchdog_config_exposes_default_values(monkeypatch):
     assert cfg["schema"] == "ApexRuntimeOSWatchdogConfig/v1"
     assert cfg["state_configured"] is False
     assert cfg["cooldown_seconds"] == 2700
+
+
+def test_autonomy_status_includes_read_only_evm_gate(tmp_path, monkeypatch):
+    monkeypatch.setenv("APEX_RUNTIMEOS_AUTOWRITE_DIR", str(tmp_path / "auto"))
+    status = summarize_autonomy_status(limit=10)
+    assert status["evm_gate"]["schema"] == "ApexRuntimeOSEVMGate/v1"
+    assert status["evm_gate"]["side_effects"] == "read_only_report"
+    assert status["evm_gate"]["boundary"].startswith("EVM means APEX RuntimeOS")

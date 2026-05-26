@@ -927,6 +927,17 @@ def summarize_autonomy_status(*, limit: int = 1000, min_occurrences: int = 2) ->
         "default_side_effects": "disabled_unless_explicit_enforce",
     }
     report["health_report"] = build_runtimeos_health_report(report)
+    try:
+        from agent.apex_runtimeos_evm_gate import build_evm_gate_from_runtimeos_status
+
+        report["evm_gate"] = build_evm_gate_from_runtimeos_status(report)
+    except Exception as exc:
+        report["evm_gate"] = {
+            "schema": "ApexRuntimeOSEVMGate/v1",
+            "status": "ERROR",
+            "error": _safe_scalar(exc),
+            "side_effects": "read_only_report",
+        }
     return report
 
 
