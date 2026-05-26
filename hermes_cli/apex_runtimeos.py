@@ -210,6 +210,7 @@ def run_apex_runtimeos_cli(argv: list[str] | None = None) -> str:
             gep_counts = gep_counts_raw
         else:
             gep_counts = {}
+        promotion_lifecycle_gate = status.get("promotion_lifecycle_gate") if isinstance(status.get("promotion_lifecycle_gate"), dict) else {}
         return "\n".join([
             "# APEX RuntimeOS 自主化状态",
             "",
@@ -287,6 +288,12 @@ def run_apex_runtimeos_cli(argv: list[str] | None = None) -> str:
             "",
             "字段：GEP混淆组件数",
             f"值：{gep_counts.get('archived_obfuscated', 0)}",
+            "",
+            "字段：高风险晋升生命周期门禁",
+            f"值：{promotion_lifecycle_gate.get('status', 'UNKNOWN')}",
+            "",
+            "字段：高风险晋升阻断原因",
+            f"值：{promotion_lifecycle_gate.get('reason', '-')}",
             "",
             "字段：cron账本键数",
             f"值：{cron.get('unique_keys', 0)}",

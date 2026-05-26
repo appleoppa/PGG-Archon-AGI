@@ -134,6 +134,7 @@ def test_promote_candidate_to_memory_with_audit_and_dedup(tmp_path, monkeypatch)
     monkeypatch.setenv("APEX_RUNTIMEOS_AUTOWRITE_DIR", str(tmp_path / "auto"))
     monkeypatch.setenv("APEX_RUNTIMEOS_PROMOTION_ENABLED", "1")
     monkeypatch.setenv("APEX_RUNTIMEOS_GATE_MODE", "enforce")
+    monkeypatch.setenv("APEX_RUNTIMEOS_BYPASS_GENE_LIFECYCLE_GATE", "1")
     candidate_path = tmp_path / "candidates.jsonl"
     candidate = {
         "schema": "ApexRuntimeOSAutoWriteCandidate/v1",
@@ -162,6 +163,7 @@ def test_promote_candidate_to_skill_with_rollback_metadata(tmp_path, monkeypatch
     monkeypatch.setenv("APEX_RUNTIMEOS_AUTOWRITE_DIR", str(tmp_path / "auto"))
     monkeypatch.setenv("APEX_RUNTIMEOS_PROMOTION_ENABLED", "1")
     monkeypatch.setenv("APEX_RUNTIMEOS_GATE_MODE", "enforce")
+    monkeypatch.setenv("APEX_RUNTIMEOS_BYPASS_GENE_LIFECYCLE_GATE", "1")
     candidate_path = tmp_path / "candidates.jsonl"
     candidate = {
         "schema": "ApexRuntimeOSAutoWriteCandidate/v1",
@@ -193,6 +195,34 @@ def test_stability_score_requires_min_occurrences(tmp_path):
     assert score["ready"][0]["count"] == 2
 
 
+def test_promotion_holds_when_gene_lifecycle_not_pass(tmp_path, monkeypatch):
+    monkeypatch.setenv("APEX_RUNTIMEOS_AUTOWRITE_DIR", str(tmp_path / "auto"))
+    monkeypatch.setenv("APEX_RUNTIMEOS_PROMOTION_ENABLED", "1")
+    monkeypatch.setenv("APEX_RUNTIMEOS_GATE_MODE", "enforce")
+    monkeypatch.setenv("APEX_GENE_LIFECYCLE_DB_PATH", str(tmp_path / "missing.sqlite3"))
+    candidate_path = tmp_path / "candidates.jsonl"
+    candidate_path.write_text(json.dumps({"schema": "ApexRuntimeOSAutoWriteCandidate/v1", "promotion_required": True, "items": [{"code": "planner_context_heavy", "severity": "warn"}]}, ensure_ascii=False) + "\n", encoding="utf-8")
+    result = promote_autowrite_candidates(candidate_path=candidate_path, target="memory")
+    assert result["promoted"] == 0
+    assert result["reason"] == "gene_lifecycle_hold"
+    assert result["lifecycle_gate"]["status"] == "HOLD"
+    assert result["lifecycle_gate"]["lifecycle_status"] == "BLOCK"
+
+
+def test_autopromotion_holds_when_gene_lifecycle_not_pass(tmp_path, monkeypatch):
+    candidate_path = tmp_path / "candidates.jsonl"
+    candidate = {"schema": "ApexRuntimeOSAutoWriteCandidate/v1", "promotion_required": True, "items": [{"code": "planner_context_heavy", "severity": "warn"}]}
+    candidate_path.write_text(json.dumps(candidate, ensure_ascii=False) + "\n" + json.dumps(candidate, ensure_ascii=False) + "\n", encoding="utf-8")
+    monkeypatch.setenv("APEX_RUNTIMEOS_AUTOPROMOTE_ENABLED", "1")
+    monkeypatch.setenv("APEX_RUNTIMEOS_GATE_MODE", "enforce")
+    monkeypatch.setenv("APEX_GENE_LIFECYCLE_DB_PATH", str(tmp_path / "missing.sqlite3"))
+    result = run_autopromotion_scheduler(candidate_path=candidate_path, min_occurrences=2)
+    assert result["promoted"] == 0
+    assert result["score"]["ready_count"] == 1
+    assert result["reason"] == "gene_lifecycle_hold"
+    assert result["lifecycle_gate"]["status"] == "HOLD"
+
+
 def test_autopromotion_scheduler_disabled_after_scoring(tmp_path, monkeypatch):
     candidate_path = tmp_path / "candidates.jsonl"
     candidate = {"schema": "ApexRuntimeOSAutoWriteCandidate/v1", "promotion_required": True, "items": [{"code": "planner_context_heavy", "severity": "warn"}]}
@@ -211,6 +241,7 @@ def test_autopromotion_scheduler_promotes_stable_memory(tmp_path, monkeypatch):
     monkeypatch.setenv("APEX_RUNTIMEOS_AUTOWRITE_DIR", str(tmp_path / "auto"))
     monkeypatch.setenv("APEX_RUNTIMEOS_AUTOPROMOTE_ENABLED", "1")
     monkeypatch.setenv("APEX_RUNTIMEOS_GATE_MODE", "enforce")
+    monkeypatch.setenv("APEX_RUNTIMEOS_BYPASS_GENE_LIFECYCLE_GATE", "1")
     candidate_path = tmp_path / "candidates.jsonl"
     stable = {"schema": "ApexRuntimeOSAutoWriteCandidate/v1", "promotion_required": True, "items": [{"code": "planner_context_heavy", "severity": "warn", "actions": ["compress_context"]}]}
     unstable = {"schema": "ApexRuntimeOSAutoWriteCandidate/v1", "promotion_required": True, "items": [{"code": "gene_completion_incomplete", "severity": "warn"}]}

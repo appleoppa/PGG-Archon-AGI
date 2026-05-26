@@ -376,6 +376,49 @@ def score_autowrite_candidates(*, candidate_path: Optional[Path] = None, limit: 
     }
 
 
+def _promotion_lifecycle_gate() -> Dict[str, Any]:
+    """Return a HOLD/PASS gate for high-risk auto-promotion paths.
+
+    Promotion mutates durable memory/skill artifacts.  It must not proceed while
+    the gene lifecycle gate reports WARN/BLOCK/ERROR, unless the operator sets
+    APEX_RUNTIMEOS_BYPASS_GENE_LIFECYCLE_GATE=1.  The bypass is explicit and
+    visible in the returned gate report.
+    """
+    bypass = _flag("APEX_RUNTIMEOS_BYPASS_GENE_LIFECYCLE_GATE", "0")
+    try:
+        from agent.apex_gene_lifecycle import build_gene_lifecycle_gate_from_runtimeos_status
+
+        lifecycle = build_gene_lifecycle_gate_from_runtimeos_status({"caller": "promotion_gate"})
+    except Exception as exc:
+        lifecycle = {
+            "schema": "ApexRuntimeOSGeneLifecycleGate/v1",
+            "status": "ERROR",
+            "error": _safe_scalar(exc),
+            "side_effects": "read_only_report",
+        }
+    lifecycle_status = str(lifecycle.get("status") or "ERROR")
+    if bypass:
+        status = "BYPASSED"
+        reason = "explicit_bypass"
+    elif lifecycle_status == "PASS":
+        status = "PASS"
+        reason = "gene_lifecycle_pass"
+    else:
+        status = "HOLD"
+        reason = "gene_lifecycle_not_pass"
+    return {
+        "schema": "ApexRuntimeOSPromotionLifecycleGate/v1",
+        "status": status,
+        "reason": reason,
+        "bypass": bypass,
+        "lifecycle_status": lifecycle_status,
+        "gene_count": lifecycle.get("gene_count", 0),
+        "counts": lifecycle.get("counts", {}),
+        "promotable_count": lifecycle.get("promotable_count", 0),
+        "side_effects": "read_only_report",
+    }
+
+
 def run_autopromotion_scheduler(*, candidate_path: Optional[Path] = None, target: str = "memory", limit: int = 1000, min_occurrences: int = 2) -> Dict[str, Any]:
     """Score candidates and promote only stable groups when explicitly enabled."""
     enabled = _flag("APEX_RUNTIMEOS_AUTOPROMOTE_ENABLED", "0")
@@ -383,6 +426,9 @@ def run_autopromotion_scheduler(*, candidate_path: Optional[Path] = None, target
     score = score_autowrite_candidates(candidate_path=candidate_path, limit=limit, min_occurrences=min_occurrences)
     if not enabled or mode != "enforce":
         return {"enabled": enabled, "mode": mode, "promoted": 0, "skipped": 0, "score": score, "reason": "disabled_or_not_enforce"}
+    lifecycle_gate = _promotion_lifecycle_gate()
+    if lifecycle_gate.get("status") == "HOLD":
+        return {"enabled": True, "mode": mode, "promoted": 0, "skipped": 0, "score": score, "reason": "gene_lifecycle_hold", "lifecycle_gate": lifecycle_gate}
     if not score["ready"]:
         return {"enabled": True, "mode": mode, "promoted": 0, "skipped": 0, "score": score, "reason": "no_stable_candidate"}
     staging = _out_dir() / "stable_candidates.jsonl"
@@ -415,6 +461,9 @@ def promote_autowrite_candidates(*, candidate_path: Optional[Path] = None, targe
         return {"enabled": enabled, "mode": mode, "promoted": 0, "skipped": 0, "error": "invalid_target"}
     if not enabled or mode != "enforce":
         return {"enabled": enabled, "mode": mode, "promoted": 0, "skipped": 0, "reason": "disabled_or_not_enforce"}
+    lifecycle_gate = _promotion_lifecycle_gate()
+    if lifecycle_gate.get("status") == "HOLD":
+        return {"enabled": True, "mode": mode, "target": target, "promoted": 0, "skipped": 0, "reason": "gene_lifecycle_hold", "lifecycle_gate": lifecycle_gate}
 
     path = candidate_path or (_out_dir() / "candidates.jsonl")
     candidates = _read_jsonl(path, limit=limit)
@@ -924,6 +973,7 @@ def summarize_autonomy_status(*, limit: int = 1000, min_occurrences: int = 2) ->
         "rollback_status": rollback_status,
         "rollback_events": {"count": len(rollback_events), "status": event_status},
         "cron_dryrun": summarize_cron_dryrun_ledger(limit=limit),
+        "promotion_lifecycle_gate": _promotion_lifecycle_gate(),
         "default_side_effects": "disabled_unless_explicit_enforce",
     }
     report["health_report"] = build_runtimeos_health_report(report)
