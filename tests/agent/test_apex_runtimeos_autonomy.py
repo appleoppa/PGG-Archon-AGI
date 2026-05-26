@@ -548,5 +548,15 @@ def test_autonomy_status_includes_read_only_quality_gate(tmp_path, monkeypatch):
     assert quality_gate["status"] == "BLOCK"
     assert quality_gate["blocking_failed"] >= 1
     assert quality_gate["evidence_summary"]["requirements"] is True
+    assert "test_report" in quality_gate["missing_blocking_evidence"]
     assert quality_gate["side_effects"] == "read_only_report"
     assert quality_gate["boundary"].startswith("CMMI gate is read-only")
+
+
+def test_apex_runtimeos_cli_autonomy_shows_quality_missing_evidence(tmp_path, monkeypatch):
+    from hermes_cli.apex_runtimeos import run_apex_runtimeos_cli
+
+    monkeypatch.setenv("APEX_RUNTIMEOS_AUTOWRITE_DIR", str(tmp_path / "auto"))
+    output = run_apex_runtimeos_cli(["autonomy"])
+    assert "字段：CMMI缺失阻断证据" in output
+    assert "test_report" in output

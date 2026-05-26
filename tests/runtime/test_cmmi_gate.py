@@ -8,6 +8,7 @@ def test_quality_gate_blocks_missing_required_evidence():
     assert report["schema"] == "ApexRuntimeOSQualityGateReport/v1"
     assert report["status"] == "BLOCK"
     assert report["blocking_failed"] >= 1
+    assert "rollback_plan" in report["missing_blocking_evidence"]
     assert report["side_effects"] == "read_only_report"
 
 
@@ -24,6 +25,8 @@ def test_quality_gate_passes_blocking_and_warns_on_docs_only():
     assert report["blocking_failed"] == 0
     assert report["warning_failed"] == 1
     assert report["status"] == "WARN"
+    assert report["missing_blocking_evidence"] == []
+    assert report["missing_warning_evidence"] == ["documentation"]
 
 
 def test_quality_gate_passes_all_evidence():
@@ -48,4 +51,5 @@ def test_quality_gate_from_runtimeos_status_is_conservative_read_only():
     assert report["evidence_summary"]["requirements"] is True
     assert report["evidence_summary"]["rollback_plan"] is True
     assert report["evidence_summary"]["test_report"] is False
+    assert report["missing_blocking_evidence"] == ["test_report", "audit_log"]
     assert report["boundary"].startswith("CMMI gate is read-only")

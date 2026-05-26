@@ -33,6 +33,8 @@ def evaluate_quality_gate(evidence: Mapping[str, Any], *, gate_path: Path | None
     results = []
     blocking_failed = 0
     warning_failed = 0
+    missing_blocking_evidence: list[str] = []
+    missing_warning_evidence: list[str] = []
     for raw_rule in gate.get("rules", []):
         if not isinstance(raw_rule, Mapping):
             raise QualityGateError("each quality gate rule must be a mapping")
@@ -42,8 +44,10 @@ def evaluate_quality_gate(evidence: Mapping[str, Any], *, gate_path: Path | None
         present = bool(evidence.get(required))
         if not present and severity == "blocking":
             blocking_failed += 1
+            missing_blocking_evidence.append(required)
         elif not present:
             warning_failed += 1
+            missing_warning_evidence.append(required)
         results.append({
             "id": rule_id,
             "severity": severity,
@@ -58,6 +62,8 @@ def evaluate_quality_gate(evidence: Mapping[str, Any], *, gate_path: Path | None
         "status": status,
         "blocking_failed": blocking_failed,
         "warning_failed": warning_failed,
+        "missing_blocking_evidence": missing_blocking_evidence,
+        "missing_warning_evidence": missing_warning_evidence,
         "results": results,
         "evidence_summary": {str(key): bool(value) for key, value in evidence.items()},
         "side_effects": "read_only_report",
