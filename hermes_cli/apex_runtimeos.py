@@ -198,6 +198,7 @@ def run_apex_runtimeos_cli(argv: list[str] | None = None) -> str:
         evm_gate = status.get("evm_gate") if isinstance(status.get("evm_gate"), dict) else {}
         sequence_gate = status.get("sequence_gate") if isinstance(status.get("sequence_gate"), dict) else {}
         gene_lifecycle_gate = status.get("gene_lifecycle_gate") if isinstance(status.get("gene_lifecycle_gate"), dict) else {}
+        formula_report = status.get("formula_report") if isinstance(status.get("formula_report"), dict) else {}
         return "\n".join([
             "# APEX RuntimeOS 自主化状态",
             "",
@@ -257,6 +258,15 @@ def run_apex_runtimeos_cli(argv: list[str] | None = None) -> str:
             "",
             "字段：可晋升基因数",
             f"值：{gene_lifecycle_gate.get('promotable_count', 0)}",
+            "",
+            "字段：APEX公式报告状态",
+            f"值：{formula_report.get('status', 'UNKNOWN')}",
+            "",
+            "字段：APEX v2.3分数",
+            f"值：{formula_report.get('v2_3_score', '-')}",
+            "",
+            "字段：APEX V10最终分数",
+            f"值：{formula_report.get('v10_final_score', '-')}",
             "",
             "字段：cron账本键数",
             f"值：{cron.get('unique_keys', 0)}",

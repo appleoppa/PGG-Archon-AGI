@@ -429,3 +429,12 @@ def test_autonomy_status_includes_read_only_gene_lifecycle_gate(tmp_path, monkey
     assert status["gene_lifecycle_gate"]["status"] == "BLOCK"
     assert status["gene_lifecycle_gate"]["side_effects"] == "read_only_report"
     assert status["gene_lifecycle_gate"]["gene_count"] == 0
+
+
+def test_autonomy_status_includes_read_only_formula_report(tmp_path, monkeypatch):
+    monkeypatch.setenv("APEX_RUNTIMEOS_AUTOWRITE_DIR", str(tmp_path / "auto"))
+    status = summarize_autonomy_status(limit=10)
+    assert status["formula_report"]["schema"] == "ApexRuntimeOSFormulaReport/v1"
+    assert status["formula_report"]["status"] == "WARN"
+    assert status["formula_report"]["side_effects"] == "read_only_report"
+    assert status["formula_report"]["boundary"].startswith("APEX v2.3 is executable")
