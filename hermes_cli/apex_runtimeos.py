@@ -203,6 +203,7 @@ def run_apex_runtimeos_cli(argv: list[str] | None = None) -> str:
         gene_lifecycle_gate = status.get("gene_lifecycle_gate") if isinstance(status.get("gene_lifecycle_gate"), dict) else {}
         formula_report = status.get("formula_report") if isinstance(status.get("formula_report"), dict) else {}
         gep_report = status.get("gep_report") if isinstance(status.get("gep_report"), dict) else {}
+        quality_gate = status.get("quality_gate") if isinstance(status.get("quality_gate"), dict) else {}
         gep_index_raw = gep_report.get("capability_index")
         if isinstance(gep_index_raw, dict):
             gep_index = gep_index_raw
@@ -285,6 +286,15 @@ def run_apex_runtimeos_cli(argv: list[str] | None = None) -> str:
             "",
             "字段：Evolver GEP报告状态",
             f"值：{gep_report.get('status', 'UNKNOWN')}",
+            "",
+            "字段：CMMI质量门禁状态",
+            f"值：{quality_gate.get('status', 'UNKNOWN')}",
+            "",
+            "字段：CMMI阻断失败数",
+            f"值：{quality_gate.get('blocking_failed', 0)}",
+            "",
+            "字段：CMMI警告失败数",
+            f"值：{quality_gate.get('warning_failed', 0)}",
             "",
             "字段：GEP组件数",
             f"值：{gep_index.get('component_count', 0)}",

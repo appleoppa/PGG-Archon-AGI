@@ -536,3 +536,15 @@ def test_autonomy_status_includes_read_only_gep_report(tmp_path, monkeypatch):
     assert status["gep_report"]["status"] == "WARN"
     assert status["gep_report"]["side_effects"] == "read_only_report"
     assert status["gep_report"]["capability_index"]["counts"]["archived_obfuscated"] >= 1
+
+
+def test_autonomy_status_includes_read_only_quality_gate(tmp_path, monkeypatch):
+    monkeypatch.setenv("APEX_RUNTIMEOS_AUTOWRITE_DIR", str(tmp_path / "auto"))
+    status = summarize_autonomy_status(limit=10)
+    quality_gate = status["quality_gate"]
+    assert quality_gate["schema"] == "ApexRuntimeOSQualityGateReport/v1"
+    assert quality_gate["status"] == "BLOCK"
+    assert quality_gate["blocking_failed"] >= 1
+    assert quality_gate["evidence_summary"]["requirements"] is True
+    assert quality_gate["side_effects"] == "read_only_report"
+    assert quality_gate["boundary"].startswith("CMMI gate is read-only")

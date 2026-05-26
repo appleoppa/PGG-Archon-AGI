@@ -318,14 +318,24 @@ def build_autonomy_recommendations(status: Mapping[str, Any]) -> Dict[str, Any]:
             "actions": ["deobfuscate_before_runtime", f"obfuscated_count={int(gep_counts.get('archived_obfuscated') or 0)}"],
             "applied": False,
         })
-    evm_gate = status.get("evm_gate") if isinstance(status.get("evm_gate"), Mapping) else {}
-    missing_evidence = evm_gate.get("missing_completion_evidence") if isinstance(evm_gate.get("missing_completion_evidence"), list) else []
-    if missing_evidence:
+    evm_gate_raw = status.get("evm_gate")
+    evm_gate: Mapping[str, Any] = evm_gate_raw if isinstance(evm_gate_raw, Mapping) else {}
+    if evm_gate.get("status") not in {"PASS", None}:
         items.append({
             "organ": "evm_gate",
             "code": "evm_completion_evidence_missing",
             "severity": "info",
             "actions": ["mark_temporary_or_persist_memory", "do_not_claim_full_completion"],
+            "applied": False,
+        })
+    quality_gate_raw = status.get("quality_gate")
+    quality_gate: Mapping[str, Any] = quality_gate_raw if isinstance(quality_gate_raw, Mapping) else {}
+    if quality_gate and quality_gate.get("status") != "PASS":
+        items.append({
+            "organ": "quality_gate",
+            "code": "cmmi_quality_evidence_incomplete",
+            "severity": "block" if quality_gate.get("status") == "BLOCK" else "warn",
+            "actions": ["attach_test_report", "attach_audit_log", "keep_quality_gate_read_only"],
             "applied": False,
         })
     return {
@@ -1084,6 +1094,17 @@ def summarize_autonomy_status(*, limit: int = 1000, min_occurrences: int = 2) ->
         "default_side_effects": "disabled_unless_explicit_enforce",
     }
     report["health_report"] = build_runtimeos_health_report(report)
+    try:
+        from runtime.quality.gate_runner import build_quality_gate_from_runtimeos_status
+
+        report["quality_gate"] = build_quality_gate_from_runtimeos_status(report)
+    except Exception as exc:
+        report["quality_gate"] = {
+            "schema": "ApexRuntimeOSQualityGateReport/v1",
+            "status": "ERROR",
+            "error": _safe_scalar(exc),
+            "side_effects": "read_only_report",
+        }
     try:
         from agent.apex_runtimeos_evm_gate import build_evm_gate_from_runtimeos_status
 

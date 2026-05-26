@@ -59,8 +59,38 @@ def evaluate_quality_gate(evidence: Mapping[str, Any], *, gate_path: Path | None
         "blocking_failed": blocking_failed,
         "warning_failed": warning_failed,
         "results": results,
+        "evidence_summary": {str(key): bool(value) for key, value in evidence.items()},
         "side_effects": "read_only_report",
     }
 
 
-__all__ = ["QualityGateError", "evaluate_quality_gate", "load_quality_gate"]
+def build_quality_gate_from_runtimeos_status(status: Mapping[str, Any]) -> Dict[str, Any]:
+    """Build a read-only CMMI quality gate report from aggregate RuntimeOS status.
+
+    The mapping is intentionally conservative. RuntimeOS can prove that the
+    gate definition exists and that autonomy writes are deny-by-default, but it
+    cannot infer that the current change has a test report, audit log, or docs
+    unless those evidence flags are provided explicitly by the caller.
+    """
+    raw_supplied = status.get("quality_evidence")
+    supplied: Mapping[str, Any] = raw_supplied if isinstance(raw_supplied, Mapping) else {}
+    raw_cron = status.get("cron_dryrun")
+    cron: Mapping[str, Any] = raw_cron if isinstance(raw_cron, Mapping) else {}
+    evidence = {
+        "requirements": True,
+        "rollback_plan": status.get("default_side_effects") == "disabled_unless_explicit_enforce",
+        "security_review": status.get("default_side_effects") == "disabled_unless_explicit_enforce",
+        "audit_log": bool(status.get("promotion_audit_exists") or cron.get("ledger_exists")),
+        "test_report": False,
+        "documentation": False,
+    }
+    for key in ("requirements", "rollback_plan", "test_report", "security_review", "audit_log", "documentation"):
+        if key in supplied:
+            evidence[key] = bool(supplied.get(key))
+    report = evaluate_quality_gate(evidence)
+    report["evidence_summary"] = {key: bool(value) for key, value in evidence.items()}
+    report["boundary"] = "CMMI gate is read-only visibility; it does not run tests or approve releases."
+    return report
+
+
+__all__ = ["QualityGateError", "evaluate_quality_gate", "load_quality_gate", "build_quality_gate_from_runtimeos_status"]
