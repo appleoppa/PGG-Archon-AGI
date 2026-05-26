@@ -6,7 +6,12 @@ write files, mutate memory, or advance cron cycles.
 """
 from __future__ import annotations
 
-from typing import Any, Dict, Iterable, Mapping, Sequence
+import hashlib
+import json
+import os
+import time
+from pathlib import Path
+from typing import Any, Dict, Iterable, Mapping, Optional, Sequence
 
 SEQUENCE_DEFINITIONS: Dict[str, Dict[str, Any]] = {
     "21354": {
@@ -32,6 +37,97 @@ SEQUENCE_DEFINITIONS: Dict[str, Dict[str, Any]] = {
 REQUIRED_SEQUENCE_ORDER = ("21354", "12534", "14325")
 REQUIRED_ROUNDS_PER_CYCLE = 5
 REQUIRED_LOOPS_PER_ROUND = 2
+_SEQUENCE_LEDGER_SCHEMA = "ApexRuntimeOSSequenceEvidence/v1"
+
+
+def _sequence_ledger_path() -> Path:
+    configured = os.environ.get("APEX_RUNTIMEOS_SEQUENCE_LEDGER_PATH", "").strip()
+    if configured:
+        return Path(configured).expanduser()
+    return Path.home() / ".hermes" / "apex_runtimeos_autowrites" / "sequence_evidence.jsonl"
+
+
+def _safe_evidence_text(value: Any, *, limit: int = 160) -> str:
+    text = str(value or "").strip()
+    lower = text.lower()
+    if any(hint in lower for hint in ("key=", "token=", "authorization", "password", "secret")):
+        return "[REDACTED]"
+    if "/Users/" in text or text.startswith("/") or "\\" in text:
+        return "[REDACTED_PATH]"
+    return text[:limit]
+
+
+def _hash_text(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
+
+
+def _append_jsonl(path: Path, record: Mapping[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as fh:
+        fh.write(json.dumps(record, ensure_ascii=False, separators=(",", ":")) + "\n")
+
+
+def _read_jsonl(path: Path, *, limit: int = 1000) -> list[Dict[str, Any]]:
+    if not path.exists():
+        return []
+    out: list[Dict[str, Any]] = []
+    with path.open("r", encoding="utf-8") as fh:
+        for idx, line in enumerate(fh):
+            if idx >= limit:
+                break
+            try:
+                item = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(item, dict):
+                out.append(item)
+    return out
+
+
+def record_sequence_evidence(
+    sequence: Any,
+    *,
+    evidence: bool = True,
+    output: bool = True,
+    score: float = 0.8,
+    shortcoming: str = "",
+    source: str = "manual_runtimeos_cli",
+    ledger_path: Optional[Path] = None,
+) -> Dict[str, Any]:
+    """Append one sanitized APEX sequence evidence record.
+
+    This is append-only and deliberately narrow.  It records aggregate evidence
+    flags for the three-sequence gate; it does not directly set gate status.
+    """
+    code = normalize_sequence_code(sequence)
+    score_value = float(score)
+    if not 0.0 <= score_value <= 1.0:
+        raise SequenceValidationError("score must be between 0 and 1")
+    record = {
+        "schema": _SEQUENCE_LEDGER_SCHEMA,
+        "ts": time.time(),
+        "sequence": code,
+        "evidence": bool(evidence),
+        "output": bool(output),
+        "score": score_value,
+        "shortcoming": _safe_evidence_text(shortcoming or SEQUENCE_DEFINITIONS[code]["purpose"]),
+        "source": _safe_evidence_text(source or "manual_runtimeos_cli"),
+    }
+    record["record_hash"] = _hash_text(json.dumps(record, ensure_ascii=False, sort_keys=True, separators=(",", ":")))
+    path = ledger_path or _sequence_ledger_path()
+    _append_jsonl(path, record)
+    return {"written": True, "sequence": code, "record_hash": record["record_hash"], "ledger_exists": path.exists()}
+
+
+def read_sequence_evidence_records(*, ledger_path: Optional[Path] = None, limit: int = 1000) -> list[Dict[str, Any]]:
+    """Read sanitized sequence evidence records from the append-only ledger."""
+    path = ledger_path or _sequence_ledger_path()
+    records = []
+    for item in _read_jsonl(path, limit=limit):
+        if item.get("schema") != _SEQUENCE_LEDGER_SCHEMA:
+            continue
+        records.append(item)
+    return records
 
 
 class SequenceValidationError(ValueError):
@@ -187,12 +283,17 @@ def build_cycle_state_report(cycle: Mapping[str, Any] | None = None) -> Dict[str
 
 
 def build_sequence_gate_from_runtimeos_status(status: Mapping[str, Any]) -> Dict[str, Any]:
-    """Expose current RuntimeOS sequence readiness without claiming execution.
+    """Expose current RuntimeOS sequence readiness from the append-only ledger.
 
-    Existing autonomy summaries do not yet contain per-sequence evidence.  The
-    correct default is therefore a visible BLOCK/WARN gate, not a fake PASS.
+    The gate remains evidence-driven: no caller can directly set PASS.  Without
+    ledger evidence it returns the same visible BLOCK as before.
     """
-    return build_sequence_gate_report([])
+    limit_raw = status.get("sequence_ledger_limit") if isinstance(status, Mapping) else None
+    try:
+        limit = max(1, min(int(limit_raw or 1000), 100000))
+    except Exception:
+        limit = 1000
+    return build_sequence_gate_report(read_sequence_evidence_records(limit=limit))
 
 
 __all__ = [
@@ -205,4 +306,6 @@ __all__ = [
     "build_sequence_gate_from_runtimeos_status",
     "build_sequence_gate_report",
     "normalize_sequence_code",
+    "read_sequence_evidence_records",
+    "record_sequence_evidence",
 ]

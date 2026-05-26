@@ -14,13 +14,16 @@ def _parser() -> argparse.ArgumentParser:
         prog="/apex-runtimeos",
         description="Show APEX RuntimeOS audit summary diagnostics",
     )
-    parser.add_argument("command", nargs="?", default="summary", choices=("summary", "status", "feishu", "autopromote", "rollback", "autonomy", "autonomy-candidate", "cron-ledger"))
+    parser.add_argument("command", nargs="?", default="summary", choices=("summary", "status", "feishu", "autopromote", "rollback", "autonomy", "autonomy-candidate", "cron-ledger", "sequence-record"))
     parser.add_argument("--json", action="store_true", help="emit machine-readable JSON")
     parser.add_argument("--limit", type=int, default=10000, help="max audit lines to read")
     parser.add_argument("--target", default="memory", choices=("memory", "skill", "all"), help="autopromote/rollback target")
     parser.add_argument("--execute", action="store_true", help="execute side effects; default is dry-run/disabled")
     parser.add_argument("--repair", action="store_true", help="quarantine bad cron-ledger lines; requires enforce mode")
     parser.add_argument("--min-occurrences", type=int, default=2, help="minimum repeated candidate count for autopromote/autonomy")
+    parser.add_argument("--sequence", action="append", choices=("21354", "12534", "14325"), help="APEX sequence evidence to append; repeatable")
+    parser.add_argument("--score", type=float, default=0.8, help="sequence evidence score between 0 and 1")
+    parser.add_argument("--shortcoming", default="", help="sanitized shortcoming summary for sequence evidence")
     return parser
 
 
@@ -361,6 +364,41 @@ def run_apex_runtimeos_cli(argv: list[str] | None = None) -> str:
             f"| repair_enabled | {ledger.get('repair_enabled')} |",
             f"| quarantine_exists | {ledger.get('quarantine_exists')} |",
             f"| last_seen_at | {ledger.get('last_seen_at')} |",
+            "",
+        ])
+    if ns.command == "sequence-record":
+        import os
+        from agent.apex_runtimeos_sequence import record_sequence_evidence
+        previous_mode = os.environ.get("APEX_RUNTIMEOS_GATE_MODE")
+        if ns.execute:
+            os.environ["APEX_RUNTIMEOS_GATE_MODE"] = "enforce"
+        results = []
+        try:
+            if ns.execute:
+                for sequence in (ns.sequence or []):
+                    results.append(record_sequence_evidence(sequence, score=float(ns.score), shortcoming=ns.shortcoming, source="apex-runtimeos-cli"))
+            else:
+                results = [{"written": False, "sequence": sequence, "reason": "dry_run"} for sequence in (ns.sequence or [])]
+        finally:
+            if ns.execute:
+                if previous_mode is None:
+                    os.environ.pop("APEX_RUNTIMEOS_GATE_MODE", None)
+                else:
+                    os.environ["APEX_RUNTIMEOS_GATE_MODE"] = previous_mode
+        result = {"execute": bool(ns.execute), "requested": ns.sequence or [], "written": sum(1 for item in results if item.get("written")), "results": results}
+        if ns.json:
+            return json.dumps({"object": "hermes.apex_runtimeos.sequence_record", "result": result}, ensure_ascii=False, indent=2)
+        return "\n".join([
+            "# APEX RuntimeOS 三顺序证据记录",
+            "",
+            "字段：execute",
+            f"值：{bool(ns.execute)}",
+            "",
+            "字段：requested",
+            f"值：{ns.sequence or []}",
+            "",
+            "字段：written",
+            f"值：{result['written']}",
             "",
         ])
     if ns.command in {"autopromote", "rollback"}:

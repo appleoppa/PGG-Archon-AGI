@@ -9,6 +9,8 @@ from agent.apex_runtimeos_sequence import (
     build_sequence_gate_from_runtimeos_status,
     build_sequence_gate_report,
     normalize_sequence_code,
+    read_sequence_evidence_records,
+    record_sequence_evidence,
 )
 
 
@@ -88,7 +90,30 @@ def test_cycle_state_report_warns_incomplete_cycle():
     }
 
 
-def test_sequence_gate_from_runtimeos_status_defaults_to_block_without_evidence():
+def test_sequence_gate_from_runtimeos_status_defaults_to_block_without_evidence(monkeypatch, tmp_path):
+    monkeypatch.setenv("APEX_RUNTIMEOS_SEQUENCE_LEDGER_PATH", str(tmp_path / "sequence.jsonl"))
     report = build_sequence_gate_from_runtimeos_status({"schema": "ApexRuntimeOSAutonomyStatus/v1"})
     assert report["status"] == "BLOCK"
     assert report["side_effects"] == "read_only_report"
+
+
+def test_sequence_evidence_ledger_is_append_only_and_drives_gate(monkeypatch, tmp_path):
+    ledger = tmp_path / "sequence.jsonl"
+    monkeypatch.setenv("APEX_RUNTIMEOS_SEQUENCE_LEDGER_PATH", str(ledger))
+    for sequence in REQUIRED_SEQUENCE_ORDER:
+        result = record_sequence_evidence(sequence, score=0.8, shortcoming="verified runtime gap", source="pytest")
+        assert result["written"] is True
+        assert result["sequence"] == sequence
+    records = read_sequence_evidence_records()
+    assert [item["sequence"] for item in records] == list(REQUIRED_SEQUENCE_ORDER)
+    assert all(item["schema"] == "ApexRuntimeOSSequenceEvidence/v1" for item in records)
+    report = build_sequence_gate_from_runtimeos_status({"schema": "ApexRuntimeOSAutonomyStatus/v1"})
+    assert report["status"] == "PASS"
+    assert report["observed_order"] == list(REQUIRED_SEQUENCE_ORDER)
+
+
+def test_sequence_evidence_sanitizes_paths_and_secrets(tmp_path):
+    ledger = tmp_path / "sequence.jsonl"
+    record_sequence_evidence("21354", shortcoming="token=abc /Users/appleoppa/private", ledger_path=ledger)
+    records = read_sequence_evidence_records(ledger_path=ledger)
+    assert records[0]["shortcoming"] == "[REDACTED]"

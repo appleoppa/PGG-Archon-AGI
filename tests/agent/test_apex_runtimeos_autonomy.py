@@ -446,6 +446,7 @@ def test_autonomy_status_includes_read_only_evm_gate(tmp_path, monkeypatch):
 
 def test_autonomy_status_includes_read_only_sequence_gate(tmp_path, monkeypatch):
     monkeypatch.setenv("APEX_RUNTIMEOS_AUTOWRITE_DIR", str(tmp_path / "auto"))
+    monkeypatch.setenv("APEX_RUNTIMEOS_SEQUENCE_LEDGER_PATH", str(tmp_path / "sequence.jsonl"))
     status = summarize_autonomy_status(limit=10)
     assert status["sequence_gate"]["schema"] == "ApexRuntimeOSSequenceGate/v1"
     assert status["sequence_gate"]["status"] == "BLOCK"
