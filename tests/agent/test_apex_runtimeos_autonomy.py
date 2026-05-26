@@ -383,6 +383,61 @@ def test_runtimeos_health_report_threshold_alerts():
     assert report["side_effects"] == "read_only_report"
 
 
+def test_runtimeos_health_uses_unresolved_stable_candidates_when_available():
+    report = build_runtimeos_health_report({
+        "pending_rollbacks": 0,
+        "stable_ready_count": 1,
+        "stable_ready_unresolved_count": 0,
+        "autopromote_enabled": False,
+        "cron_dryrun": {"bad_lines": 0, "unique_keys": 3},
+    })
+    assert report["status"] == "OK"
+    assert report["alert_count"] == 0
+    assert report["metrics"]["stable_ready_count"] == 0
+    assert report["metrics"]["stable_ready_total_count"] == 1
+
+
+def test_resolved_promoted_candidate_not_counted_as_unresolved(tmp_path, monkeypatch):
+    home = tmp_path / "hermes_home"
+    monkeypatch.setenv("HERMES_HOME", str(home))
+    monkeypatch.setenv("APEX_RUNTIMEOS_AUTOWRITE_DIR", str(tmp_path / "auto"))
+    monkeypatch.setenv("APEX_RUNTIMEOS_PROMOTION_ENABLED", "1")
+    monkeypatch.setenv("APEX_RUNTIMEOS_ROLLBACK_ENABLED", "1")
+    monkeypatch.setenv("APEX_RUNTIMEOS_GATE_MODE", "enforce")
+    monkeypatch.setenv("APEX_RUNTIMEOS_BYPASS_GENE_LIFECYCLE_GATE", "1")
+    monkeypatch.setenv("APEX_RUNTIMEOS_SEQUENCE_LEDGER_PATH", str(tmp_path / "sequence.jsonl"))
+    candidate_path = tmp_path / "auto" / "candidates.jsonl"
+    candidate_path.parent.mkdir(parents=True, exist_ok=True)
+    candidate = {"schema": "ApexRuntimeOSAutoWriteCandidate/v1", "promotion_required": True, "items": [{"code": "planner_context_heavy", "severity": "warn", "actions": ["compress_context"]}]}
+    candidate_path.write_text(json.dumps(candidate, ensure_ascii=False) + "\n" + json.dumps(candidate, ensure_ascii=False) + "\n", encoding="utf-8")
+    score = score_autowrite_candidates(candidate_path=candidate_path, min_occurrences=2)
+    assert score["ready_count"] == 1
+    from agent.apex_runtimeos_autonomy import _candidate_to_memory_entry, _hash_text
+    content_hash = _hash_text("memory:" + _candidate_to_memory_entry(candidate))
+    audit_path = tmp_path / "auto" / "promotions.jsonl"
+    audit_path.write_text(
+        json.dumps({
+            "schema": "ApexRuntimeOSPromotion/v1",
+            "target": "memory",
+            "success": True,
+            "content_hash": content_hash,
+            "rollback": {"action": "remove", "old_text": "planner_context_heavy"},
+            "rollback_status": "pending",
+        }, ensure_ascii=False) + "\n" +
+        json.dumps({
+            "schema": "ApexRuntimeOSRollbackEvent/v1",
+            "promotion_id": content_hash,
+            "target": "memory",
+            "rollback_status": "done",
+        }, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+    status = summarize_autonomy_status(limit=100, min_occurrences=2)
+    assert status["stable_ready_count"] == 1
+    assert status["stable_ready_unresolved_count"] == 0
+    assert status["health_report"]["status"] == "OK"
+
+
 def test_runtimeos_health_watchdog_notice_suppresses_repeat_watch(tmp_path):
     payload = {
         "status": {

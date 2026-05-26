@@ -850,6 +850,43 @@ def summarize_cron_dryrun_ledger(*, ledger_path: Optional[Path] = None, limit: i
     }
 
 
+def _stable_ready_unresolved_count(score: Mapping[str, Any], promotion_records: list[Dict[str, Any]]) -> int:
+    """Return stable candidate groups that have not already been promoted/closed.
+
+    Candidate ledgers are append-only, so a stable group can remain visible after
+    its promotion has been rolled back.  Health alerts should track unresolved
+    work, not historical evidence that has already been closed in the promotion
+    audit trail.
+    """
+    done_ids = _rollback_done_ids(promotion_records)
+    resolved_hashes: set[str] = set()
+    for item in promotion_records:
+        if item.get("schema") != "ApexRuntimeOSPromotion/v1" or not item.get("success"):
+            continue
+        content_hash = str(item.get("content_hash") or "")
+        if not content_hash:
+            continue
+        pid = _promotion_id(item)
+        status = str(item.get("rollback_status") or "unknown")
+        if pid in done_ids:
+            status = "done"
+        if status != "pending":
+            resolved_hashes.add(content_hash)
+
+    unresolved = 0
+    for bucket in score.get("ready", []) if isinstance(score.get("ready"), list) else []:
+        if not isinstance(bucket, Mapping):
+            continue
+        raw_candidate = bucket.get("candidate")
+        candidate: Mapping[str, Any] = raw_candidate if isinstance(raw_candidate, Mapping) else {}
+        memory_hash = _hash_text("memory:" + _candidate_to_memory_entry(candidate))
+        skill_hash = _hash_text("skill:" + _candidate_to_skill_content(candidate))
+        if memory_hash in resolved_hashes or skill_hash in resolved_hashes:
+            continue
+        unresolved += 1
+    return unresolved
+
+
 def build_runtimeos_health_report(autonomy: Mapping[str, Any]) -> Dict[str, Any]:
     """Build aggregate-only health status and threshold alerts."""
     cron_raw = autonomy.get("cron_dryrun") if isinstance(autonomy.get("cron_dryrun"), Mapping) else {}
@@ -857,7 +894,7 @@ def build_runtimeos_health_report(autonomy: Mapping[str, Any]) -> Dict[str, Any]
     alerts = []
     bad_lines = int(cron.get("bad_lines") or 0)
     pending_rollbacks = int(autonomy.get("pending_rollbacks") or 0)
-    stable_ready = int(autonomy.get("stable_ready_count") or 0)
+    stable_ready = int(autonomy.get("stable_ready_unresolved_count", autonomy.get("stable_ready_count") or 0) or 0)
     if bad_lines > 0:
         alerts.append({"code": "cron_ledger_bad_lines", "severity": "warn", "count": bad_lines, "message": "cron dry-run 账本存在坏行，建议启用 repair 审计隔离"})
     if pending_rollbacks > 0:
@@ -879,6 +916,7 @@ def build_runtimeos_health_report(autonomy: Mapping[str, Any]) -> Dict[str, Any]
             "cron_bad_lines": bad_lines,
             "pending_rollbacks": pending_rollbacks,
             "stable_ready_count": stable_ready,
+            "stable_ready_total_count": int(autonomy.get("stable_ready_count") or 0),
             "cron_unique_keys": int(cron.get("unique_keys") or 0),
         },
         "side_effects": "read_only_report",
@@ -1034,6 +1072,7 @@ def summarize_autonomy_status(*, limit: int = 1000, min_occurrences: int = 2) ->
         "candidate_path_exists": candidate_path.exists(),
         "promotion_audit_exists": audit_path.exists(),
         "stable_ready_count": int(score.get("ready_count") or 0),
+        "stable_ready_unresolved_count": _stable_ready_unresolved_count(score, promotion_records),
         "candidate_groups": len(score.get("groups") or []),
         "promotion_count": len(promotions),
         "promotion_targets": target_counts,
