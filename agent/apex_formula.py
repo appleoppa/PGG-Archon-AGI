@@ -161,9 +161,114 @@ def build_apex_formula_report(params: Mapping[str, Any] | None = None) -> Dict[s
     }
 
 
+def _status_factor(value: Any, *, positive: set[str] | None = None) -> float:
+    text = str(value or "").upper()
+    good = positive or {"PASS", "OK"}
+    if text in good:
+        return 1.0
+    if text in {"WARN", "WATCH", "BYPASSED"}:
+        return 0.65
+    if text in {"BLOCK", "HOLD", "ERROR"}:
+        return 0.25
+    return 0.5
+
+
+def _ratio_from_count(count: Any, *, scale: float = 10.0, inverse: bool = False) -> float:
+    try:
+        numeric = max(0.0, float(count or 0.0))
+    except (TypeError, ValueError):
+        numeric = 0.0
+    value = 1.0 / (1.0 + numeric / max(scale, 0.001)) if inverse else min(1.0 + numeric / max(scale, 0.001), 5.0)
+    return round(max(0.1, value), 6)
+
+
+def _extract_runtimeos_formula_params(status: Mapping[str, Any]) -> Dict[str, Any]:
+    """Map aggregate RuntimeOS state into bounded formula parameters.
+
+    Only aggregate counters and gate statuses are used. No prompts, messages,
+    local paths, credentials, or external code are read or executed.
+    """
+    required_keys = {"schema", "health_report", "cron_dryrun", "promotion_lifecycle_gate"}
+    if not required_keys.issubset(set(status.keys())):
+        return {}
+
+    health_raw = status.get("health_report")
+    health: Mapping[str, Any] = health_raw if isinstance(health_raw, Mapping) else {}
+    cron_raw = status.get("cron_dryrun")
+    cron: Mapping[str, Any] = cron_raw if isinstance(cron_raw, Mapping) else {}
+    promotion_gate_raw = status.get("promotion_lifecycle_gate")
+    promotion_gate: Mapping[str, Any] = promotion_gate_raw if isinstance(promotion_gate_raw, Mapping) else {}
+    evm_raw = status.get("evm_gate")
+    evm_gate: Mapping[str, Any] = evm_raw if isinstance(evm_raw, Mapping) else {}
+    sequence_raw = status.get("sequence_gate")
+    sequence_gate: Mapping[str, Any] = sequence_raw if isinstance(sequence_raw, Mapping) else {}
+    gene_raw = status.get("gene_lifecycle_gate")
+    gene_gate: Mapping[str, Any] = gene_raw if isinstance(gene_raw, Mapping) else {}
+    quality_raw = status.get("quality_gate")
+    quality_gate: Mapping[str, Any] = quality_raw if isinstance(quality_raw, Mapping) else {}
+
+    health_factor = _status_factor(health.get("status"), positive={"OK"})
+    bad_line_factor = _ratio_from_count(cron.get("bad_lines"), scale=3.0, inverse=True)
+    rollback_factor = _ratio_from_count(status.get("pending_rollbacks"), scale=3.0, inverse=True)
+    unresolved_factor = _ratio_from_count(status.get("stable_ready_unresolved_count"), scale=3.0, inverse=True)
+    evm_value = evm_gate.get("evm_value")
+    if not isinstance(evm_value, (int, float)):
+        evm_value = 0.5
+    evm_factor = max(0.1, min(float(evm_value), 10.0))
+    sequence_factor = _status_factor(sequence_gate.get("status"))
+    gene_factor = _status_factor(gene_gate.get("status"))
+    promotion_factor = _status_factor(promotion_gate.get("status"))
+    quality_factor = _status_factor(quality_gate.get("status"))
+    mode_factor = 1.0 if status.get("mode") == "enforce" else 0.75
+    cron_activity = _ratio_from_count(cron.get("unique_keys"), scale=10.0)
+    candidate_factor = _ratio_from_count(status.get("candidate_groups"), scale=10.0)
+    stable_factor = _ratio_from_count(status.get("stable_ready_count"), scale=10.0)
+    promotion_count_factor = _ratio_from_count(status.get("promotion_count"), scale=10.0)
+
+    params: Dict[str, Any] = {
+        "ΔG_base": health_factor,
+        "Θ": quality_factor,
+        "K": rollback_factor,
+        "ε": bad_line_factor,
+        "Φ": promotion_factor,
+        "Ψ": sequence_factor,
+        "Π": max(0.1, cron_activity),
+        "Λ_ctx": max(0.1, min(2.0, float(health.get("alert_count") or 0) / 10.0)),
+        "Γ": evm_factor,
+        "PID": unresolved_factor,
+        "RD": gene_factor,
+        "Kelly": min(1.0, max(0.1, promotion_factor * rollback_factor)),
+        "E_xp": candidate_factor,
+        "M_meta": stable_factor,
+        "Ξ": mode_factor,
+        "v10": {
+            "ΔG_base": health_factor,
+            "Π": max(0.1, cron_activity),
+            "PID": unresolved_factor,
+            "RD": gene_factor,
+            "Kelly": min(1.0, max(0.1, promotion_factor * rollback_factor)),
+            "Γ": evm_factor,
+            "E_xp": candidate_factor,
+            "M": promotion_count_factor,
+            "Λ_sw": max(0.1, quality_factor),
+            "Ξ": mode_factor,
+        },
+        "telemetry_source": "runtimeos_aggregate_status",
+    }
+    return params
+
+
 def build_formula_report_from_runtimeos_status(status: Mapping[str, Any]) -> Dict[str, Any]:
-    """Expose formula readiness without pretending live telemetry exists."""
-    return build_apex_formula_report({})
+    """Build a read-only formula report from live aggregate RuntimeOS state."""
+    params = _extract_runtimeos_formula_params(status)
+    report = build_apex_formula_report(params)
+    report["telemetry_source"] = params.get("telemetry_source", "missing_runtimeos_aggregate_status")
+    report["live_params_used"] = bool(params)
+    report["boundary"] = (
+        report["boundary"]
+        + " RuntimeOS integration uses aggregate counters/gate statuses only; it does not inspect prompts, paths, credentials, or execute external code."
+    )
+    return report
 
 
 __all__ = [

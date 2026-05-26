@@ -89,4 +89,33 @@ def test_formula_report_from_runtimeos_status_is_read_only():
     report = build_formula_report_from_runtimeos_status({"schema": "ApexRuntimeOSAutonomyStatus/v1"})
     assert report["schema"] == "ApexRuntimeOSFormulaReport/v1"
     assert report["status"] == "WARN"
+    assert report["live_params_used"] is False
+    assert report["telemetry_source"] == "missing_runtimeos_aggregate_status"
     assert report["side_effects"] == "read_only_report"
+
+
+def test_formula_report_from_runtimeos_status_uses_live_aggregate_params():
+    status = {
+        "schema": "ApexRuntimeOSAutonomyStatus/v1",
+        "mode": "enforce",
+        "health_report": {"status": "OK", "alert_count": 0},
+        "cron_dryrun": {"bad_lines": 0, "unique_keys": 5},
+        "promotion_lifecycle_gate": {"status": "PASS"},
+        "evm_gate": {"status": "PASS", "evm_value": 0.9},
+        "sequence_gate": {"status": "PASS"},
+        "gene_lifecycle_gate": {"status": "PASS"},
+        "quality_gate": {"status": "PASS"},
+        "pending_rollbacks": 0,
+        "stable_ready_unresolved_count": 0,
+        "candidate_groups": 2,
+        "stable_ready_count": 1,
+        "promotion_count": 1,
+    }
+    report = build_formula_report_from_runtimeos_status(status)
+    assert report["status"] == "PASS"
+    assert report["live_params_used"] is True
+    assert report["telemetry_source"] == "runtimeos_aggregate_status"
+    assert report["missing_v2_3_fields"] == []
+    assert report["missing_v10_fields"] == []
+    assert report["side_effects"] == "read_only_report"
+    assert "aggregate counters" in report["boundary"]

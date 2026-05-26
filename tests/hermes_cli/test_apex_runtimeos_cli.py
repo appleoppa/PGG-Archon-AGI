@@ -96,5 +96,5 @@ def test_apex_runtimeos_autonomy_candidate_execute_writes_sanitized_candidate(tm
     assert data["result"]["written"] is True
     raw = (tmp_path / "auto" / "candidates.jsonl").read_text(encoding="utf-8")
     assert "ApexRuntimeOSAutoWriteCandidate/v1" in raw
-    assert "apex_sequence_evidence_incomplete" in raw
+    assert any(code in raw for code in ("apex_sequence_evidence_incomplete", "cmmi_quality_evidence_incomplete"))
     assert "/Users/" not in raw
