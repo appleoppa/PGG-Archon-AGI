@@ -971,6 +971,17 @@ def summarize_autonomy_status(*, limit: int = 1000, min_occurrences: int = 2) ->
             "error": _safe_scalar(exc),
             "side_effects": "read_only_report",
         }
+    try:
+        from agent.apex_gep import build_gep_report_from_runtimeos_status
+
+        report["gep_report"] = build_gep_report_from_runtimeos_status(report)
+    except Exception as exc:
+        report["gep_report"] = {
+            "schema": "ApexRuntimeOSGEPReport/v1",
+            "status": "ERROR",
+            "error": _safe_scalar(exc),
+            "side_effects": "read_only_report",
+        }
     return report
 
 

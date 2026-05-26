@@ -438,3 +438,12 @@ def test_autonomy_status_includes_read_only_formula_report(tmp_path, monkeypatch
     assert status["formula_report"]["status"] == "WARN"
     assert status["formula_report"]["side_effects"] == "read_only_report"
     assert status["formula_report"]["boundary"].startswith("APEX v2.3 is executable")
+
+
+def test_autonomy_status_includes_read_only_gep_report(tmp_path, monkeypatch):
+    monkeypatch.setenv("APEX_RUNTIMEOS_AUTOWRITE_DIR", str(tmp_path / "auto"))
+    status = summarize_autonomy_status(limit=10)
+    assert status["gep_report"]["schema"] == "ApexRuntimeOSGEPReport/v1"
+    assert status["gep_report"]["status"] == "WARN"
+    assert status["gep_report"]["side_effects"] == "read_only_report"
+    assert status["gep_report"]["capability_index"]["counts"]["archived_obfuscated"] >= 1

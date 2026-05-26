@@ -199,6 +199,17 @@ def run_apex_runtimeos_cli(argv: list[str] | None = None) -> str:
         sequence_gate = status.get("sequence_gate") if isinstance(status.get("sequence_gate"), dict) else {}
         gene_lifecycle_gate = status.get("gene_lifecycle_gate") if isinstance(status.get("gene_lifecycle_gate"), dict) else {}
         formula_report = status.get("formula_report") if isinstance(status.get("formula_report"), dict) else {}
+        gep_report = status.get("gep_report") if isinstance(status.get("gep_report"), dict) else {}
+        gep_index_raw = gep_report.get("capability_index")
+        if isinstance(gep_index_raw, dict):
+            gep_index = gep_index_raw
+        else:
+            gep_index = {}
+        gep_counts_raw = gep_index.get("counts")
+        if isinstance(gep_counts_raw, dict):
+            gep_counts = gep_counts_raw
+        else:
+            gep_counts = {}
         return "\n".join([
             "# APEX RuntimeOS 自主化状态",
             "",
@@ -267,6 +278,15 @@ def run_apex_runtimeos_cli(argv: list[str] | None = None) -> str:
             "",
             "字段：APEX V10最终分数",
             f"值：{formula_report.get('v10_final_score', '-')}",
+            "",
+            "字段：Evolver GEP报告状态",
+            f"值：{gep_report.get('status', 'UNKNOWN')}",
+            "",
+            "字段：GEP组件数",
+            f"值：{gep_index.get('component_count', 0)}",
+            "",
+            "字段：GEP混淆组件数",
+            f"值：{gep_counts.get('archived_obfuscated', 0)}",
             "",
             "字段：cron账本键数",
             f"值：{cron.get('unique_keys', 0)}",
