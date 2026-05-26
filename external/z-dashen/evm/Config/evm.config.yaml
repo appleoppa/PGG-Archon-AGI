@@ -1,0 +1,42 @@
+# EVM 熵频数理大道体系 全局配置
+# Entropy Vibe Mathing - 古今融合全域闭环治理体系
+
+CoreFactor:
+  Entropy: 0.92      # 熵序调控因子
+  Vibe: 0.88         # 节律同频因子
+  Mathing: 0.95      # 数理拟合因子
+  Apex: 1.00         # Apex演化因子
+  Base: 1.00         # Base底层基座因子
+
+AncientTaoPower:
+  TaoTeChing: true   # 道德经赋能
+  IChing: true       # 易经赋能
+  HuangDiNeiJing: true  # 黄帝内经赋能
+  HeTuLuoShu: true   # 河图洛书赋能
+  GanZhiCycle: true  # 天干地支赋能
+  WuXingBalance: true  # 五行平衡赋能
+  BaGuaPartition: true  # 八卦分区赋能
+
+DefectSuppress:
+  TokenLoss: enable        # Token上下文损耗
+  ClawError: enable        # Claw抓取错误
+  AgentConflict: enable    # Agent并发冲突
+  PanelDelay: enable      # 看板调度延迟
+  PromptFail: enable       # Prompt初始化失败
+  SoulWeak: enable         # Soul内核残缺
+  RuntimeCrash: enable     # 运行态崩溃
+  NetworkBreak: enable     # 网络断连
+  AiIllusion: enable       # AI幻觉错乱
+  MemoryChaos: enable      # 记忆串扰丢失
+  ResourceOverload: enable # 资源过载
+  LogMissing: enable       # 日志缺失
+
+MemoryMode: HierarchyLongTerm
+CompressMode: LowDistortionSmart
+TaskSchedule: WuXingPriority
+AreaManage: BaGuaEightZone
+
+LogLevel: INFO
+DebugMode: false
+AutoHeal: true
+AncientWisdom: auto

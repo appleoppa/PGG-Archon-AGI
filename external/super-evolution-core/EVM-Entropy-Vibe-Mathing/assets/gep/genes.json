@@ -1,0 +1,89 @@
+{
+  "version": 1,
+  "genes": [
+    {
+      "type": "Gene",
+      "id": "gene_auto_a1cf499b",
+      "category": "innovate",
+      "signals_match": [
+        "stable_success_plateau"
+      ],
+      "strategy": [
+        "Extract structured signals from logs and user instructions",
+        "Select an existing Gene by signals match (no improvisation)",
+        "Estimate blast radius (files, lines) before editing and record it",
+        "Apply smallest reversible patch",
+        "Validate using declared validation steps; rollback on failure",
+        "Solidify knowledge: append EvolutionEvent, update Gene/Capsule store"
+      ],
+      "validation": [
+        "node scripts/validate-modules.js ./src/gep/solidify ./src/gep/policyCheck ./src/gep/assetStore",
+        "node scripts/validate-suite.js"
+      ],
+      "constraints": {
+        "max_files": 12,
+        "forbidden_paths": [
+          ".git",
+          "node_modules",
+          "skills/feishu-evolver-wrapper",
+          "skills/feishu-common",
+          "skills/feishu-post",
+          "skills/feishu-card",
+          "skills/feishu-doc",
+          "skills/skill-tools",
+          "skills/git-sync"
+        ]
+      },
+      "preconditions": [
+        "signals_key == stable_success_plateau"
+      ],
+      "summary": "",
+      "schema_version": "1.6.0",
+      "epigenetic_marks": [
+        {
+          "context": "darwin/arm64/v22.12.0",
+          "boost": -0.1,
+          "reason": "failure_in_environment",
+          "created_at": "2026-05-17T04:36:12.982Z"
+        }
+      ],
+      "learning_history": [
+        {
+          "at": "2026-05-17T04:36:12.982Z",
+          "outcome": "failed",
+          "mode": "hard",
+          "reason_class": "protocol",
+          "retryable": false,
+          "learning_signals": [
+            "problem:reliability",
+            "action:repair",
+            "problem:protocol",
+            "action:optimize",
+            "area:prompt",
+            "problem:stagnation",
+            "action:innovate",
+            "risk:validation"
+          ]
+        }
+      ],
+      "anti_patterns": [
+        {
+          "at": "2026-05-17T04:36:12.982Z",
+          "mode": "hard",
+          "reason_class": "protocol",
+          "learning_signals": [
+            "problem:reliability",
+            "action:repair",
+            "problem:protocol",
+            "action:optimize",
+            "area:prompt",
+            "problem:stagnation",
+            "action:innovate",
+            "risk:validation"
+          ]
+        }
+      ],
+      "asset_id": "sha256:ea65b09ba70949dbe8ff446d30478ece29a063e2b10acc527d2b74c41f242251"
+    }
+  ]
+}

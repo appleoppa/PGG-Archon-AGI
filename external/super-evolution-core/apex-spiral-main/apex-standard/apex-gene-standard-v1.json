@@ -1,0 +1,90 @@
+{
+  "schema_version": "1.0",
+  "type": "ApexGeneSchema",
+  "description": "APEX Gene Entity Standard Schema v1.0",
+  "fields": {
+    "type": {
+      "type": "string",
+      "enum": ["Gene"],
+      "required": true
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^gene_[a-z_]+_[a-zA-Z0-9_]+$",
+      "required": true
+    },
+    "version": {
+      "type": "number",
+      "minimum": 1,
+      "required": true
+    },
+    "category": {
+      "type": "string",
+      "enum": ["repair", "optimize", "innovate", "orchestrate", "evolve"],
+      "required": true
+    },
+    "signals_match": {
+      "type": "array",
+      "items": { "type": "string" },
+      "required": true
+    },
+    "preconditions": {
+      "type": "array",
+      "items": { "type": "string" },
+      "required": true
+    },
+    "strategy": {
+      "type": "array",
+      "items": { "type": "string" },
+      "required": true
+    },
+    "constraints": {
+      "type": "object",
+      "properties": {
+        "max_files": { "type": "number" },
+        "forbidden_paths": { "type": "array", "items": { "type": "string" } },
+        "risk_level": { "type": "string", "enum": ["low", "medium", "high"] }
+      },
+      "required": false
+    },
+    "validation": {
+      "type": "array",
+      "items": { "type": "string" },
+      "required": false
+    },
+    "fitness": {
+      "type": "object",
+      "properties": {
+        "score": { "type": "number", "minimum": 0, "maximum": 1 },
+        "cycles": { "type": "number", "minimum": 0 },
+        "success_rate": { "type": "number", "minimum": 0, "maximum": 1 }
+      },
+      "required": false
+    },
+    "learning_history": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "at": { "type": "string", "format": "iso8601" },
+          "outcome": { "type": "string", "enum": ["success", "failed"] },
+          "mode": { "type": "string", "enum": ["none", "soft", "hard"] },
+          "reason_class": { "type": "string" },
+          "retryable": { "type": "boolean" },
+          "learning_signals": { "type": "array", "items": { "type": "string" } }
+        }
+      },
+      "required": false
+    },
+    "metadata": {
+      "type": "object",
+      "properties": {
+        "created_at": { "type": "string", "format": "iso8601" },
+        "updated_at": { "type": "string", "format": "iso8601" },
+        "created_by": { "type": "string", "enum": ["evolver", "manual"] },
+        "tags": { "type": "array", "items": { "type": "string" } }
+      },
+      "required": false
+    }
+  }
+}

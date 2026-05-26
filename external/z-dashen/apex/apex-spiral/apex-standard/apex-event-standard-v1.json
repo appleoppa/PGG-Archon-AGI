@@ -1,0 +1,72 @@
+{
+  "schema_version": "1.0",
+  "type": "ApexEventSchema",
+  "description": "APEX Event Standard Schema v1.0",
+  "event_types": {
+    "MemoryGraphEvent": {
+      "kinds": ["signal", "hypothesis", "attempt", "outcome", "confidence_edge"],
+      "required_fields": ["type", "id", "ts", "kind", "observed"]
+    },
+    "EvolutionEvent": {
+      "subtypes": ["gene_emit", "sense_fusion_sync", "behavior_release"],
+      "required_fields": ["type", "id", "ts", "event_type"]
+    },
+    "ReflectionEvent": {
+      "required_fields": ["type", "id", "ts", "cycle_count", "signals_snapshot"]
+    }
+  },
+  "base_fields": {
+    "schema_version": { "type": "string", "const": "1.0", "required": true },
+    "type": { "type": "string", "required": true },
+    "id": { "type": "string", "required": true },
+    "ts": { "type": "string", "format": "iso8601", "required": true },
+    "actor": {
+      "type": "object",
+      "properties": {
+        "agent_id": { "type": "string" },
+        "session_scope": { "type": ["string", "null"] },
+        "personality": {
+          "type": "object",
+          "properties": {
+            "rigor": { "type": "number" },
+            "creativity": { "type": "number" },
+            "verbosity": { "type": "number" },
+            "risk_tolerance": { "type": "number" },
+            "obedience": { "type": "number" }
+          }
+        }
+      },
+      "required": false
+    },
+    "context": {
+      "type": "object",
+      "properties": {
+        "signals": { "type": "array", "items": { "type": "string" } },
+        "signals_raw": { "type": "string" },
+        "gene_id": { "type": "string" },
+        "gene_category": { "type": "string" },
+        "cycle_count": { "type": "number" }
+      },
+      "required": false
+    },
+    "observed": {
+      "type": "object",
+      "properties": {
+        "system_health": { "type": "string" },
+        "mood": { "type": "string" },
+        "scan_ms": { "type": "number" },
+        "memory_size_bytes": { "type": "number" },
+        "recent_error_count": { "type": "number" },
+        "cwd": { "type": "string" }
+      },
+      "required": false
+    },
+    "confidence": {
+      "type": "object",
+      "properties": {
+        "half_life_days": { "type": "number" }
+      },
+      "required": false
+    }
+  }
+}

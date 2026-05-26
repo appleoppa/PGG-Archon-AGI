@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.8'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest pyyaml
+      
+      - name: Run tests
+        run: |
+          python3 -m pytest tests/ -v --tb=short
+      
+      - name: Check syntax
+        run: |
+          python3 -m py_compile core/delta_g_formula.py
+          python3 -m py_compile engine/llm_hook.py
+          python3 -m py_compile memory/memory_persist.py
+          python3 -m py_compile auto-agent/self_inspect.py
+
+  lint:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.8'
+      
+      - name: Check Python syntax
+        run: |
+          find . -name "*.py" -exec python3 -m py_compile {} \;

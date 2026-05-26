@@ -1,0 +1,16 @@
+{
+  "LAMBDA": 1.5,
+  "TAU": 0.32,
+  "DELTA_B": 0.18,
+  "H_default": 0.22,
+  "F_default": 0.85,
+  "L_default": 0.82,
+  "N_default": 0.15,
+  "C_default": 2.8,
+  "Omega_min": 0.75,
+  "grad_E_default": 0.9,
+  "Gamma_default": 0.7,
+  "avg_code_len_default": 48,
+  "Psi_base": 0.75,
+  "Theta_default": 0.82
+}

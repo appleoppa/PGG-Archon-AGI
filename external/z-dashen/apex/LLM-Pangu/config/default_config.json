@@ -1,0 +1,72 @@
+{
+  "name": "pangu",
+  "version": "1.0.0",
+  "description": "LLM Anti-Hallucination Framework - 盘古",
+  "author": "ApexSpiral",
+  "license": "MIT",
+  
+  "delta_g": {
+    "LAMBDA": 1.5,
+    "TAU": 0.32,
+    "DELTA_B": 0.18,
+    "thresholds": {
+      "steady_max": 2.10,
+      "mild_max": 4.0
+    }
+  },
+  
+  "modules": {
+    "entropy": {
+      "H_default": 0.22
+    },
+    "fidelity": {
+      "F_default": 0.85
+    },
+    "logic": {
+      "L_default": 0.82
+    },
+    "noise": {
+      "N_default": 0.15
+    },
+    "channel": {
+      "C_default": 2.8
+    },
+    "skill": {
+      "Omega_min": 0.75
+    },
+    "evolution": {
+      "grad_E_default": 0.90
+    },
+    "code_standard": {
+      "Gamma_default": 0.70,
+      "avg_code_len_default": 48
+    },
+    "emotion": {
+      "Psi_base": 0.75,
+      "Psi_warm": 0.88,
+      "Psi_cold": 0.62
+    },
+    "threshold": {
+      "Theta_default": 0.82
+    }
+  },
+  
+  "paths": {
+    "storage": "storage",
+    "skills": "storage/skills",
+    "backups": "storage/backups",
+    "baseline": "baseline-v1"
+  },
+  
+  "logging": {
+    "level": "INFO",
+    "format": "[Pangu] %(levelname)s: %(message)s"
+  },
+  
+  "auto_agent": {
+    "enabled": true,
+    "inspect_interval_minutes": 30,
+    "heal_on_threshold": true,
+    "fetch_missing_skills": true
+  }
+}

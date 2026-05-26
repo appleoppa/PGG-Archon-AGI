@@ -1,0 +1,106 @@
+{
+  "schema_version": "1.0",
+  "type": "ApexStateSchema",
+  "description": "APEX State Standard Schema v1.0",
+  "state_types": {
+    "EvolutionState": {
+      "required_fields": ["schema_version", "type", "cycleCount", "lastRun"],
+      "properties": {
+        "schema_version": { "type": "string", "const": "1.0" },
+        "type": { "type": "string", "const": "EvolutionState" },
+        "cycleCount": { "type": "number" },
+        "lastRun": { "type": "number" },
+        "status": { "type": "string", "enum": ["idle", "running", "paused", "error"] },
+        "current_cycle": {
+          "type": "object",
+          "properties": {
+            "start_time": { "type": "string", "format": "iso8601" },
+            "signals": { "type": "array", "items": { "type": "string" } },
+            "selected_gene": { "type": "string" },
+            "mutations": { "type": "array" }
+          }
+        },
+        "stats": {
+          "type": "object",
+          "properties": {
+            "total_cycles": { "type": "number" },
+            "success_cycles": { "type": "number" },
+            "failed_cycles": { "type": "number" },
+            "avg_score": { "type": "number" }
+          }
+        }
+      }
+    },
+    "PersonalityState": {
+      "required_fields": ["schema_version", "type", "current"],
+      "properties": {
+        "schema_version": { "type": "string", "const": "1.0" },
+        "type": { "type": "string", "const": "PersonalityState" },
+        "current": {
+          "type": "object",
+          "properties": {
+            "rigor": { "type": "number", "minimum": 0, "maximum": 1 },
+            "creativity": { "type": "number", "minimum": 0, "maximum": 1 },
+            "verbosity": { "type": "number", "minimum": 0, "maximum": 1 },
+            "risk_tolerance": { "type": "number", "minimum": 0, "maximum": 1 },
+            "obedience": { "type": "number", "minimum": 0, "maximum": 1 }
+          }
+        },
+        "stats": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "success": { "type": "number" },
+              "fail": { "type": "number" },
+              "avg_score": { "type": "number" },
+              "n": { "type": "number" },
+              "updated_at": { "type": "string", "format": "iso8601" }
+            }
+          }
+        },
+        "history": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "at": { "type": "string", "format": "iso8601" },
+              "key": { "type": "string" },
+              "outcome": { "type": "string", "enum": ["success", "failed"] },
+              "score": { "type": "number" },
+              "notes": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "MemoryGraphState": {
+      "required_fields": ["schema_version", "type", "last_action"],
+      "properties": {
+        "schema_version": { "type": "string", "const": "1.0" },
+        "type": { "type": "string", "const": "MemoryGraphState" },
+        "last_action": {
+          "type": "object",
+          "properties": {
+            "action_id": { "type": "string" },
+            "signal_key": { "type": "string" },
+            "signals": { "type": "array", "items": { "type": "string" } },
+            "mutation_id": { "type": "string" },
+            "mutation_category": { "type": "string" },
+            "mutation_risk_level": { "type": "string" },
+            "personality_key": { "type": "string" },
+            "personality_state": { "type": "object" },
+            "gene_id": { "type": "string" },
+            "gene_category": { "type": "string" },
+            "hypothesis_id": { "type": "string" },
+            "capsules_used": { "type": "array", "items": { "type": "string" } },
+            "had_error": { "type": "boolean" },
+            "created_at": { "type": "string", "format": "iso8601" },
+            "outcome_recorded": { "type": "boolean" },
+            "baseline_observed": { "type": "object" }
+          }
+        }
+      }
+    }
+  }
+}
