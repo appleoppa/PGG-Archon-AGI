@@ -196,6 +196,8 @@ def run_apex_runtimeos_cli(argv: list[str] | None = None) -> str:
             return json.dumps({"object": "hermes.apex_runtimeos.autonomy_status", "status": status}, ensure_ascii=False, indent=2)
         cron = status.get("cron_dryrun") if isinstance(status.get("cron_dryrun"), dict) else {}
         evm_gate = status.get("evm_gate") if isinstance(status.get("evm_gate"), dict) else {}
+        sequence_gate = status.get("sequence_gate") if isinstance(status.get("sequence_gate"), dict) else {}
+        gene_lifecycle_gate = status.get("gene_lifecycle_gate") if isinstance(status.get("gene_lifecycle_gate"), dict) else {}
         return "\n".join([
             "# APEX RuntimeOS 自主化状态",
             "",
@@ -237,6 +239,24 @@ def run_apex_runtimeos_cli(argv: list[str] | None = None) -> str:
             "",
             "字段：EVM缺失证据",
             f"值：{evm_gate.get('missing_completion_evidence', [])}",
+            "",
+            "字段：APEX三顺序门禁状态",
+            f"值：{sequence_gate.get('status', 'UNKNOWN')}",
+            "",
+            "字段：APEX三顺序已见数量",
+            f"值：{sequence_gate.get('sequence_count', 0)}",
+            "",
+            "字段：APEX三顺序缺失",
+            f"值：{sequence_gate.get('missing_sequences', [])}",
+            "",
+            "字段：基因生命周期门禁状态",
+            f"值：{gene_lifecycle_gate.get('status', 'UNKNOWN')}",
+            "",
+            "字段：基因候选数",
+            f"值：{gene_lifecycle_gate.get('gene_count', 0)}",
+            "",
+            "字段：可晋升基因数",
+            f"值：{gene_lifecycle_gate.get('promotable_count', 0)}",
             "",
             "字段：cron账本键数",
             f"值：{cron.get('unique_keys', 0)}",

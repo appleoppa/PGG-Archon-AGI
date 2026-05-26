@@ -411,3 +411,21 @@ def test_autonomy_status_includes_read_only_evm_gate(tmp_path, monkeypatch):
     assert status["evm_gate"]["schema"] == "ApexRuntimeOSEVMGate/v1"
     assert status["evm_gate"]["side_effects"] == "read_only_report"
     assert status["evm_gate"]["boundary"].startswith("EVM means APEX RuntimeOS")
+
+
+def test_autonomy_status_includes_read_only_sequence_gate(tmp_path, monkeypatch):
+    monkeypatch.setenv("APEX_RUNTIMEOS_AUTOWRITE_DIR", str(tmp_path / "auto"))
+    status = summarize_autonomy_status(limit=10)
+    assert status["sequence_gate"]["schema"] == "ApexRuntimeOSSequenceGate/v1"
+    assert status["sequence_gate"]["status"] == "BLOCK"
+    assert status["sequence_gate"]["side_effects"] == "read_only_report"
+    assert status["sequence_gate"]["missing_sequences"] == ["21354", "12534", "14325"]
+
+
+def test_autonomy_status_includes_read_only_gene_lifecycle_gate(tmp_path, monkeypatch):
+    monkeypatch.setenv("APEX_RUNTIMEOS_AUTOWRITE_DIR", str(tmp_path / "auto"))
+    status = summarize_autonomy_status(limit=10)
+    assert status["gene_lifecycle_gate"]["schema"] == "ApexRuntimeOSGeneLifecycleGate/v1"
+    assert status["gene_lifecycle_gate"]["status"] == "BLOCK"
+    assert status["gene_lifecycle_gate"]["side_effects"] == "read_only_report"
+    assert status["gene_lifecycle_gate"]["gene_count"] == 0

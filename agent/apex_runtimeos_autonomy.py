@@ -938,6 +938,28 @@ def summarize_autonomy_status(*, limit: int = 1000, min_occurrences: int = 2) ->
             "error": _safe_scalar(exc),
             "side_effects": "read_only_report",
         }
+    try:
+        from agent.apex_runtimeos_sequence import build_sequence_gate_from_runtimeos_status
+
+        report["sequence_gate"] = build_sequence_gate_from_runtimeos_status(report)
+    except Exception as exc:
+        report["sequence_gate"] = {
+            "schema": "ApexRuntimeOSSequenceGate/v1",
+            "status": "ERROR",
+            "error": _safe_scalar(exc),
+            "side_effects": "read_only_report",
+        }
+    try:
+        from agent.apex_gene_lifecycle import build_gene_lifecycle_gate_from_runtimeos_status
+
+        report["gene_lifecycle_gate"] = build_gene_lifecycle_gate_from_runtimeos_status(report)
+    except Exception as exc:
+        report["gene_lifecycle_gate"] = {
+            "schema": "ApexRuntimeOSGeneLifecycleGate/v1",
+            "status": "ERROR",
+            "error": _safe_scalar(exc),
+            "side_effects": "read_only_report",
+        }
     return report
 
 
