@@ -8,6 +8,8 @@ from agent.apex_gene_lifecycle import (
     GeneLifecycleValidationError,
     build_gene_lifecycle_gate_from_runtimeos_status,
     build_gene_lifecycle_gate_report,
+    classify_gene_lifecycle_issues,
+    classify_gene_lifecycle_issues_from_sqlite,
     load_gene_lifecycle_candidates_from_sqlite,
     normalize_gene_status,
 )
@@ -148,3 +150,28 @@ def test_gene_lifecycle_from_runtimeos_status_blocks_missing_sqlite(tmp_path, mo
     assert report["status"] == "BLOCK"
     assert report["sqlite_read"]["status"] == "BLOCK"
     assert report["side_effects"] == "read_only_report"
+
+
+def test_classify_gene_lifecycle_issues_groups_remediations():
+    classification = classify_gene_lifecycle_issues([
+        {"gene": "g1", "status": "active", "evidence_hash": "h1", "validation_passed": True},
+        {"gene": "g2", "status": "verified", "evidence_hash": ""},
+        {"gene": "g3", "status": "retired", "evidence_hash": "h3"},
+    ])
+    assert classification["schema"] == "ApexRuntimeOSGeneLifecycleIssueClassification/v1"
+    assert classification["status"] == "WATCH"
+    codes = {item["code"] for item in classification["issue_buckets"]}
+    assert codes >= {"active_has_validation_but_not_verified", "missing_evidence", "verified_without_validation", "retired_without_reason"}
+    remediation_codes = {item["code"] for item in classification["remediation_candidates"]}
+    assert remediation_codes >= {"promote_verified_status", "fill_or_hold_missing_evidence", "add_retirement_reason"}
+    assert classification["side_effects"] == "read_only_report"
+
+
+def test_classify_gene_lifecycle_issues_from_sqlite_is_read_only(tmp_path):
+    db = tmp_path / "genes.sqlite3"
+    _create_gene_db(db)
+    classification = classify_gene_lifecycle_issues_from_sqlite(db, limit=10)
+    assert classification["sqlite_read"]["status"] == "PASS"
+    assert classification["sqlite_read"]["source_table"] == "evolution_genes"
+    assert classification["gene_count"] == 2
+    assert classification["side_effects"] == "read_only_report"

@@ -229,6 +229,78 @@ def build_gene_lifecycle_gate_from_runtimeos_status(status: Mapping[str, Any]) -
     return report
 
 
+def classify_gene_lifecycle_issues(genes: Sequence[Mapping[str, Any]] | None = None) -> Dict[str, Any]:
+    """Classify lifecycle issues into low-risk remediation buckets.
+
+    The function is intentionally read-only and returns hashes/IDs only; it does
+    not rewrite statuses or evidence fields.
+    """
+    report = build_gene_lifecycle_gate_report(genes)
+    buckets: Dict[str, Dict[str, Any]] = {}
+    for issue in report.get("issues", []):
+        if not isinstance(issue, Mapping):
+            continue
+        code = str(issue.get("code") or "unknown")
+        bucket = buckets.setdefault(code, {"code": code, "count": 0, "sample_genes": []})
+        bucket["count"] += 1
+        gene = str(issue.get("gene") or "")
+        if gene and len(bucket["sample_genes"]) < 10:
+            bucket["sample_genes"].append(gene)
+    remediation = []
+    if "active_has_validation_but_not_verified" in buckets:
+        remediation.append({
+            "code": "promote_verified_status",
+            "risk": "medium",
+            "action": "active + validation_passed 的基因可候选改为 verified；执行前必须备份并逐条读回验证",
+            "affected_count": buckets["active_has_validation_but_not_verified"]["count"],
+        })
+    if "verified_without_validation" in buckets:
+        remediation.append({
+            "code": "hold_unvalidated_verified",
+            "risk": "medium",
+            "action": "verified 但缺验证证据的基因应降级 HOLD 或补验证证据；不能自动通过",
+            "affected_count": buckets["verified_without_validation"]["count"],
+        })
+    if "missing_evidence" in buckets:
+        remediation.append({
+            "code": "fill_or_hold_missing_evidence",
+            "risk": "medium",
+            "action": "缺证据的基因必须补 evidence_hash/evidence 或保持 HOLD",
+            "affected_count": buckets["missing_evidence"]["count"],
+        })
+    if "retired_without_reason" in buckets:
+        remediation.append({
+            "code": "add_retirement_reason",
+            "risk": "low",
+            "action": "retired 基因补 retirement_reason/replaced_by 来源；不改变运行状态",
+            "affected_count": buckets["retired_without_reason"]["count"],
+        })
+    return {
+        "schema": "ApexRuntimeOSGeneLifecycleIssueClassification/v1",
+        "status": "OK" if not buckets else "WATCH",
+        "gate_status": report.get("status"),
+        "gene_count": report.get("gene_count", 0),
+        "issue_bucket_count": len(buckets),
+        "issue_buckets": sorted(buckets.values(), key=lambda item: int(item.get("count") or 0), reverse=True),
+        "remediation_candidates": remediation,
+        "side_effects": "read_only_report",
+    }
+
+
+def classify_gene_lifecycle_issues_from_sqlite(db_path: Path | None = None, *, limit: int = 500) -> Dict[str, Any]:
+    read = load_gene_lifecycle_candidates_from_sqlite(db_path, limit=limit)
+    classification = classify_gene_lifecycle_issues(read.get("genes") if isinstance(read.get("genes"), list) else [])
+    classification["sqlite_read"] = {
+        "schema": read.get("schema"),
+        "status": read.get("status"),
+        "db_exists": read.get("db_exists"),
+        "source_table": read.get("source_table"),
+        "gene_count": read.get("gene_count", 0),
+        "side_effects": "read_only_report",
+    }
+    return classification
+
+
 __all__ = [
     "ALLOWED_GENE_STATUSES",
     "DEFAULT_GENE_DB_PATH",
@@ -236,6 +308,8 @@ __all__ = [
     "GeneLifecycleValidationError",
     "build_gene_lifecycle_gate_from_runtimeos_status",
     "build_gene_lifecycle_gate_report",
+    "classify_gene_lifecycle_issues",
+    "classify_gene_lifecycle_issues_from_sqlite",
     "load_gene_lifecycle_candidates_from_sqlite",
     "normalize_gene_status",
 ]
