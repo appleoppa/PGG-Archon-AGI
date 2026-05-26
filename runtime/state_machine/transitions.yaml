@@ -1,0 +1,61 @@
+states:
+  - pending
+  - blocked
+  - ready
+  - running
+  - review
+  - done
+  - failed
+  - cancelled
+
+terminal_states:
+  - done
+  - failed
+  - cancelled
+
+events:
+  plan:
+    from: pending
+    to: ready
+    guard: dependencies_satisfied
+    emits: task_ready
+  block:
+    from: [pending, ready, running, review]
+    to: blocked
+    guard: blocker_recorded
+    emits: task_blocked
+  unblock:
+    from: blocked
+    to: ready
+    guard: blocker_resolved_and_dependencies_satisfied
+    emits: task_unblocked
+  start:
+    from: ready
+    to: running
+    guard: assignee_available
+    emits: task_started
+  submit:
+    from: running
+    to: review
+    guard: output_attached
+    emits: task_submitted
+  review_pass:
+    from: review
+    to: done
+    guard: verification_passed
+    emits: task_done
+  review_fail:
+    from: review
+    to: failed
+    guard: verification_failed
+    emits: task_failed
+  retry:
+    from: [failed, review]
+    to: ready
+    guard: retry_budget_available
+    emits: task_retry_ready
+  cancel:
+    from: [pending, blocked, ready, running, review, failed]
+    to: cancelled
+    guard: cancellation_authorized
+    emits: task_cancelled

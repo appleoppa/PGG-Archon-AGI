@@ -1,0 +1,35 @@
+schema: ApexRuntimeOSTokenMetricsMap/v1
+source: 超级进化6-token问题根治.md
+metrics:
+  screenshot_token_per_frame:
+    defect: 单帧截图Token过高
+    collection_point: computer_use_screenshot_capture
+    unit: tokens
+    warn_threshold: 1200
+    block_threshold: 1800
+    action: crop_or_downscale_before_reasoning
+  click_offset_px:
+    defect: 截图缩放导致物理点击坐标偏移
+    collection_point: computer_use_action_feedback
+    unit: pixels
+    warn_threshold: 8
+    block_threshold: 20
+    action: recalibrate_coordinate_mapping
+  idle_reason_tokens:
+    defect: 对文字等无效思维开销造成算力空耗
+    collection_point: llm_reasoning_trace_summary
+    unit: tokens
+    warn_threshold: 500
+    block_threshold: 1200
+    action: suppress_unnecessary_reasoning_or_compress_context
+  ctx_overflow_count:
+    defect: 上下文溢出导致长任务断裂
+    collection_point: context_window_manager
+    unit: count_per_task
+    warn_threshold: 1
+    block_threshold: 3
+    action: checkpoint_and_compact_before_continuing
+quality_rules:
+  - every_metric_requires_collection_point
+  - no_metric_participates_in_decision_without_observed_value
+  - default_missing_metric_status_is_warn_not_pass

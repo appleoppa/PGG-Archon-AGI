@@ -1,0 +1,10 @@
+schema: ApexRuntimeOSSkillRegistry/v1
+policy: deny_by_default
+trusted: []
+sandboxed: []
+candidate: []
+reference_only:
+  - id: desktop-super-evolution-source
+    description: Desktop 超级进化 materials are source references, not executable skills.
+    source: /Users/appleoppa/Desktop/超级进化
+    status: reference_only

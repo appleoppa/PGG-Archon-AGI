@@ -1,0 +1,28 @@
+schema: ApexRuntimeOSQualityGate/v1
+source: 超级进化18-CMMI 工业化标准.md
+policy: blocking_rules_must_pass
+rules:
+  - id: requirements_traceability
+    severity: blocking
+    description: 需求、范围、非目标和验收标准必须可追溯。
+    required_evidence: requirements
+  - id: rollback_plan_present
+    severity: blocking
+    description: 涉及状态变更、文件写入、远程推送或配置修改时必须有回滚方案。
+    required_evidence: rollback_plan
+  - id: tests_passed
+    severity: blocking
+    description: 相关单元测试或冒烟测试必须通过。
+    required_evidence: test_report
+  - id: security_boundary_reviewed
+    severity: blocking
+    description: 外部代码、网络、凭据、shell、memory/skill 写入必须完成安全边界审查。
+    required_evidence: security_review
+  - id: audit_log_complete
+    severity: blocking
+    description: 自动执行、LLM复核、晋升、回滚等动作必须有审计记录。
+    required_evidence: audit_log
+  - id: documentation_updated
+    severity: warning
+    description: 用户可读报告或实现锚点应同步更新。
+    required_evidence: documentation

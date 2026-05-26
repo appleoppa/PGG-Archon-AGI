@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "APEX RuntimeOS Task State Machine",
+  "type": "object",
+  "required": ["current_state", "event", "context"],
+  "properties": {
+    "current_state": {
+      "type": "string",
+      "enum": ["pending", "blocked", "ready", "running", "review", "done", "failed", "cancelled"]
+    },
+    "event": {
+      "type": "string",
+      "enum": ["plan", "block", "unblock", "start", "submit", "review_pass", "review_fail", "retry", "cancel"]
+    },
+    "context": {
+      "type": "object",
+      "properties": {
+        "dependencies_satisfied": {"type": "boolean"},
+        "blocker_recorded": {"type": "boolean"},
+        "blocker_resolved": {"type": "boolean"},
+        "assignee_available": {"type": "boolean"},
+        "output_attached": {"type": "boolean"},
+        "verification_passed": {"type": "boolean"},
+        "verification_failed": {"type": "boolean"},
+        "retry_budget_available": {"type": "boolean"},
+        "cancellation_authorized": {"type": "boolean"}
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": false
+}
