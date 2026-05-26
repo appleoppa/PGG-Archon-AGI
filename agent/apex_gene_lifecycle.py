@@ -6,10 +6,14 @@ memory store, or file is mutated by this module.
 """
 from __future__ import annotations
 
+import os
+import sqlite3
+from pathlib import Path
 from typing import Any, Dict, Mapping, Sequence
 
 ALLOWED_GENE_STATUSES = ("active", "verified", "retired")
 PROMOTABLE_STATUSES = ("verified",)
+DEFAULT_GENE_DB_PATH = Path("/Users/appleoppa/.hermes/workspace/开智/02-进化基因/apex_evolution_genes.sqlite3")
 
 
 class GeneLifecycleValidationError(ValueError):
@@ -18,13 +22,122 @@ class GeneLifecycleValidationError(ValueError):
 
 def normalize_gene_status(status: Any) -> str:
     text = str(status or "").strip().lower()
-    if text not in ALLOWED_GENE_STATUSES:
-        raise GeneLifecycleValidationError(f"unknown gene lifecycle status: {text or '<empty>'}")
-    return text
+    if text in ALLOWED_GENE_STATUSES:
+        return text
+    # The historical SQLite schema has both status and verification_status.
+    # Keep lifecycle names strict, but accept verified-ish verification values as
+    # an input mapping when reading existing records.
+    if text in {"passed", "pass", "ok", "validated", "verification_passed"}:
+        return "verified"
+    if text in {"deprecated", "disabled", "archived", "replaced"}:
+        return "retired"
+    raise GeneLifecycleValidationError(f"unknown gene lifecycle status: {text or '<empty>'}")
 
 
 def _has_text(value: Any) -> bool:
     return bool(str(value or "").strip())
+
+
+def _gene_db_path() -> Path:
+    configured = os.environ.get("APEX_GENE_LIFECYCLE_DB_PATH", "").strip()
+    return Path(configured).expanduser() if configured else DEFAULT_GENE_DB_PATH
+
+
+def _table_exists(conn: sqlite3.Connection, table: str) -> bool:
+    row = conn.execute("SELECT 1 FROM sqlite_master WHERE type IN ('table','view') AND name=?", (table,)).fetchone()
+    return row is not None
+
+
+def _map_sqlite_gene(row: sqlite3.Row) -> Dict[str, Any]:
+    raw_status = str(row["status"] or "").strip().lower()
+    verification = str(row["verification_status"] or "").strip().lower() if "verification_status" in row.keys() else ""
+    lifecycle_status = raw_status
+    if verification in {"verified", "passed", "pass", "ok", "validated", "verification_passed"}:
+        lifecycle_status = "verified"
+    elif raw_status not in ALLOWED_GENE_STATUSES:
+        lifecycle_status = raw_status
+    return {
+        "gene": row["gene_id"],
+        "status": lifecycle_status,
+        "evidence_hash": row["gene_hash"],
+        "evidence": row["evidence_grade"],
+        "validation_passed": verification in {"verified", "passed", "pass", "ok", "validated", "verification_passed"},
+        "verified_at": row["created_at"] if verification in {"verified", "passed", "pass", "ok", "validated", "verification_passed"} else "",
+        "retirement_reason": row["boundary"] if lifecycle_status == "retired" else "",
+        "source_table": row["source_table"],
+    }
+
+
+def load_gene_lifecycle_candidates_from_sqlite(db_path: Path | None = None, *, limit: int = 500) -> Dict[str, Any]:
+    """Read gene lifecycle candidates from the local APEX gene SQLite DB.
+
+    Read-only guarantees:
+    - opens SQLite in immutable read-only URI mode;
+    - returns only aggregate/sanitized metadata fields;
+    - never writes, migrates, or creates tables.
+    """
+    path = Path(db_path) if db_path is not None else _gene_db_path()
+    if not path.exists():
+        return {
+            "schema": "ApexRuntimeOSGeneLifecycleSQLiteRead/v1",
+            "status": "BLOCK",
+            "db_exists": False,
+            "source_table": None,
+            "genes": [],
+            "error": "db_missing",
+            "side_effects": "read_only_report",
+        }
+    uri = f"file:{path}?mode=ro&immutable=1"
+    try:
+        conn = sqlite3.connect(uri, uri=True)
+        conn.row_factory = sqlite3.Row
+        try:
+            if _table_exists(conn, "evolution_genes"):
+                table = "evolution_genes"
+            elif _table_exists(conn, "genes"):
+                table = "genes"
+            else:
+                return {
+                    "schema": "ApexRuntimeOSGeneLifecycleSQLiteRead/v1",
+                    "status": "BLOCK",
+                    "db_exists": True,
+                    "source_table": None,
+                    "genes": [],
+                    "error": "gene_table_missing",
+                    "side_effects": "read_only_report",
+                }
+            rows = conn.execute(
+                f"""
+                SELECT gene_id, status, evidence_grade, verification_status, boundary, gene_hash, created_at,
+                       ? AS source_table
+                FROM {table}
+                ORDER BY created_at DESC
+                LIMIT ?
+                """,
+                (table, max(1, min(int(limit), 5000))),
+            ).fetchall()
+            genes = [_map_sqlite_gene(row) for row in rows]
+            return {
+                "schema": "ApexRuntimeOSGeneLifecycleSQLiteRead/v1",
+                "status": "PASS" if genes else "BLOCK",
+                "db_exists": True,
+                "source_table": table,
+                "gene_count": len(genes),
+                "genes": genes,
+                "side_effects": "read_only_report",
+            }
+        finally:
+            conn.close()
+    except Exception as exc:
+        return {
+            "schema": "ApexRuntimeOSGeneLifecycleSQLiteRead/v1",
+            "status": "ERROR",
+            "db_exists": True,
+            "source_table": None,
+            "genes": [],
+            "error": type(exc).__name__,
+            "side_effects": "read_only_report",
+        }
 
 
 def build_gene_lifecycle_gate_report(genes: Sequence[Mapping[str, Any]] | None = None) -> Dict[str, Any]:
@@ -102,19 +215,27 @@ def build_gene_lifecycle_gate_report(genes: Sequence[Mapping[str, Any]] | None =
 
 
 def build_gene_lifecycle_gate_from_runtimeos_status(status: Mapping[str, Any]) -> Dict[str, Any]:
-    """Expose lifecycle readiness without scanning private gene stores.
-
-    The autonomy summary currently has no explicit gene-candidate evidence, so
-    the safe default is BLOCK instead of pretending lifecycle validation exists.
-    """
-    return build_gene_lifecycle_gate_report([])
+    """Expose lifecycle readiness from the local gene DB without mutation."""
+    db_read = load_gene_lifecycle_candidates_from_sqlite(limit=500)
+    report = build_gene_lifecycle_gate_report(db_read.get("genes") if isinstance(db_read.get("genes"), list) else [])
+    report["sqlite_read"] = {
+        "schema": db_read.get("schema"),
+        "status": db_read.get("status"),
+        "db_exists": db_read.get("db_exists"),
+        "source_table": db_read.get("source_table"),
+        "gene_count": db_read.get("gene_count", 0),
+        "side_effects": "read_only_report",
+    }
+    return report
 
 
 __all__ = [
     "ALLOWED_GENE_STATUSES",
+    "DEFAULT_GENE_DB_PATH",
     "PROMOTABLE_STATUSES",
     "GeneLifecycleValidationError",
     "build_gene_lifecycle_gate_from_runtimeos_status",
     "build_gene_lifecycle_gate_report",
+    "load_gene_lifecycle_candidates_from_sqlite",
     "normalize_gene_status",
 ]

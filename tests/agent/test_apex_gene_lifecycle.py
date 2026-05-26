@@ -1,19 +1,71 @@
 from __future__ import annotations
 
+import sqlite3
+
 import pytest
 
 from agent.apex_gene_lifecycle import (
     GeneLifecycleValidationError,
     build_gene_lifecycle_gate_from_runtimeos_status,
     build_gene_lifecycle_gate_report,
+    load_gene_lifecycle_candidates_from_sqlite,
     normalize_gene_status,
 )
+
+
+def _create_gene_db(path):
+    conn = sqlite3.connect(path)
+    try:
+        conn.execute(
+            """
+            CREATE TABLE evolution_genes(
+                gene_id TEXT PRIMARY KEY,
+                cycle_id TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                defect_no INTEGER NOT NULL,
+                defect_name TEXT NOT NULL,
+                gene_name TEXT NOT NULL,
+                absorbed_knowledge TEXT NOT NULL,
+                source_refs_json TEXT NOT NULL,
+                repair_mechanism TEXT NOT NULL,
+                severity_rank INTEGER NOT NULL,
+                apex_variables TEXT NOT NULL,
+                gate_type TEXT NOT NULL,
+                reusable_rule TEXT NOT NULL,
+                status TEXT NOT NULL,
+                evidence_grade TEXT NOT NULL,
+                verification_status TEXT NOT NULL,
+                boundary TEXT NOT NULL,
+                gene_hash TEXT NOT NULL
+            )
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO evolution_genes VALUES(
+                'gene-1','cycle-1','2026-05-26T00:00:00',1,'defect','name','knowledge','[]','repair',1,
+                '{}','gate','rule','active','A','pending','boundary','hash-1'
+            )
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO evolution_genes VALUES(
+                'gene-2','cycle-1','2026-05-26T00:01:00',2,'defect','name','knowledge','[]','repair',1,
+                '{}','gate','rule','active','A','verified','boundary','hash-2'
+            )
+            """
+        )
+        conn.commit()
+    finally:
+        conn.close()
 
 
 def test_normalize_gene_status_accepts_only_lifecycle_statuses():
     assert normalize_gene_status("ACTIVE") == "active"
     assert normalize_gene_status("verified") == "verified"
     assert normalize_gene_status("retired") == "retired"
+    assert normalize_gene_status("passed") == "verified"
     with pytest.raises(GeneLifecycleValidationError):
         normalize_gene_status("external_brain_factory_cycle_verified")
 
@@ -66,7 +118,33 @@ def test_gene_lifecycle_gate_rejects_duplicate_and_invalid_status():
     assert "missing_gene_id" in codes
 
 
-def test_gene_lifecycle_from_runtimeos_status_defaults_to_block_without_candidates():
+def test_load_gene_lifecycle_candidates_from_sqlite_reads_evolution_genes(tmp_path):
+    db = tmp_path / "genes.sqlite3"
+    _create_gene_db(db)
+    read = load_gene_lifecycle_candidates_from_sqlite(db, limit=10)
+    assert read["schema"] == "ApexRuntimeOSGeneLifecycleSQLiteRead/v1"
+    assert read["status"] == "PASS"
+    assert read["source_table"] == "evolution_genes"
+    assert read["gene_count"] == 2
+    assert read["genes"][0]["source_table"] == "evolution_genes"
+
+
+def test_gene_lifecycle_from_runtimeos_status_reads_configured_sqlite(tmp_path, monkeypatch):
+    db = tmp_path / "genes.sqlite3"
+    _create_gene_db(db)
+    monkeypatch.setenv("APEX_GENE_LIFECYCLE_DB_PATH", str(db))
+    report = build_gene_lifecycle_gate_from_runtimeos_status({"schema": "ApexRuntimeOSAutonomyStatus/v1"})
+    assert report["sqlite_read"]["status"] == "PASS"
+    assert report["sqlite_read"]["source_table"] == "evolution_genes"
+    assert report["gene_count"] == 2
+    assert report["counts"]["active"] == 1
+    assert report["counts"]["verified"] == 1
+    assert report["side_effects"] == "read_only_report"
+
+
+def test_gene_lifecycle_from_runtimeos_status_blocks_missing_sqlite(tmp_path, monkeypatch):
+    monkeypatch.setenv("APEX_GENE_LIFECYCLE_DB_PATH", str(tmp_path / "missing.sqlite3"))
     report = build_gene_lifecycle_gate_from_runtimeos_status({"schema": "ApexRuntimeOSAutonomyStatus/v1"})
     assert report["status"] == "BLOCK"
+    assert report["sqlite_read"]["status"] == "BLOCK"
     assert report["side_effects"] == "read_only_report"

@@ -424,11 +424,13 @@ def test_autonomy_status_includes_read_only_sequence_gate(tmp_path, monkeypatch)
 
 def test_autonomy_status_includes_read_only_gene_lifecycle_gate(tmp_path, monkeypatch):
     monkeypatch.setenv("APEX_RUNTIMEOS_AUTOWRITE_DIR", str(tmp_path / "auto"))
+    monkeypatch.setenv("APEX_GENE_LIFECYCLE_DB_PATH", str(tmp_path / "missing.sqlite3"))
     status = summarize_autonomy_status(limit=10)
     assert status["gene_lifecycle_gate"]["schema"] == "ApexRuntimeOSGeneLifecycleGate/v1"
     assert status["gene_lifecycle_gate"]["status"] == "BLOCK"
     assert status["gene_lifecycle_gate"]["side_effects"] == "read_only_report"
     assert status["gene_lifecycle_gate"]["gene_count"] == 0
+    assert status["gene_lifecycle_gate"]["sqlite_read"]["db_exists"] is False
 
 
 def test_autonomy_status_includes_read_only_formula_report(tmp_path, monkeypatch):
