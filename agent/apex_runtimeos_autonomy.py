@@ -283,6 +283,74 @@ def persist_autowrite_candidate(
     }
 
 
+def build_autonomy_recommendations(status: Mapping[str, Any]) -> Dict[str, Any]:
+    """Build sanitized candidate recommendations from aggregate RuntimeOS gates."""
+    items: list[Dict[str, Any]] = []
+    sequence_gate = status.get("sequence_gate") if isinstance(status.get("sequence_gate"), Mapping) else {}
+    if sequence_gate and sequence_gate.get("status") != "PASS":
+        items.append({
+            "organ": "sequence_gate",
+            "code": "apex_sequence_evidence_incomplete",
+            "severity": "warn" if sequence_gate.get("status") == "WARN" else "block",
+            "actions": ["collect_sequence_evidence", "hold_high_risk_cycle"],
+            "applied": False,
+        })
+    formula_report = status.get("formula_report") if isinstance(status.get("formula_report"), Mapping) else {}
+    if formula_report and formula_report.get("status") != "PASS":
+        items.append({
+            "organ": "formula_report",
+            "code": "apex_formula_live_params_missing",
+            "severity": "warn",
+            "actions": ["collect_live_formula_params", "keep_formula_report_read_only"],
+            "applied": False,
+        })
+    gep_report_raw = status.get("gep_report")
+    gep_report: Mapping[str, Any] = gep_report_raw if isinstance(gep_report_raw, Mapping) else {}
+    gep_index_raw = gep_report.get("capability_index")
+    gep_index: Mapping[str, Any] = gep_index_raw if isinstance(gep_index_raw, Mapping) else {}
+    gep_counts_raw = gep_index.get("counts")
+    gep_counts: Mapping[str, Any] = gep_counts_raw if isinstance(gep_counts_raw, Mapping) else {}
+    if gep_report and gep_report.get("status") != "PASS":
+        items.append({
+            "organ": "gep_report",
+            "code": "gep_obfuscated_components_hold",
+            "severity": "warn",
+            "actions": ["deobfuscate_before_runtime", f"obfuscated_count={int(gep_counts.get('archived_obfuscated') or 0)}"],
+            "applied": False,
+        })
+    evm_gate = status.get("evm_gate") if isinstance(status.get("evm_gate"), Mapping) else {}
+    missing_evidence = evm_gate.get("missing_completion_evidence") if isinstance(evm_gate.get("missing_completion_evidence"), list) else []
+    if missing_evidence:
+        items.append({
+            "organ": "evm_gate",
+            "code": "evm_completion_evidence_missing",
+            "severity": "info",
+            "actions": ["mark_temporary_or_persist_memory", "do_not_claim_full_completion"],
+            "applied": False,
+        })
+    return {
+        "schema": "ApexRuntimeOSRecommendations/v1",
+        "status": "WATCH" if items else "OK",
+        "count": len(items),
+        "items": items,
+        "side_effects": "read_only_report",
+    }
+
+
+def persist_autonomy_recommendation_candidate(*, limit: int = 1000, session_id: str = "") -> Dict[str, Any]:
+    """Persist a sanitized candidate derived from aggregate autonomy status."""
+    status = summarize_autonomy_status(limit=limit)
+    recommendations = build_autonomy_recommendations(status)
+    if not recommendations.get("items"):
+        return {"written": False, "reason": "no_recommendations", "recommendations": recommendations}
+    return persist_autowrite_candidate(
+        stage="autonomy_gate_review",
+        session_id=session_id,
+        recommendations=recommendations,
+        source="apex_runtimeos_autonomy",
+    )
+
+
 def _candidate_to_memory_entry(candidate: Mapping[str, Any]) -> str:
     codes = []
     severities = []

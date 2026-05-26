@@ -74,3 +74,27 @@ def test_apex_runtimeos_cli_feishu_outputs_safe_markdown(tmp_path, monkeypatch):
     assert "prompt" not in output
     assert "messages" not in output
     assert "token" not in output.lower()
+
+
+def test_apex_runtimeos_autonomy_candidate_dry_run_does_not_write(tmp_path, monkeypatch):
+    monkeypatch.setenv("APEX_RUNTIMEOS_AUTOWRITE_DIR", str(tmp_path / "auto"))
+    monkeypatch.setenv("APEX_RUNTIMEOS_GATE_MODE", "enforce")
+    monkeypatch.delenv("APEX_RUNTIMEOS_AUTO_WRITE_ENABLED", raising=False)
+    output = run_apex_runtimeos_cli(["autonomy-candidate", "--json", "--limit", "10"])
+    data = json.loads(output)
+    assert data["object"] == "hermes.apex_runtimeos.autonomy_candidate"
+    assert data["result"]["written"] is False
+    assert data["result"]["reason"] == "disabled_or_not_enforce"
+    assert not (tmp_path / "auto" / "candidates.jsonl").exists()
+
+
+def test_apex_runtimeos_autonomy_candidate_execute_writes_sanitized_candidate(tmp_path, monkeypatch):
+    monkeypatch.setenv("APEX_RUNTIMEOS_AUTOWRITE_DIR", str(tmp_path / "auto"))
+    monkeypatch.setenv("APEX_RUNTIMEOS_GATE_MODE", "enforce")
+    output = run_apex_runtimeos_cli(["autonomy-candidate", "--execute", "--json", "--limit", "10"])
+    data = json.loads(output)
+    assert data["result"]["written"] is True
+    raw = (tmp_path / "auto" / "candidates.jsonl").read_text(encoding="utf-8")
+    assert "ApexRuntimeOSAutoWriteCandidate/v1" in raw
+    assert "apex_sequence_evidence_incomplete" in raw
+    assert "/Users/" not in raw

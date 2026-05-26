@@ -14,7 +14,7 @@ def _parser() -> argparse.ArgumentParser:
         prog="/apex-runtimeos",
         description="Show APEX RuntimeOS audit summary diagnostics",
     )
-    parser.add_argument("command", nargs="?", default="summary", choices=("summary", "status", "feishu", "autopromote", "rollback", "autonomy", "cron-ledger"))
+    parser.add_argument("command", nargs="?", default="summary", choices=("summary", "status", "feishu", "autopromote", "rollback", "autonomy", "autonomy-candidate", "cron-ledger"))
     parser.add_argument("--json", action="store_true", help="emit machine-readable JSON")
     parser.add_argument("--limit", type=int, default=10000, help="max audit lines to read")
     parser.add_argument("--target", default="memory", choices=("memory", "skill", "all"), help="autopromote/rollback target")
@@ -300,6 +300,38 @@ def run_apex_runtimeos_cli(argv: list[str] | None = None) -> str:
             "",
             "字段：cron最后记录时间",
             f"值：{cron.get('last_seen_at', 0)}",
+            "",
+        ])
+    if ns.command == "autonomy-candidate":
+        import os
+        from agent.apex_runtimeos_autonomy import persist_autonomy_recommendation_candidate
+        previous_auto_write = os.environ.get("APEX_RUNTIMEOS_AUTO_WRITE_ENABLED")
+        if ns.execute:
+            os.environ["APEX_RUNTIMEOS_AUTO_WRITE_ENABLED"] = "1"
+        try:
+            result = persist_autonomy_recommendation_candidate(limit=limit, session_id="apex-runtimeos-cli")
+        finally:
+            if ns.execute:
+                if previous_auto_write is None:
+                    os.environ.pop("APEX_RUNTIMEOS_AUTO_WRITE_ENABLED", None)
+                else:
+                    os.environ["APEX_RUNTIMEOS_AUTO_WRITE_ENABLED"] = previous_auto_write
+        if ns.json:
+            return json.dumps({"object": "hermes.apex_runtimeos.autonomy_candidate", "result": result}, ensure_ascii=False, indent=2)
+        return "\n".join([
+            "# APEX RuntimeOS 自主候选生成",
+            "",
+            "字段：execute",
+            f"值：{bool(ns.execute)}",
+            "",
+            "字段：written",
+            f"值：{result.get('written', False)}",
+            "",
+            "字段：reason",
+            f"值：{result.get('reason', '-')}",
+            "",
+            "字段：candidate_type",
+            f"值：{result.get('candidate_type', '-')}",
             "",
         ])
     if ns.command == "cron-ledger":
