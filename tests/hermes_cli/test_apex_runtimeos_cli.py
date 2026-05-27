@@ -96,5 +96,19 @@ def test_apex_runtimeos_autonomy_candidate_execute_writes_sanitized_candidate(tm
     assert data["result"]["written"] is True
     raw = (tmp_path / "auto" / "candidates.jsonl").read_text(encoding="utf-8")
     assert "ApexRuntimeOSAutoWriteCandidate/v1" in raw
-    assert any(code in raw for code in ("apex_sequence_evidence_incomplete", "cmmi_quality_evidence_incomplete"))
+    assert any(code in raw for code in (
+        "apex_sequence_evidence_incomplete",
+        "cmmi_quality_evidence_incomplete",
+        "gep_obfuscated_components_hold",
+    ))
     assert "/Users/" not in raw
+
+
+def test_apex_runtimeos_autonomy_cli_shows_gep_safety_pipeline(tmp_path, monkeypatch):
+    monkeypatch.setenv("APEX_RUNTIMEOS_AUTOWRITE_DIR", str(tmp_path / "auto"))
+    output = run_apex_runtimeos_cli(["autonomy", "--limit", "10"])
+    assert "字段：GEP安全流水线状态" in output
+    assert "字段：GEP运行接入允许" in output
+    assert "字段：GEP HOLD原因" in output
+    assert "值：False" in output
+    assert "runtime_execution" in output

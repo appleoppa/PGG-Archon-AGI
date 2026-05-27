@@ -201,12 +201,71 @@ def build_validator_gate_report(config: Mapping[str, Any] | None = None) -> Dict
     }
 
 
+def build_gep_safety_pipeline(index: Mapping[str, Any] | None = None) -> Dict[str, Any]:
+    """Return the read-only safety pipeline required before GEP runtime use.
+
+    The archived Book-to-skill/GitHub/GEP materials describe powerful runtime
+    ingestion and validation loops. This helper deliberately turns that into a
+    visible HOLD pipeline instead of executing archived JavaScript or treating
+    obfuscated code as trusted capability.
+    """
+    capability_index = index if isinstance(index, Mapping) else build_gep_capability_index()
+    counts_raw = capability_index.get("counts") if isinstance(capability_index.get("counts"), Mapping) else {}
+    counts: Mapping[str, Any] = counts_raw if isinstance(counts_raw, Mapping) else {}
+    obfuscated_count = int(counts.get("archived_obfuscated") or 0)
+    missing_count = int(counts.get("missing") or 0)
+    stages = [
+        {
+            "id": "component_inventory",
+            "status": "PASS" if capability_index.get("component_count") else "BLOCK",
+            "side_effects": "read_only_report",
+        },
+        {
+            "id": "deobfuscation_review",
+            "status": "HOLD" if obfuscated_count else "PASS",
+            "required_before_runtime": True,
+            "obfuscated_count": obfuscated_count,
+        },
+        {
+            "id": "missing_component_review",
+            "status": "BLOCK" if missing_count else "PASS",
+            "missing_count": missing_count,
+        },
+        {
+            "id": "sandbox_validator_bridge",
+            "status": "HOLD",
+            "required_before_runtime": True,
+            "required_guards": ["feature_flag", "preflight", "sandbox", "tasks_only", "max_tasks_per_cycle"],
+        },
+        {
+            "id": "runtime_execution",
+            "status": "HOLD",
+            "allowed_now": False,
+            "reason": "archived_or_external_code_must_remain_read_only_until_all_prior_stages_pass",
+        },
+    ]
+    if missing_count:
+        status = "BLOCK"
+    else:
+        status = "HOLD"
+    return {
+        "schema": "ApexRuntimeOSGEPSafetyPipeline/v1",
+        "status": status,
+        "runtime_allowed": False,
+        "stages": stages,
+        "hold_reasons": [stage["id"] for stage in stages if stage.get("status") in {"HOLD", "BLOCK"}],
+        "boundary": "Read-only gate only; no external repositories, archived JavaScript, validators, or generated skills are executed.",
+        "side_effects": "read_only_report",
+    }
+
+
 def build_gep_report_from_runtimeos_status(status: Mapping[str, Any]) -> Dict[str, Any]:
     index = build_gep_capability_index()
     return {
         "schema": "ApexRuntimeOSGEPReport/v1",
         "status": index["status"],
         "capability_index": index,
+        "safety_pipeline": build_gep_safety_pipeline(index),
         "question_gate": build_question_gate_report([]),
         "validator_gate": build_validator_gate_report({}),
         "side_effects": "read_only_report",
@@ -218,6 +277,7 @@ __all__ = [
     "REQUIRED_GEP_COMPONENTS",
     "build_gep_capability_index",
     "build_gep_report_from_runtimeos_status",
+    "build_gep_safety_pipeline",
     "build_question_gate_report",
     "build_validator_gate_report",
     "is_infra_question_context",

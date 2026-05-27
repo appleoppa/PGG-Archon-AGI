@@ -206,7 +206,10 @@ def run_apex_runtimeos_cli(argv: list[str] | None = None) -> str:
         sequence_gate = status.get("sequence_gate") if isinstance(status.get("sequence_gate"), dict) else {}
         gene_lifecycle_gate = status.get("gene_lifecycle_gate") if isinstance(status.get("gene_lifecycle_gate"), dict) else {}
         formula_report = status.get("formula_report") if isinstance(status.get("formula_report"), dict) else {}
-        gep_report = status.get("gep_report") if isinstance(status.get("gep_report"), dict) else {}
+        gep_report_raw = status.get("gep_report")
+        gep_report = gep_report_raw if isinstance(gep_report_raw, dict) else {}
+        gep_safety_raw = gep_report.get("safety_pipeline")
+        gep_safety = gep_safety_raw if isinstance(gep_safety_raw, dict) else {}
         quality_gate = status.get("quality_gate") if isinstance(status.get("quality_gate"), dict) else {}
         quality_bundle_raw = quality_gate.get("evidence_bundle")
         quality_bundle = quality_bundle_raw if isinstance(quality_bundle_raw, dict) else {}
@@ -331,6 +334,15 @@ def run_apex_runtimeos_cli(argv: list[str] | None = None) -> str:
             "",
             "字段：GEP混淆组件数",
             f"值：{gep_counts.get('archived_obfuscated', 0)}",
+            "",
+            "字段：GEP安全流水线状态",
+            f"值：{gep_safety.get('status', 'UNKNOWN')}",
+            "",
+            "字段：GEP运行接入允许",
+            f"值：{gep_safety.get('runtime_allowed', False)}",
+            "",
+            "字段：GEP HOLD原因",
+            f"值：{gep_safety.get('hold_reasons', [])}",
             "",
             "字段：技能注册表策略状态",
             f"值：{skill_registry_policy.get('status', 'UNKNOWN')}",

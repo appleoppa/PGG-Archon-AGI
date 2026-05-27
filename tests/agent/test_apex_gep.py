@@ -4,6 +4,7 @@ from agent.apex_gep import (
     REQUIRED_GEP_COMPONENTS,
     build_gep_capability_index,
     build_gep_report_from_runtimeos_status,
+    build_gep_safety_pipeline,
     build_question_gate_report,
     build_validator_gate_report,
     is_infra_question_context,
@@ -70,11 +71,24 @@ def test_validator_gate_requires_all_safety_guards():
     assert passed["issues"] == []
 
 
+def test_gep_safety_pipeline_keeps_archived_components_on_hold():
+    index = build_gep_capability_index()
+    pipeline = build_gep_safety_pipeline(index)
+    assert pipeline["schema"] == "ApexRuntimeOSGEPSafetyPipeline/v1"
+    assert pipeline["status"] == "HOLD"
+    assert pipeline["runtime_allowed"] is False
+    assert "deobfuscation_review" in pipeline["hold_reasons"]
+    assert "runtime_execution" in pipeline["hold_reasons"]
+    assert pipeline["side_effects"] == "read_only_report"
+    assert "no external repositories" in pipeline["boundary"]
+
+
 def test_gep_report_from_runtimeos_status_is_read_only():
     report = build_gep_report_from_runtimeos_status({"schema": "ApexRuntimeOSAutonomyStatus/v1"})
     assert report["schema"] == "ApexRuntimeOSGEPReport/v1"
     assert report["status"] == "WARN"
     assert report["capability_index"]["component_count"] == len(REQUIRED_GEP_COMPONENTS)
+    assert report["safety_pipeline"]["runtime_allowed"] is False
     assert report["question_gate"]["status"] == "BLOCK"
     assert report["validator_gate"]["status"] == "BLOCK"
     assert report["side_effects"] == "read_only_report"
