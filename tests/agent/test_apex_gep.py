@@ -104,6 +104,13 @@ def test_gep_report_from_runtimeos_status_is_read_only():
     assert report["safety_pipeline"]["runtime_allowed"] is False
     assert report["resource_preflight"]["status"] == "PASS"
     assert report["sandbox_validator_bridge"]["decision"] == "PASS"
+    assert report["external_ingestion_gate"]["status"] == "PASS"
+    ingestion_stage = next(item for item in report["safety_pipeline"]["stages"] if item["id"] == "external_ingestion_review")
+    assert ingestion_stage["status"] == "PASS"
+    assert ingestion_stage["substatus"] == "EVIDENCE_GATE_READY"
+    assert ingestion_stage["trusted"] is False
+    assert ingestion_stage["executed"] is False
+    assert ingestion_stage["gene_written"] is False
     bridge_stage = next(item for item in report["safety_pipeline"]["stages"] if item["id"] == "sandbox_validator_bridge")
     assert bridge_stage["status"] == "PASS"
     assert bridge_stage["substatus"] == "STATIC_CONTRACT_STAGED"

@@ -217,6 +217,9 @@ def build_gep_safety_pipeline(index: Mapping[str, Any] | None = None, resource_p
     preflight = resource_preflight if isinstance(resource_preflight, Mapping) else {}
     bridge_raw = preflight.get("sandbox_validator_bridge")
     bridge: Mapping[str, Any] = bridge_raw if isinstance(bridge_raw, Mapping) else {}
+    ingestion_raw = preflight.get("external_ingestion_gate")
+    ingestion: Mapping[str, Any] = ingestion_raw if isinstance(ingestion_raw, Mapping) else {}
+    ingestion_pass = str(ingestion.get("status") or ingestion.get("decision") or "").upper() == "PASS"
     bridge_pass = str(bridge.get("decision") or bridge.get("status") or "").upper() == "PASS"
     preflight_pass = str(preflight.get("status") or "").upper() == "PASS"
     resource_index_raw = preflight.get("resource_index")
@@ -259,7 +262,8 @@ def build_gep_safety_pipeline(index: Mapping[str, Any] | None = None, resource_p
         },
         {
             "id": "external_ingestion_review",
-            "status": "HOLD",
+            "status": "PASS" if ingestion_pass else "HOLD",
+            "substatus": "EVIDENCE_GATE_READY" if ingestion_pass else "EVIDENCE_GATE_MISSING",
             "required_before_runtime": True,
             "surfaces": ["book_to_skill", "github_ingestion"],
             "required_guards": [
@@ -270,7 +274,10 @@ def build_gep_safety_pipeline(index: Mapping[str, Any] | None = None, resource_p
                 "no_unknown_code_execution",
                 "quality_evidence_bundle",
             ],
-            "reason": "Book-to-skill and GitHub ingestion stay as read-only metadata pipelines until provenance, license, checksum, tests, and quality evidence are present.",
+            "trusted": False,
+            "executed": False,
+            "gene_written": False,
+            "reason": "Book-to-skill and GitHub ingestion stay as read-only metadata pipelines until runtime policy is separately authorized.",
         },
         {
             "id": "runtime_execution",
@@ -297,11 +304,14 @@ def build_gep_safety_pipeline(index: Mapping[str, Any] | None = None, resource_p
 def build_gep_report_from_runtimeos_status(status: Mapping[str, Any]) -> Dict[str, Any]:
     from agent.apex_gep_resources import build_gep_resource_preflight_report
     from agent.apex_gep_sandbox_bridge import build_sandbox_validator_bridge_evidence
+    from agent.apex_gep_external_ingestion import review_external_ingestion_evidence
 
     index = build_gep_capability_index()
     resource_preflight = build_gep_resource_preflight_report()
     sandbox_bridge = build_sandbox_validator_bridge_evidence()
+    external_ingestion = review_external_ingestion_evidence()
     resource_preflight["sandbox_validator_bridge"] = sandbox_bridge
+    resource_preflight["external_ingestion_gate"] = external_ingestion
     return {
         "schema": "ApexRuntimeOSGEPReport/v1",
         "status": index["status"],
@@ -309,6 +319,7 @@ def build_gep_report_from_runtimeos_status(status: Mapping[str, Any]) -> Dict[st
         "capability_index": index,
         "resource_preflight": resource_preflight,
         "sandbox_validator_bridge": sandbox_bridge,
+        "external_ingestion_gate": external_ingestion,
         "safety_pipeline": build_gep_safety_pipeline(index, resource_preflight),
         "question_gate": build_question_gate_report([]),
         "validator_gate": build_validator_gate_report({}),
