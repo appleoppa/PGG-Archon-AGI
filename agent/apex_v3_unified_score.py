@@ -186,6 +186,21 @@ def build_apex_v3_unified_score_report(status: Mapping[str, Any]) -> Dict[str, A
     }
     from agent.apex_inward_validator import cross_validate_unified_score
     from agent.apex_promotion_claim_guard import evaluate_promotion_claim_guard
+    from agent.apex_failure_sample_library import build_failure_sample_library_status
+    from agent.apex_multi_model_evidence_ledger import build_multi_model_evidence_ledger
+    from agent.apex_real_capability_metrics import build_real_capability_metrics_summary
+    from agent.apex_task_retrospective import build_task_retrospective_status
+
+    failure_library_status = build_failure_sample_library_status()
+    task_retrospective_status = build_task_retrospective_status()
+    multi_model_evidence_ledger = build_multi_model_evidence_ledger()
+    real_capability_metrics = build_real_capability_metrics_summary({
+        "events": status.get("events", ()),
+        "failure_samples": status.get("failure_samples", ()),
+        "task_retrospectives": status.get("task_retrospectives", ()),
+        "autonomy_candidates": status.get("autonomy_candidates", ()),
+        "multi_model_ledger": multi_model_evidence_ledger.get("entries", ()),
+    })
 
     inward_validation = cross_validate_unified_score({
         **base_report,
@@ -231,6 +246,10 @@ def build_apex_v3_unified_score_report(status: Mapping[str, Any]) -> Dict[str, A
         "agi_completion_claim": False,
         "external_ground_truth_required": True,
         "side_effects": "read_only_report",
+        "real_capability_metrics": real_capability_metrics,
+        "failure_sample_library": failure_library_status,
+        "task_retrospective_status": task_retrospective_status,
+        "multi_model_evidence_ledger": multi_model_evidence_ledger,
     }
 
 
