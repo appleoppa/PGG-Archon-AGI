@@ -14,7 +14,7 @@ def _parser() -> argparse.ArgumentParser:
         prog="/apex-runtimeos",
         description="Show APEX RuntimeOS audit summary diagnostics",
     )
-    parser.add_argument("command", nargs="?", default="summary", choices=("summary", "status", "feishu", "autopromote", "rollback", "autonomy", "autonomy-candidate", "quality-evidence", "co-scientist", "co-scientist-gene", "era", "cron-ledger", "sequence-record"))
+    parser.add_argument("command", nargs="?", default="summary", choices=("summary", "status", "feishu", "autopromote", "rollback", "autonomy", "autonomy-candidate", "quality-evidence", "co-scientist", "co-scientist-gene", "era", "flow-reward", "cron-ledger", "sequence-record"))
     parser.add_argument("--json", action="store_true", help="emit machine-readable JSON")
     parser.add_argument("--limit", type=int, default=10000, help="max audit lines to read")
     parser.add_argument("--target", default="memory", choices=("memory", "skill", "all"), help="autopromote/rollback target")
@@ -33,6 +33,9 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--synthesis", default="", help="co-scientist synthesis summary")
     parser.add_argument("--decision", default="hold", help="co-scientist decision")
     parser.add_argument("--path", action="append", default=[], help="ERA path JSON; may be repeated")
+    parser.add_argument("--selected-path-id", default="", help="Flow reward selected path id")
+    parser.add_argument("--predicted-score", type=float, default=0.0, help="Flow reward predicted path score between 0 and 1")
+    parser.add_argument("--outcome", action="append", default=[], help="Flow reward outcome JSON; may be repeated")
     return parser
 
 
@@ -226,6 +229,8 @@ def run_apex_runtimeos_cli(argv: list[str] | None = None) -> str:
         co_gene = co_gene_raw if isinstance(co_gene_raw, dict) else {}
         era_raw = status.get("era_report")
         era_report = era_raw if isinstance(era_raw, dict) else {}
+        flow_reward_raw = status.get("flow_reward_report")
+        flow_reward = flow_reward_raw if isinstance(flow_reward_raw, dict) else {}
         skill_registry_policy = status.get("skill_registry_policy") if isinstance(status.get("skill_registry_policy"), dict) else {}
         gep_index_raw = gep_report.get("capability_index")
         if isinstance(gep_index_raw, dict):
@@ -399,6 +404,24 @@ def run_apex_runtimeos_cli(argv: list[str] | None = None) -> str:
             "",
             "字段：ERA已执行",
             f"值：{era_report.get('executed', False)}",
+            "",
+            "字段：Flow奖励状态",
+            f"值：{flow_reward.get('status', 'UNKNOWN')}",
+            "",
+            "字段：Flow奖励选中路径",
+            f"值：{flow_reward.get('selected_path_id', '-')}",
+            "",
+            "字段：Flow预测分数",
+            f"值：{flow_reward.get('predicted_score', '-')}",
+            "",
+            "字段：Flow实绩分数",
+            f"值：{flow_reward.get('realized_score', '-')}",
+            "",
+            "字段：Flow分数差",
+            f"值：{flow_reward.get('score_delta', '-')}",
+            "",
+            "字段：Flow结果数量",
+            f"值：{flow_reward.get('outcome_count', 0)}",
             "",
             "字段：技能注册表策略状态",
             f"值：{skill_registry_policy.get('status', 'UNKNOWN')}",
@@ -637,6 +660,56 @@ def run_apex_runtimeos_cli(argv: list[str] | None = None) -> str:
             "",
             "字段：executed",
             f"值：{report.get('executed')}",
+            "",
+            "字段：written",
+            f"值：{bool(written)}",
+            "",
+        ])
+    if ns.command == "flow-reward":
+        from pathlib import Path
+        from agent.apex_flow_reward import build_flow_reward_report, default_flow_reward_report_path, write_flow_reward_report
+        outcomes = []
+        for raw in ns.outcome or []:
+            try:
+                item = json.loads(raw)
+            except json.JSONDecodeError:
+                item = {"id": "invalid", "summary": "invalid outcome json", "success": False, "regression": 1.0}
+            if isinstance(item, dict):
+                outcomes.append(item)
+        report = build_flow_reward_report(
+            task=ns.topic or "unspecified",
+            selected_path_id=ns.selected_path_id or "unspecified",
+            predicted_score=float(ns.predicted_score),
+            outcomes=outcomes,
+        )
+        written = None
+        if ns.output:
+            written = write_flow_reward_report(Path(ns.output).expanduser(), report)
+        elif ns.execute:
+            written = write_flow_reward_report(default_flow_reward_report_path(ns.topic or "flow_reward"), report)
+        result = {"execute": bool(ns.execute), "report": report, "written": written}
+        if ns.json:
+            return json.dumps({"object": "hermes.apex_runtimeos.flow_reward", "result": result}, ensure_ascii=False, indent=2)
+        return "\n".join([
+            "# APEX Flow 奖励反馈",
+            "",
+            "字段：status",
+            f"值：{report.get('status')}",
+            "",
+            "字段：selected_path_id",
+            f"值：{report.get('selected_path_id')}",
+            "",
+            "字段：predicted_score",
+            f"值：{report.get('predicted_score')}",
+            "",
+            "字段：realized_score",
+            f"值：{report.get('realized_score')}",
+            "",
+            "字段：score_delta",
+            f"值：{report.get('score_delta')}",
+            "",
+            "字段：outcome_count",
+            f"值：{report.get('outcome_count')}",
             "",
             "字段：written",
             f"值：{bool(written)}",

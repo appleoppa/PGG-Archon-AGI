@@ -1,0 +1,43 @@
+{
+  "schema": "ApexFlowRewardReport/v1",
+  "ts": 1779861908.5316732,
+  "source": "apex-runtimeos-flow-reward",
+  "task": "APEX补缺Flow奖励反馈",
+  "selected_path_id": "safe",
+  "predicted_score": 0.76,
+  "realized_score": 0.7925,
+  "score_delta": 0.0325,
+  "outcome_count": 2,
+  "status": "PASS",
+  "outcomes": [
+    {
+      "id": "tests",
+      "summary": "64项相关测试通过",
+      "success": true,
+      "reward": 0.95,
+      "evidence": 0.95,
+      "confidence": 0.9,
+      "regression": 0.0,
+      "cost": 0.05,
+      "risk": 0.05,
+      "side_effects": "observed_only",
+      "outcome_score": 0.8075
+    },
+    {
+      "id": "readback",
+      "summary": "CLI写入并读回验证",
+      "success": true,
+      "reward": 0.9,
+      "evidence": 0.9,
+      "confidence": 0.85,
+      "regression": 0.0,
+      "cost": 0.05,
+      "risk": 0.05,
+      "side_effects": "observed_only",
+      "outcome_score": 0.7775
+    }
+  ],
+  "side_effects": "read_only_report",
+  "executed_by_this_module": false,
+  "routing_feedback_only": true
+}
