@@ -161,7 +161,7 @@ if __name__ == "__main__":
     }
 
 
-def tiangong_superpowers_handler(args: Dict[str, Any]) -> Dict[str, Any]:
+def tiangong_superpowers_handler(args: Dict[str, Any], **kwargs) -> Dict[str, Any]:
     """
     TianGong Superpowers：工程流程与质量门禁。
     
