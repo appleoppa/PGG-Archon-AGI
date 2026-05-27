@@ -763,7 +763,7 @@ class TestApexRuntimeOSAuditSummaryEndpoint:
             assert resp.status == 200
             assert resp.content_type == "text/html"
             text = await resp.text()
-            assert "APEX RuntimeOS 体征卡片" in text
+            assert "PGG Archon AGI（原 APEX RuntimeOS） 体征卡片" in text
             assert "有效记录" in text
             assert "Autonomy" in text
             assert "稳定候选" in text

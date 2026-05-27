@@ -50,6 +50,11 @@ except Exception:  # pragma: no cover - endpoint reports unavailable at runtime
     summarize_autonomy_status = None  # type: ignore[assignment]
 
 try:
+    from agent.apex_system_identity import USER_FACING_SYSTEM_LABEL
+except Exception:  # pragma: no cover - identity fallback keeps API server importable
+    USER_FACING_SYSTEM_LABEL = "PGG Archon AGI（原 APEX RuntimeOS）"
+
+try:
     from aiohttp import web
     AIOHTTP_AVAILABLE = True
 except ImportError:
@@ -94,7 +99,7 @@ _APEX_RUNTIMEOS_EXPOSE_FIELDS = (
 
 
 def _render_apex_runtimeos_dashboard_html(summary: Dict[str, Any], *, status: str = "ok") -> str:
-    """Render a small aggregate-only APEX RuntimeOS dashboard card."""
+    """Render a small aggregate-only PGG Archon AGI dashboard card."""
     records = int(summary.get("records") or 0)
     bad_lines = int(summary.get("bad_lines") or 0)
     blocking = int(summary.get("blocking_records") or 0)
@@ -126,11 +131,12 @@ def _render_apex_runtimeos_dashboard_html(summary: Dict[str, Any], *, status: st
     recommendation_gate = str(summary.get("recommendation_gate", "OK"))
     autonomy_raw = summary.get("autonomy") if isinstance(summary.get("autonomy"), dict) else {}
     autonomy: Dict[str, Any] = autonomy_raw if isinstance(autonomy_raw, dict) else {}
+    system_label = html.escape(USER_FACING_SYSTEM_LABEL)
     return f"""<!doctype html>
 <html lang=\"zh-CN\">
 <head>
 <meta charset=\"utf-8\">
-<title>APEX RuntimeOS Dashboard</title>
+<title>{system_label} Dashboard</title>
 <style>
 body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;margin:24px;background:#0b1020;color:#e8edf8}}
 .card{{max-width:980px;border:1px solid #26324f;border-radius:16px;padding:20px;background:#111936;box-shadow:0 8px 30px rgba(0,0,0,.25)}}
@@ -144,7 +150,7 @@ table{{width:100%;border-collapse:collapse;margin-top:10px}} th,td{{border-botto
 </head>
 <body>
 <div class=\"card\">
-<h1>APEX RuntimeOS 体征卡片 <span class=\"badge\">{html.escape(badge)}</span></h1>
+<h1>{system_label} 体征卡片 <span class=\"badge\">{html.escape(badge)}</span></h1>
 <p class=\"small\">只读聚合视图；不显示本地路径、原始对话正文、原始错误、凭据。</p>
 <div class=\"grid\">
 <div class=\"metric\">有效记录<b>{records}</b></div>
