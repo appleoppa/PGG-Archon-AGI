@@ -275,6 +275,14 @@ def _safe_archon_public_payload(value: Any) -> Any:
     return value
 
 
+def _archon_public_object(request: Any, suffix: str) -> str:
+    """Return the current public object name while preserving legacy aliases."""
+    prefix = "hermes.pgg_archon"
+    if request.path.startswith("/v1/apex-runtimeos/"):
+        prefix = "hermes.apex_runtimeos"
+    return f"{prefix}.{suffix}"
+
+
 def _coerce_port(value: Any, default: int = DEFAULT_PORT) -> int:
     """Parse a listen port without letting malformed env/config values crash startup."""
     try:
@@ -1332,13 +1340,14 @@ class APIServerAdapter(BasePlatformAdapter):
 
     async def _handle_apex_runtimeos_audit_summary(self, request: "web.Request") -> "web.Response":
         """GET /v1/apex-runtimeos/audit-summary — read-only RuntimeOS audit summary."""
+        object_name = _archon_public_object(request, "audit_summary")
         auth_err = self._check_auth(request)
         if auth_err:
             return auth_err
         if summarize_audit is None:
             return web.json_response(
                 {
-                    "object": "hermes.apex_runtimeos.audit_summary",
+                    "object": object_name,
                     "status": "unavailable",
                     "error_code": "apex_runtimeos_audit_summary_unavailable",
                 },
@@ -1359,7 +1368,7 @@ class APIServerAdapter(BasePlatformAdapter):
             logger.exception("[%s] Failed to summarize APEX RuntimeOS audit", self.name)
             return web.json_response(
                 {
-                    "object": "hermes.apex_runtimeos.audit_summary",
+                    "object": object_name,
                     "status": "error",
                     "error_code": "apex_runtimeos_audit_summary_error",
                 },
@@ -1373,20 +1382,21 @@ class APIServerAdapter(BasePlatformAdapter):
                 logger.exception("[%s] Failed to summarize APEX RuntimeOS autonomy", self.name)
                 summary["autonomy"] = {"schema": "ApexRuntimeOSAutonomyStatus/v1", "status": "error", "error_code": "apex_runtimeos_autonomy_status_error"}
         return web.json_response({
-            "object": "hermes.apex_runtimeos.audit_summary",
+            "object": object_name,
             "status": "ok",
             "summary": summary,
         })
 
     async def _handle_apex_runtimeos_autonomy_status(self, request: "web.Request") -> "web.Response":
         """GET /v1/apex-runtimeos/autonomy-status — aggregate autonomy state."""
+        object_name = _archon_public_object(request, "autonomy_status")
         auth_err = self._check_auth(request)
         if auth_err:
             return auth_err
         if summarize_autonomy_status is None:
             return web.json_response(
                 {
-                    "object": "hermes.apex_runtimeos.autonomy_status",
+                    "object": object_name,
                     "status": "unavailable",
                     "error_code": "apex_runtimeos_autonomy_status_unavailable",
                 },
@@ -1421,14 +1431,14 @@ class APIServerAdapter(BasePlatformAdapter):
             logger.exception("[%s] Failed to summarize APEX RuntimeOS autonomy", self.name)
             return web.json_response(
                 {
-                    "object": "hermes.apex_runtimeos.autonomy_status",
+                    "object": object_name,
                     "status": "error",
                     "error_code": "apex_runtimeos_autonomy_status_error",
                 },
                 status=500,
             )
         return web.json_response({
-            "object": "hermes.apex_runtimeos.autonomy_status",
+            "object": object_name,
             "status": "ok",
             "autonomy": status,
         })

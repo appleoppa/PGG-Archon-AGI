@@ -719,7 +719,7 @@ class TestApexRuntimeOSAuditSummaryEndpoint:
             resp = await cli.get("/v1/pgg-archon/audit-summary?limit=10")
             assert resp.status == 200
             data = await resp.json()
-            assert data["object"] == "hermes.apex_runtimeos.audit_summary"
+            assert data["object"] == "hermes.pgg_archon.audit_summary"
             assert data["status"] == "ok"
             summary = data["summary"]
             assert summary["records"] == 1
@@ -731,6 +731,11 @@ class TestApexRuntimeOSAuditSummaryEndpoint:
             assert str(audit_path) not in raw
             assert "prompt" not in raw
             assert "messages" not in raw
+
+            legacy_resp = await cli.get("/v1/apex-runtimeos/audit-summary?limit=10")
+            assert legacy_resp.status == 200
+            legacy_data = await legacy_resp.json()
+            assert legacy_data["object"] == "hermes.apex_runtimeos.audit_summary"
 
     @pytest.mark.asyncio
     async def test_audit_summary_requires_auth_when_key_configured(self, auth_adapter):
@@ -837,7 +842,7 @@ class TestApexRuntimeOSAuditSummaryEndpoint:
             resp = await cli.get("/v1/pgg-archon/autonomy-status?limit=10&min_occurrences=2")
             assert resp.status == 200
             data = await resp.json()
-            assert data["object"] == "hermes.apex_runtimeos.autonomy_status"
+            assert data["object"] == "hermes.pgg_archon.autonomy_status"
             autonomy = data["autonomy"]
             assert autonomy["schema"] == "ApexRuntimeOSAutonomyStatus/v1"
             assert autonomy["stable_ready_count"] == 1
@@ -851,6 +856,11 @@ class TestApexRuntimeOSAuditSummaryEndpoint:
             assert "secret old text" not in raw
             assert "prompt" not in raw
             assert "messages" not in raw
+
+            legacy_resp = await cli.get("/v1/apex-runtimeos/autonomy-status?limit=10&min_occurrences=2")
+            assert legacy_resp.status == 200
+            legacy_data = await legacy_resp.json()
+            assert legacy_data["object"] == "hermes.apex_runtimeos.autonomy_status"
 
 
 
