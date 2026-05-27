@@ -14,7 +14,7 @@ def _parser() -> argparse.ArgumentParser:
         prog="/apex-runtimeos",
         description="Show APEX RuntimeOS audit summary diagnostics",
     )
-    parser.add_argument("command", nargs="?", default="summary", choices=("summary", "status", "feishu", "autopromote", "rollback", "autonomy", "autonomy-candidate", "cron-ledger", "sequence-record"))
+    parser.add_argument("command", nargs="?", default="summary", choices=("summary", "status", "feishu", "autopromote", "rollback", "autonomy", "autonomy-candidate", "quality-evidence", "cron-ledger", "sequence-record"))
     parser.add_argument("--json", action="store_true", help="emit machine-readable JSON")
     parser.add_argument("--limit", type=int, default=10000, help="max audit lines to read")
     parser.add_argument("--target", default="memory", choices=("memory", "skill", "all"), help="autopromote/rollback target")
@@ -24,6 +24,10 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--sequence", action="append", choices=("21354", "12534", "14325"), help="APEX sequence evidence to append; repeatable")
     parser.add_argument("--score", type=float, default=0.8, help="sequence evidence score between 0 and 1")
     parser.add_argument("--shortcoming", default="", help="sanitized shortcoming summary for sequence evidence")
+    parser.add_argument("--test-cmd", action="append", default=[], help="quality-evidence test command; may be repeated")
+    parser.add_argument("--output", default="", help="optional output path for generated quality evidence bundle")
+    parser.add_argument("--documentation", action="store_true", help="mark documentation evidence present for quality-evidence")
+    parser.add_argument("--audit", action="store_true", help="mark audit evidence present for quality-evidence")
     return parser
 
 
@@ -364,6 +368,55 @@ def run_apex_runtimeos_cli(argv: list[str] | None = None) -> str:
             "",
             "字段：candidate_type",
             f"值：{result.get('candidate_type', '-')}",
+            "",
+        ])
+    if ns.command == "quality-evidence":
+        import shlex
+        from pathlib import Path
+        from runtime.quality.evidence_bundle import (
+            build_quality_evidence_bundle,
+            run_test_command_for_evidence,
+            write_quality_evidence_bundle,
+        )
+        commands = ns.test_cmd or []
+        test_results = []
+        if ns.execute:
+            for command in commands:
+                test_results.append(run_test_command_for_evidence(shlex.split(command), timeout=600))
+        passed = bool(test_results) and all(item.get("passed") for item in test_results)
+        summary = "no test command executed" if not test_results else f"{sum(1 for item in test_results if item.get('passed'))}/{len(test_results)} test commands passed"
+        bundle = build_quality_evidence_bundle(
+            test_exit_code=0 if passed else 1,
+            test_summary=summary,
+            audit_present=bool(ns.audit),
+            audit_summary="operator marked audit evidence present" if ns.audit else "audit evidence not marked",
+            documentation_present=bool(ns.documentation),
+            documentation_summary="operator marked documentation evidence present" if ns.documentation else "documentation evidence not marked",
+            source="apex-runtimeos-cli-quality-evidence",
+        )
+        written = None
+        if ns.output:
+            written = write_quality_evidence_bundle(Path(ns.output).expanduser(), bundle)
+        result = {"execute": bool(ns.execute), "test_results": test_results, "bundle": bundle, "written": written}
+        if ns.json:
+            return json.dumps({"object": "hermes.apex_runtimeos.quality_evidence", "result": result}, ensure_ascii=False, indent=2)
+        return "\n".join([
+            "# APEX RuntimeOS CMMI证据包生成",
+            "",
+            "字段：execute",
+            f"值：{bool(ns.execute)}",
+            "",
+            "字段：test_report",
+            f"值：{bundle['evidence']['test_report']['present']}",
+            "",
+            "字段：audit_log",
+            f"值：{bundle['evidence']['audit_log']['present']}",
+            "",
+            "字段：documentation",
+            f"值：{bundle['evidence']['documentation']['present']}",
+            "",
+            "字段：written",
+            f"值：{bool(written)}",
             "",
         ])
     if ns.command == "cron-ledger":

@@ -1,0 +1,18 @@
+{
+  "schema": "ApexRuntimeOSQualityEvidenceBundle/v1",
+  "source": "apex-runtimeos-cli-quality-evidence",
+  "evidence": {
+    "test_report": {
+      "present": true,
+      "summary": "1/1 test commands passed"
+    },
+    "audit_log": {
+      "present": true,
+      "summary": "operator marked audit evidence present"
+    },
+    "documentation": {
+      "present": true,
+      "summary": "operator marked documentation evidence present"
+    }
+  }
+}
