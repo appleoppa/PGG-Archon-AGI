@@ -587,6 +587,27 @@ def test_autonomy_status_reports_quality_evidence_load_error(tmp_path, monkeypat
     assert status["quality_gate"]["status"] == "BLOCK"
 
 
+def test_autonomy_recommendations_use_quality_gate_missing_evidence_actions():
+    from agent.apex_runtimeos_autonomy import build_autonomy_recommendations
+
+    recommendations = build_autonomy_recommendations({
+        "quality_gate": {
+            "status": "BLOCK",
+            "missing_blocking_evidence": ["test_report", "audit_log"],
+            "missing_warning_evidence": ["documentation"],
+        }
+    })
+    item = recommendations["items"][0]
+    assert item["code"] == "cmmi_quality_evidence_incomplete"
+    assert item["severity"] == "block"
+    assert item["actions"] == [
+        "attach_test_report",
+        "attach_audit_log",
+        "review_documentation",
+        "keep_quality_gate_read_only",
+    ]
+
+
 def test_autonomy_status_includes_read_only_skill_registry_policy(tmp_path, monkeypatch):
     monkeypatch.setenv("APEX_RUNTIMEOS_AUTOWRITE_DIR", str(tmp_path / "auto"))
     status = summarize_autonomy_status(limit=10)

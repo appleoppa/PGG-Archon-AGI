@@ -331,11 +331,24 @@ def build_autonomy_recommendations(status: Mapping[str, Any]) -> Dict[str, Any]:
     quality_gate_raw = status.get("quality_gate")
     quality_gate: Mapping[str, Any] = quality_gate_raw if isinstance(quality_gate_raw, Mapping) else {}
     if quality_gate and quality_gate.get("status") != "PASS":
+        missing_blocking = quality_gate.get("missing_blocking_evidence")
+        blocking_actions = [
+            f"attach_{str(item)}"
+            for item in (missing_blocking if isinstance(missing_blocking, list) else [])[:6]
+            if str(item)
+        ]
+        missing_warning = quality_gate.get("missing_warning_evidence")
+        warning_actions = [
+            f"review_{str(item)}"
+            for item in (missing_warning if isinstance(missing_warning, list) else [])[:6]
+            if str(item)
+        ]
+        actions = blocking_actions + warning_actions + ["keep_quality_gate_read_only"]
         items.append({
             "organ": "quality_gate",
             "code": "cmmi_quality_evidence_incomplete",
             "severity": "block" if quality_gate.get("status") == "BLOCK" else "warn",
-            "actions": ["attach_test_report", "attach_audit_log", "keep_quality_gate_read_only"],
+            "actions": actions[:8],
             "applied": False,
         })
     return {
