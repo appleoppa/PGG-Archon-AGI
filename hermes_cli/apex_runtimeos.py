@@ -14,7 +14,7 @@ def _parser() -> argparse.ArgumentParser:
         prog="/apex-runtimeos",
         description="Show APEX RuntimeOS audit summary diagnostics",
     )
-    parser.add_argument("command", nargs="?", default="summary", choices=("summary", "status", "feishu", "autopromote", "rollback", "autonomy", "autonomy-candidate", "quality-evidence", "co-scientist", "cron-ledger", "sequence-record"))
+    parser.add_argument("command", nargs="?", default="summary", choices=("summary", "status", "feishu", "autopromote", "rollback", "autonomy", "autonomy-candidate", "quality-evidence", "co-scientist", "co-scientist-gene", "cron-ledger", "sequence-record"))
     parser.add_argument("--json", action="store_true", help="emit machine-readable JSON")
     parser.add_argument("--limit", type=int, default=10000, help="max audit lines to read")
     parser.add_argument("--target", default="memory", choices=("memory", "skill", "all"), help="autopromote/rollback target")
@@ -221,6 +221,8 @@ def run_apex_runtimeos_cli(argv: list[str] | None = None) -> str:
         quality_bundle_source = quality_bundle_source_raw if isinstance(quality_bundle_source_raw, dict) else {}
         co_scientist_raw = status.get("co_scientist_report")
         co_scientist = co_scientist_raw if isinstance(co_scientist_raw, dict) else {}
+        co_gene_raw = status.get("co_scientist_gene_candidate")
+        co_gene = co_gene_raw if isinstance(co_gene_raw, dict) else {}
         skill_registry_policy = status.get("skill_registry_policy") if isinstance(status.get("skill_registry_policy"), dict) else {}
         gep_index_raw = gep_report.get("capability_index")
         if isinstance(gep_index_raw, dict):
@@ -368,6 +370,18 @@ def run_apex_runtimeos_cli(argv: list[str] | None = None) -> str:
             "字段：Co_Scientist错误",
             f"值：{status.get('co_scientist_report_error', '-')}",
             "",
+            "字段：Co_Scientist基因候选状态",
+            f"值：{co_gene.get('status', 'UNKNOWN')}",
+            "",
+            "字段：Co_Scientist基因候选可晋升",
+            f"值：{co_gene.get('eligible', False)}",
+            "",
+            "字段：Co_Scientist基因候选证据等级",
+            f"值：{co_gene.get('evidence_level', '-')}",
+            "",
+            "字段：Co_Scientist基因候选已写库",
+            f"值：{co_gene.get('gene_library_written', False)}",
+            "",
             "字段：技能注册表策略状态",
             f"值：{skill_registry_policy.get('status', 'UNKNOWN')}",
             "",
@@ -513,6 +527,56 @@ def run_apex_runtimeos_cli(argv: list[str] | None = None) -> str:
             "",
             "字段：decision",
             f"值：{report.get('decision')}",
+            "",
+            "字段：written",
+            f"值：{bool(written)}",
+            "",
+        ])
+    if ns.command == "co-scientist-gene":
+        from pathlib import Path
+        from agent.apex_co_scientist import (
+            build_debate_report,
+            build_gene_candidate_from_debate,
+            default_gene_candidate_path,
+            write_gene_candidate,
+        )
+        reviewers = []
+        for raw in ns.reviewer or []:
+            try:
+                item = json.loads(raw)
+            except json.JSONDecodeError:
+                item = {"status": "error", "claim": "invalid reviewer json", "role": "review"}
+            if isinstance(item, dict):
+                reviewers.append(item)
+        report = build_debate_report(
+            topic=ns.topic or "unspecified",
+            reviewers=reviewers,
+            synthesis=ns.synthesis,
+            decision=ns.decision,
+        )
+        candidate = build_gene_candidate_from_debate(report)
+        written = None
+        if ns.output:
+            written = write_gene_candidate(Path(ns.output).expanduser(), candidate)
+        elif ns.execute:
+            written = write_gene_candidate(default_gene_candidate_path(ns.topic or "gene_candidate"), candidate)
+        result = {"execute": bool(ns.execute), "candidate": candidate, "written": written}
+        if ns.json:
+            return json.dumps({"object": "hermes.apex_runtimeos.co_scientist_gene", "result": result}, ensure_ascii=False, indent=2)
+        return "\n".join([
+            "# APEX Co-Scientist 基因候选",
+            "",
+            "字段：status",
+            f"值：{candidate.get('status')}",
+            "",
+            "字段：eligible",
+            f"值：{candidate.get('eligible')}",
+            "",
+            "字段：evidence_level",
+            f"值：{candidate.get('evidence_level')}",
+            "",
+            "字段：gene_library_written",
+            f"值：{candidate.get('gene_library_written')}",
             "",
             "字段：written",
             f"值：{bool(written)}",

@@ -685,3 +685,50 @@ def test_apex_runtimeos_cli_autonomy_shows_co_scientist_report(tmp_path, monkeyp
     assert "字段：Co_Scientist状态" in output
     assert "字段：Co_Scientist审查员数" in output
     assert "cli co scientist" in output
+
+
+def test_autonomy_status_includes_co_scientist_gene_candidate(tmp_path, monkeypatch):
+    monkeypatch.setenv("APEX_RUNTIMEOS_AUTOWRITE_DIR", str(tmp_path / "auto"))
+    monkeypatch.setattr("agent.apex_co_scientist.load_latest_debate_report", lambda: None)
+    candidate = {
+        "schema": "ApexCoScientistGeneCandidateSummary/v1",
+        "status": "READY",
+        "eligible": True,
+        "candidate_id": "abc123",
+        "topic": "unit gene",
+        "decision": "execute",
+        "reviewer_count": 2,
+        "evidence_level": "multi_model_debate",
+        "promotion_required": True,
+        "gene_library_written": False,
+        "side_effects": "read_only_candidate",
+    }
+    monkeypatch.setattr("agent.apex_co_scientist.load_latest_gene_candidate", lambda: candidate)
+    status = summarize_autonomy_status(limit=10)
+    assert status["co_scientist_gene_candidate"]["status"] == "READY"
+    assert status["co_scientist_gene_candidate"]["gene_library_written"] is False
+
+
+def test_apex_runtimeos_cli_autonomy_shows_co_scientist_gene_candidate(tmp_path, monkeypatch):
+    from hermes_cli.apex_runtimeos import run_apex_runtimeos_cli
+
+    monkeypatch.setenv("APEX_RUNTIMEOS_AUTOWRITE_DIR", str(tmp_path / "auto"))
+    monkeypatch.setattr("agent.apex_co_scientist.load_latest_debate_report", lambda: None)
+    candidate = {
+        "schema": "ApexCoScientistGeneCandidateSummary/v1",
+        "status": "READY",
+        "eligible": True,
+        "candidate_id": "abc123",
+        "topic": "cli gene",
+        "decision": "execute",
+        "reviewer_count": 2,
+        "evidence_level": "multi_model_debate",
+        "promotion_required": True,
+        "gene_library_written": False,
+        "side_effects": "read_only_candidate",
+    }
+    monkeypatch.setattr("agent.apex_co_scientist.load_latest_gene_candidate", lambda: candidate)
+    output = run_apex_runtimeos_cli(["autonomy"])
+    assert "字段：Co_Scientist基因候选状态" in output
+    assert "字段：Co_Scientist基因候选已写库" in output
+    assert "multi_model_debate" in output

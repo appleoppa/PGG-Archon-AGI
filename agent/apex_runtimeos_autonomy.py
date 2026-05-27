@@ -1102,11 +1102,14 @@ def summarize_autonomy_status(*, limit: int = 1000, min_occurrences: int = 2) ->
     except Exception as exc:
         report["quality_evidence_bundle_error"] = _safe_scalar(type(exc).__name__)
     try:
-        from agent.apex_co_scientist import load_latest_debate_report
+        from agent.apex_co_scientist import load_latest_debate_report, load_latest_gene_candidate
 
         latest_debate = load_latest_debate_report()
         if latest_debate:
             report["co_scientist_report"] = latest_debate
+        latest_gene_candidate = load_latest_gene_candidate()
+        if latest_gene_candidate:
+            report["co_scientist_gene_candidate"] = latest_gene_candidate
     except Exception as exc:
         report["co_scientist_report_error"] = _safe_scalar(type(exc).__name__)
     report["health_report"] = build_runtimeos_health_report(report)

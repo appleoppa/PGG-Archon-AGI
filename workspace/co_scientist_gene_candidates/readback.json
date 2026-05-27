@@ -1,0 +1,18 @@
+{
+  "schema": "ApexCoScientistGeneCandidate/v1",
+  "candidate_id": "c66858416e75fc6a",
+  "source_schema": "ApexCoScientistDebateReport/v1",
+  "source": "co_scientist_debate_report",
+  "topic": "Co_Scientist gene candidate readback",
+  "status": "READY",
+  "eligible": true,
+  "blockers": [],
+  "reviewer_count": 2,
+  "ok_count": 2,
+  "decision": "execute",
+  "evidence_level": "multi_model_debate",
+  "promotion_required": true,
+  "gene_library_written": false,
+  "applied_to_memory_or_skill": false,
+  "side_effects": "read_only_candidate"
+}
