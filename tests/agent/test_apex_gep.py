@@ -99,13 +99,21 @@ def test_gep_safety_pipeline_keeps_book_and_github_ingestion_read_only():
 def test_gep_report_from_runtimeos_status_is_read_only():
     report = build_gep_report_from_runtimeos_status({"schema": "ApexRuntimeOSAutonomyStatus/v1"})
     assert report["schema"] == "ApexRuntimeOSGEPReport/v1"
-    assert report["status"] == "WARN"
+    assert report["status"] == "PASS"
     assert report["capability_index"]["component_count"] == len(REQUIRED_GEP_COMPONENTS)
     assert report["safety_pipeline"]["runtime_allowed"] is False
     assert report["resource_preflight"]["status"] == "PASS"
     assert report["sandbox_validator_bridge"]["decision"] == "PASS"
     assert report["external_ingestion_gate"]["status"] == "PASS"
     assert report["deobfuscation_review"]["status"] == "PASS"
+    assert report["runtime_execution_policy"]["decision"] == "PASS_DRY_RUN_ONLY"
+    runtime_stage = next(item for item in report["safety_pipeline"]["stages"] if item["id"] == "runtime_execution")
+    assert runtime_stage["status"] == "PASS"
+    assert runtime_stage["substatus"] == "PASS_DRY_RUN_ONLY"
+    assert runtime_stage["actual_execution_status"] == "DISABLED"
+    assert runtime_stage["runtime_allowed"] is False
+    assert runtime_stage["executed_commands"] == []
+    assert runtime_stage["artifacts_written"] == []
     deobf_stage = next(item for item in report["safety_pipeline"]["stages"] if item["id"] == "deobfuscation_review")
     assert deobf_stage["status"] == "PASS"
     assert deobf_stage["substatus"] == "STATIC_REVIEW_READY"

@@ -221,6 +221,9 @@ def build_gep_safety_pipeline(index: Mapping[str, Any] | None = None, resource_p
     ingestion: Mapping[str, Any] = ingestion_raw if isinstance(ingestion_raw, Mapping) else {}
     deobfuscation_raw = preflight.get("deobfuscation_review")
     deobfuscation: Mapping[str, Any] = deobfuscation_raw if isinstance(deobfuscation_raw, Mapping) else {}
+    runtime_raw = preflight.get("runtime_execution_policy")
+    runtime_policy: Mapping[str, Any] = runtime_raw if isinstance(runtime_raw, Mapping) else {}
+    runtime_policy_pass = str(runtime_policy.get("status") or runtime_policy.get("policy_gate_status") or "").upper() == "PASS"
     deobfuscation_pass = str(deobfuscation.get("status") or deobfuscation.get("decision") or "").upper() == "PASS"
     ingestion_pass = str(ingestion.get("status") or ingestion.get("decision") or "").upper() == "PASS"
     bridge_pass = str(bridge.get("decision") or bridge.get("status") or "").upper() == "PASS"
@@ -289,19 +292,30 @@ def build_gep_safety_pipeline(index: Mapping[str, Any] | None = None, resource_p
         },
         {
             "id": "runtime_execution",
-            "status": "HOLD",
+            "status": "PASS" if runtime_policy_pass else "HOLD",
+            "substatus": "PASS_DRY_RUN_ONLY" if runtime_policy_pass else "POLICY_GATE_BLOCKED",
             "allowed_now": False,
-            "reason": "archived_or_external_code_and_generated_skills_must_remain_read_only_until_all_prior_stages_pass",
+            "actual_execution_status": runtime_policy.get("actual_execution_status") or "DISABLED",
+            "actual_execution_allowed": False,
+            "runtime_allowed": False,
+            "executed": False,
+            "executed_commands": [],
+            "artifacts_written": [],
+            "runtime_withheld_by_policy": True,
+            "reason": "runtime_execution_policy_gate_passed_but_actual_execution_disabled",
         },
     ]
     if missing_count:
         status = "BLOCK"
-    else:
+    elif any(stage.get("status") != "PASS" for stage in stages):
         status = "HOLD"
+    else:
+        status = "PASS"
     return {
         "schema": "ApexRuntimeOSGEPSafetyPipeline/v1",
         "status": status,
         "runtime_allowed": False,
+        "actual_execution_allowed": False,
         "stages": stages,
         "hold_reasons": [stage["id"] for stage in stages if stage.get("status") in {"HOLD", "BLOCK"}],
         "boundary": "Read-only gate only; no external repositories, archived JavaScript, validators, books, GitHub ingestion, or generated skills are executed.",
@@ -314,24 +328,28 @@ def build_gep_report_from_runtimeos_status(status: Mapping[str, Any]) -> Dict[st
     from agent.apex_gep_sandbox_bridge import build_sandbox_validator_bridge_evidence
     from agent.apex_gep_external_ingestion import review_external_ingestion_evidence
     from agent.apex_gep_deobfuscation import build_deobfuscation_review_report
+    from agent.apex_gep_runtime_execution import evaluate_runtime_execution_policy
 
     index = build_gep_capability_index()
     resource_preflight = build_gep_resource_preflight_report()
     sandbox_bridge = build_sandbox_validator_bridge_evidence()
     external_ingestion = review_external_ingestion_evidence()
     deobfuscation_review = build_deobfuscation_review_report()
+    runtime_execution_policy = evaluate_runtime_execution_policy()
     resource_preflight["sandbox_validator_bridge"] = sandbox_bridge
     resource_preflight["external_ingestion_gate"] = external_ingestion
     resource_preflight["deobfuscation_review"] = deobfuscation_review
+    resource_preflight["runtime_execution_policy"] = runtime_execution_policy
     return {
         "schema": "ApexRuntimeOSGEPReport/v1",
-        "status": index["status"],
+        "status": "PASS" if resource_preflight.get("status") == "PASS" and build_gep_safety_pipeline(index, resource_preflight).get("status") == "PASS" else index["status"],
         "substatus": resource_preflight["substatus"],
         "capability_index": index,
         "resource_preflight": resource_preflight,
         "sandbox_validator_bridge": sandbox_bridge,
         "external_ingestion_gate": external_ingestion,
         "deobfuscation_review": deobfuscation_review,
+        "runtime_execution_policy": runtime_execution_policy,
         "safety_pipeline": build_gep_safety_pipeline(index, resource_preflight),
         "question_gate": build_question_gate_report([]),
         "validator_gate": build_validator_gate_report({}),

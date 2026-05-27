@@ -155,6 +155,8 @@ def build_apex_v3_unified_score_report(status: Mapping[str, Any]) -> Dict[str, A
     quality_gate_pass = _status(quality_gate.get("status")) == "PASS"
     gep = _as_mapping(status.get("gep_report"))
     gep_status = _status(gep.get("status"))
+    gep_pipeline = _as_mapping(gep.get("safety_pipeline"))
+    gep_actual_execution_allowed = bool(gep_pipeline.get("actual_execution_allowed")) and bool(gep_pipeline.get("runtime_allowed"))
     hold_reasons = []
     if gep_status in {"WARN", "BLOCK"}:
         hold_reasons.append("gep_not_fully_pass")
@@ -182,6 +184,7 @@ def build_apex_v3_unified_score_report(status: Mapping[str, Any]) -> Dict[str, A
         and gene_gate_pass
         and quality_gate_pass
         and _status(cross_domain.get("status")) == "PASS"
+        and gep_actual_execution_allowed
         and not hold_reasons
     )
     status_value = "PASS" if total >= 70 and not hold_reasons else ("WATCH" if total >= 50 else "BLOCK")
@@ -202,6 +205,7 @@ def build_apex_v3_unified_score_report(status: Mapping[str, Any]) -> Dict[str, A
             "promotion_lifecycle_gate": promotion_gate.get("status"),
             "gene_lifecycle_gate": gene_gate.get("status"),
             "quality_gate": quality_gate.get("status"),
+            "gep_actual_execution_allowed": gep_actual_execution_allowed,
             "requires_operator_authorized_enforce_mode": True,
         },
         "agi_completion_claim": False,

@@ -119,13 +119,14 @@ def test_autowrite_candidate_writes_sanitized_promotion_candidate(tmp_path, monk
     assert "reason" not in record["items"][0]
 
 
-def test_promotion_disabled_by_default(tmp_path, monkeypatch):
+def test_promotion_enabled_by_default_but_requires_candidates(tmp_path, monkeypatch):
     monkeypatch.setenv("APEX_RUNTIMEOS_AUTOWRITE_DIR", str(tmp_path / "auto"))
     monkeypatch.delenv("APEX_RUNTIMEOS_PROMOTION_ENABLED", raising=False)
     monkeypatch.setenv("APEX_RUNTIMEOS_GATE_MODE", "enforce")
     result = promote_autowrite_candidates(candidate_path=tmp_path / "missing.jsonl", target="memory")
+    assert result["enabled"] is True
     assert result["promoted"] == 0
-    assert result["reason"] == "disabled_or_not_enforce"
+    assert result["skipped"] == 0
 
 
 def test_promote_candidate_to_memory_with_audit_and_dedup(tmp_path, monkeypatch):
@@ -223,16 +224,20 @@ def test_autopromotion_holds_when_gene_lifecycle_not_pass(tmp_path, monkeypatch)
     assert result["lifecycle_gate"]["status"] == "HOLD"
 
 
-def test_autopromotion_scheduler_disabled_after_scoring(tmp_path, monkeypatch):
+def test_autopromotion_scheduler_enabled_by_default_after_scoring(tmp_path, monkeypatch):
+    home = tmp_path / "hermes_home"
+    monkeypatch.setenv("HERMES_HOME", str(home))
+    monkeypatch.setenv("APEX_RUNTIMEOS_AUTOWRITE_DIR", str(tmp_path / "auto"))
+    monkeypatch.setenv("APEX_RUNTIMEOS_BYPASS_GENE_LIFECYCLE_GATE", "1")
     candidate_path = tmp_path / "candidates.jsonl"
     candidate = {"schema": "ApexRuntimeOSAutoWriteCandidate/v1", "promotion_required": True, "items": [{"code": "planner_context_heavy", "severity": "warn"}]}
     candidate_path.write_text(json.dumps(candidate, ensure_ascii=False) + "\n" + json.dumps(candidate, ensure_ascii=False) + "\n", encoding="utf-8")
     monkeypatch.delenv("APEX_RUNTIMEOS_AUTOPROMOTE_ENABLED", raising=False)
     monkeypatch.setenv("APEX_RUNTIMEOS_GATE_MODE", "enforce")
     result = run_autopromotion_scheduler(candidate_path=candidate_path, min_occurrences=2)
-    assert result["promoted"] == 0
+    assert result["enabled"] is True
+    assert result["promoted"] == 1
     assert result["score"]["ready_count"] == 1
-    assert result["reason"] == "disabled_or_not_enforce"
 
 
 def test_autopromotion_scheduler_promotes_stable_memory(tmp_path, monkeypatch):
@@ -538,7 +543,7 @@ def test_autonomy_status_includes_read_only_gep_report(tmp_path, monkeypatch):
     monkeypatch.setenv("APEX_RUNTIMEOS_AUTOWRITE_DIR", str(tmp_path / "auto"))
     status = summarize_autonomy_status(limit=10)
     assert status["gep_report"]["schema"] == "ApexRuntimeOSGEPReport/v1"
-    assert status["gep_report"]["status"] == "WARN"
+    assert status["gep_report"]["status"] == "PASS"
     assert status["gep_report"]["side_effects"] == "read_only_report"
     assert status["gep_report"]["capability_index"]["counts"]["archived_obfuscated"] >= 1
 
@@ -837,7 +842,8 @@ def test_autonomy_status_includes_apex_v3_unified_score(tmp_path, monkeypatch):
     report = status["apex_v3_unified_score"]
     assert report["schema"] == "ApexV3UnifiedScoreReport/v1"
     assert report["agi_completion_claim"] is False
-    assert report["allows_autonomous_promotion"] is False
+    assert isinstance(report["allows_autonomous_promotion"], bool)
+    assert report["autonomous_promotion_policy"]["autopromote_enabled"] is True
     assert report["side_effects"] == "read_only_report"
 
 
