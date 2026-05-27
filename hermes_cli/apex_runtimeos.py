@@ -11,13 +11,14 @@ from agent.apex_system_identity import (
     CURRENT_SYSTEM_NAME,
     DIAGNOSTIC_COMMAND_ALIASES,
     LEGACY_RUNTIME_NAME,
+    PRIMARY_DIAGNOSTIC_COMMAND,
     USER_FACING_SYSTEM_LABEL,
 )
 
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="/apex-runtimeos",
+        prog=f"/{PRIMARY_DIAGNOSTIC_COMMAND}",
         description=f"Show {USER_FACING_SYSTEM_LABEL} audit summary diagnostics",
     )
     parser.add_argument("command", nargs="?", default="summary", choices=("summary", "status", "feishu", "autopromote", "rollback", "autonomy", "autonomy-candidate", "quality-evidence", "co-scientist", "co-scientist-gene", "era", "flow-reward", "switch-cost", "cron-ledger", "sequence-record"))
@@ -206,7 +207,7 @@ def _cn_markdown(summary: Mapping[str, Any]) -> str:
 
 
 def run_apex_runtimeos_cli(argv: list[str] | None = None) -> str:
-    """Return CLI output for the /apex-runtimeos command.
+    """Return CLI output for the PGG Archon diagnostics command.
 
     Output is aggregate-only: no local paths, prompts, messages, raw errors, or
     credentials are rendered.

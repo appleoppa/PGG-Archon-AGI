@@ -8511,7 +8511,7 @@ class HermesCLI:
             self._show_usage()
         elif canonical == "insights":
             self._show_insights(cmd_original)
-        elif canonical in {"apex-runtimeos", "archon", "pgg-archon"}:
+        elif canonical == "pgg-archon":
             self._handle_apex_runtimeos_command(cmd_original)
         elif canonical == "copy":
             self._handle_copy_command(cmd_original)
@@ -8757,7 +8757,7 @@ class HermesCLI:
         return True
 
     def _handle_apex_runtimeos_command(self, cmd: str) -> None:
-        """Handle /apex-runtimeos diagnostics."""
+        """Handle PGG Archon diagnostics commands, including legacy /apex-runtimeos."""
         try:
             from hermes_cli.apex_runtimeos import run_apex_runtimeos_cli
             parts = cmd.strip().split()[1:]

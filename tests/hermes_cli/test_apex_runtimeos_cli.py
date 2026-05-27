@@ -5,10 +5,14 @@ from hermes_cli.commands import resolve_command
 
 
 def test_apex_runtimeos_command_registered_with_alias():
-    assert resolve_command("apex-runtimeos").name == "apex-runtimeos"
-    assert resolve_command("apex").name == "apex-runtimeos"
-    assert resolve_command("archon").name == "apex-runtimeos"
-    assert resolve_command("pgg-archon").name == "apex-runtimeos"
+    current = resolve_command("pgg-archon")
+    legacy = resolve_command("apex-runtimeos")
+    short = resolve_command("apex")
+    archon = resolve_command("archon")
+    assert current is not None and current.name == "pgg-archon"
+    assert legacy is not None and legacy.name == "pgg-archon"
+    assert short is not None and short.name == "pgg-archon"
+    assert archon is not None and archon.name == "pgg-archon"
 
 
 def test_apex_runtimeos_cli_summary_outputs_chinese_aggregate(tmp_path, monkeypatch):
