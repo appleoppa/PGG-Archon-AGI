@@ -105,6 +105,13 @@ def test_gep_report_from_runtimeos_status_is_read_only():
     assert report["resource_preflight"]["status"] == "PASS"
     assert report["sandbox_validator_bridge"]["decision"] == "PASS"
     assert report["external_ingestion_gate"]["status"] == "PASS"
+    assert report["deobfuscation_review"]["status"] == "PASS"
+    deobf_stage = next(item for item in report["safety_pipeline"]["stages"] if item["id"] == "deobfuscation_review")
+    assert deobf_stage["status"] == "PASS"
+    assert deobf_stage["substatus"] == "STATIC_REVIEW_READY"
+    assert deobf_stage["executed"] is False
+    assert deobf_stage["decoded"] is False
+    assert deobf_stage["trusted"] is False
     ingestion_stage = next(item for item in report["safety_pipeline"]["stages"] if item["id"] == "external_ingestion_review")
     assert ingestion_stage["status"] == "PASS"
     assert ingestion_stage["substatus"] == "EVIDENCE_GATE_READY"

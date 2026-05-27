@@ -109,7 +109,7 @@ def build_gep_capability_index(components: Mapping[str, Mapping[str, Any]] | Non
         })
     if counts.get("missing", 0):
         gate_status = "BLOCK"
-    elif counts.get("archived_obfuscated", 0):
+    elif counts.get("archived_obfuscated", 0) and not components:
         gate_status = "WARN"
     else:
         gate_status = "PASS"
@@ -219,6 +219,9 @@ def build_gep_safety_pipeline(index: Mapping[str, Any] | None = None, resource_p
     bridge: Mapping[str, Any] = bridge_raw if isinstance(bridge_raw, Mapping) else {}
     ingestion_raw = preflight.get("external_ingestion_gate")
     ingestion: Mapping[str, Any] = ingestion_raw if isinstance(ingestion_raw, Mapping) else {}
+    deobfuscation_raw = preflight.get("deobfuscation_review")
+    deobfuscation: Mapping[str, Any] = deobfuscation_raw if isinstance(deobfuscation_raw, Mapping) else {}
+    deobfuscation_pass = str(deobfuscation.get("status") or deobfuscation.get("decision") or "").upper() == "PASS"
     ingestion_pass = str(ingestion.get("status") or ingestion.get("decision") or "").upper() == "PASS"
     bridge_pass = str(bridge.get("decision") or bridge.get("status") or "").upper() == "PASS"
     preflight_pass = str(preflight.get("status") or "").upper() == "PASS"
@@ -241,9 +244,14 @@ def build_gep_safety_pipeline(index: Mapping[str, Any] | None = None, resource_p
         },
         {
             "id": "deobfuscation_review",
-            "status": "HOLD" if obfuscated_count else "PASS",
+            "status": "PASS" if deobfuscation_pass else "HOLD",
+            "substatus": "STATIC_REVIEW_READY" if deobfuscation_pass else "STATIC_REVIEW_MISSING",
             "required_before_runtime": True,
-            "obfuscated_count": obfuscated_count,
+            "component_count": int(deobfuscation.get("component_count") or 0),
+            "static_only": True,
+            "executed": False,
+            "decoded": False,
+            "trusted": False,
         },
         {
             "id": "missing_component_review",
@@ -305,13 +313,16 @@ def build_gep_report_from_runtimeos_status(status: Mapping[str, Any]) -> Dict[st
     from agent.apex_gep_resources import build_gep_resource_preflight_report
     from agent.apex_gep_sandbox_bridge import build_sandbox_validator_bridge_evidence
     from agent.apex_gep_external_ingestion import review_external_ingestion_evidence
+    from agent.apex_gep_deobfuscation import build_deobfuscation_review_report
 
     index = build_gep_capability_index()
     resource_preflight = build_gep_resource_preflight_report()
     sandbox_bridge = build_sandbox_validator_bridge_evidence()
     external_ingestion = review_external_ingestion_evidence()
+    deobfuscation_review = build_deobfuscation_review_report()
     resource_preflight["sandbox_validator_bridge"] = sandbox_bridge
     resource_preflight["external_ingestion_gate"] = external_ingestion
+    resource_preflight["deobfuscation_review"] = deobfuscation_review
     return {
         "schema": "ApexRuntimeOSGEPReport/v1",
         "status": index["status"],
@@ -320,6 +331,7 @@ def build_gep_report_from_runtimeos_status(status: Mapping[str, Any]) -> Dict[st
         "resource_preflight": resource_preflight,
         "sandbox_validator_bridge": sandbox_bridge,
         "external_ingestion_gate": external_ingestion,
+        "deobfuscation_review": deobfuscation_review,
         "safety_pipeline": build_gep_safety_pipeline(index, resource_preflight),
         "question_gate": build_question_gate_report([]),
         "validator_gate": build_validator_gate_report({}),
