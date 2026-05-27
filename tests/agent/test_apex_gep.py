@@ -102,6 +102,11 @@ def test_gep_report_from_runtimeos_status_is_read_only():
     assert report["status"] == "WARN"
     assert report["capability_index"]["component_count"] == len(REQUIRED_GEP_COMPONENTS)
     assert report["safety_pipeline"]["runtime_allowed"] is False
+    assert report["resource_preflight"]["status"] == "PASS"
+    assert report["substatus"] == "RESOURCE_PRECHECK_READY"
+    assert report["external_code_execution"] is False
+    assert report["auto_gene_promotion"] is False
+    assert report["agi_completion_claim"] is False
     assert report["question_gate"]["status"] == "BLOCK"
     assert report["validator_gate"]["status"] == "BLOCK"
     assert report["side_effects"] == "read_only_report"

@@ -201,7 +201,7 @@ def build_validator_gate_report(config: Mapping[str, Any] | None = None) -> Dict
     }
 
 
-def build_gep_safety_pipeline(index: Mapping[str, Any] | None = None) -> Dict[str, Any]:
+def build_gep_safety_pipeline(index: Mapping[str, Any] | None = None, resource_preflight: Mapping[str, Any] | None = None) -> Dict[str, Any]:
     """Return the read-only safety pipeline required before GEP runtime use.
 
     The archived Book-to-skill/GitHub/GEP materials describe powerful runtime
@@ -214,6 +214,19 @@ def build_gep_safety_pipeline(index: Mapping[str, Any] | None = None) -> Dict[st
     counts: Mapping[str, Any] = counts_raw if isinstance(counts_raw, Mapping) else {}
     obfuscated_count = int(counts.get("archived_obfuscated") or 0)
     missing_count = int(counts.get("missing") or 0)
+    preflight = resource_preflight if isinstance(resource_preflight, Mapping) else {}
+    preflight_pass = str(preflight.get("status") or "").upper() == "PASS"
+    resource_index_raw = preflight.get("resource_index")
+    resource_index: Mapping[str, Any] = resource_index_raw if isinstance(resource_index_raw, Mapping) else {}
+    resource_preflight_stage = {
+        "id": "resource_manifest_preflight",
+        "status": "PASS" if preflight_pass else "HOLD",
+        "substatus": preflight.get("substatus") or "RESOURCE_PRECHECK_MISSING",
+        "resource_count": int(preflight.get("resource_count") or 0),
+        "index_status": resource_index.get("status"),
+        "required_before_runtime": True,
+        "side_effects": "read_only_report",
+    }
     stages = [
         {
             "id": "component_inventory",
@@ -231,6 +244,7 @@ def build_gep_safety_pipeline(index: Mapping[str, Any] | None = None) -> Dict[st
             "status": "BLOCK" if missing_count else "PASS",
             "missing_count": missing_count,
         },
+        resource_preflight_stage,
         {
             "id": "sandbox_validator_bridge",
             "status": "HOLD",
@@ -275,14 +289,22 @@ def build_gep_safety_pipeline(index: Mapping[str, Any] | None = None) -> Dict[st
 
 
 def build_gep_report_from_runtimeos_status(status: Mapping[str, Any]) -> Dict[str, Any]:
+    from agent.apex_gep_resources import build_gep_resource_preflight_report
+
     index = build_gep_capability_index()
+    resource_preflight = build_gep_resource_preflight_report()
     return {
         "schema": "ApexRuntimeOSGEPReport/v1",
         "status": index["status"],
+        "substatus": resource_preflight["substatus"],
         "capability_index": index,
-        "safety_pipeline": build_gep_safety_pipeline(index),
+        "resource_preflight": resource_preflight,
+        "safety_pipeline": build_gep_safety_pipeline(index, resource_preflight),
         "question_gate": build_question_gate_report([]),
         "validator_gate": build_validator_gate_report({}),
+        "external_code_execution": False,
+        "auto_gene_promotion": False,
+        "agi_completion_claim": False,
         "side_effects": "read_only_report",
     }
 
