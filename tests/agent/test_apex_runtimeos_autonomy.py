@@ -573,6 +573,31 @@ def test_autonomy_status_uses_latest_quality_evidence_bundle(tmp_path, monkeypat
     assert quality_gate["status"] == "PASS"
     assert quality_gate["blocking_failed"] == 0
     assert quality_gate["evidence_bundle"]["valid"] is True
+    promotion_gate = status["promotion_lifecycle_gate"]
+    assert promotion_gate["quality_evidence_required"] is True
+    assert promotion_gate["quality_evidence_valid"] is True
+    assert promotion_gate["quality_evidence_hash"]
+
+
+def test_autonomy_status_holds_promotion_when_quality_evidence_missing(tmp_path, monkeypatch):
+    monkeypatch.setenv("APEX_RUNTIMEOS_AUTOWRITE_DIR", str(tmp_path / "auto"))
+    monkeypatch.setenv("APEX_GENE_LIFECYCLE_DB_PATH", str(tmp_path / "missing.sqlite3"))
+    monkeypatch.setattr("runtime.quality.evidence_bundle.load_latest_quality_evidence_bundle", lambda: None)
+    monkeypatch.setattr("agent.apex_co_scientist.load_latest_gene_candidate", lambda: {
+        "schema": "ApexCoScientistGeneCandidateSummary/v1",
+        "status": "READY",
+        "candidate_id": "candidate-1",
+        "eligible": True,
+        "evidence_level": "unit-test",
+        "gene_library_written": False,
+    })
+    status = summarize_autonomy_status(limit=10)
+    assert status["gene_lifecycle_gate"]["status"] == "PASS"
+    promotion_gate = status["promotion_lifecycle_gate"]
+    assert promotion_gate["status"] == "HOLD"
+    assert promotion_gate["reason"] == "quality_evidence_bundle_missing_or_invalid"
+    assert promotion_gate["quality_evidence_required"] is True
+    assert promotion_gate["quality_evidence_valid"] is False
 
 
 def test_autonomy_status_reports_quality_evidence_load_error(tmp_path, monkeypatch):

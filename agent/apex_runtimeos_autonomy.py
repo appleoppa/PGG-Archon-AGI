@@ -467,19 +467,28 @@ def score_autowrite_candidates(*, candidate_path: Optional[Path] = None, limit: 
     }
 
 
-def _promotion_lifecycle_gate() -> Dict[str, Any]:
+def _promotion_lifecycle_gate(runtimeos_status: Optional[Mapping[str, Any]] = None) -> Dict[str, Any]:
     """Return a HOLD/PASS gate for high-risk auto-promotion paths.
 
     Promotion mutates durable memory/skill artifacts.  It must not proceed while
     the gene lifecycle gate reports WARN/BLOCK/ERROR, unless the operator sets
     APEX_RUNTIMEOS_BYPASS_GENE_LIFECYCLE_GATE=1.  The bypass is explicit and
     visible in the returned gate report.
+
+    The gate also binds promotion to the current RuntimeOS quality evidence
+    bundle.  A PASS lifecycle gate alone is not enough: durable promotion must
+    have a valid CMMI evidence bundle and a digest that can be audited later.
     """
     bypass = _flag("APEX_RUNTIMEOS_BYPASS_GENE_LIFECYCLE_GATE", "0")
+    status_source: Mapping[str, Any] = runtimeos_status if isinstance(runtimeos_status, Mapping) else {}
     try:
-        from agent.apex_gene_lifecycle import build_gene_lifecycle_gate_from_runtimeos_status
+        lifecycle_raw = status_source.get("gene_lifecycle_gate")
+        if isinstance(lifecycle_raw, Mapping):
+            lifecycle = lifecycle_raw
+        else:
+            from agent.apex_gene_lifecycle import build_gene_lifecycle_gate_from_runtimeos_status
 
-        lifecycle = build_gene_lifecycle_gate_from_runtimeos_status({"caller": "promotion_gate"})
+            lifecycle = build_gene_lifecycle_gate_from_runtimeos_status({"caller": "promotion_gate"})
     except Exception as exc:
         lifecycle = {
             "schema": "ApexRuntimeOSGeneLifecycleGate/v1",
@@ -487,16 +496,31 @@ def _promotion_lifecycle_gate() -> Dict[str, Any]:
             "error": _safe_scalar(exc),
             "side_effects": "read_only_report",
         }
+    quality_gate_raw = status_source.get("quality_gate")
+    quality_gate: Mapping[str, Any] = quality_gate_raw if isinstance(quality_gate_raw, Mapping) else {}
+    bundle_raw = status_source.get("quality_evidence_bundle")
+    quality_bundle: Mapping[str, Any] = bundle_raw if isinstance(bundle_raw, Mapping) else {}
+    if quality_gate:
+        gate_bundle_raw = quality_gate.get("evidence_bundle")
+        gate_bundle: Mapping[str, Any] = gate_bundle_raw if isinstance(gate_bundle_raw, Mapping) else {}
+        quality_bundle_valid = bool(gate_bundle.get("valid")) and bool(gate_bundle.get("provided"))
+    else:
+        quality_bundle_valid = bool(quality_bundle)
+    evidence_binding_required = not bypass
+    evidence_bundle_hash = _stable_hash(quality_bundle) if quality_bundle else ""
     lifecycle_status = str(lifecycle.get("status") or "ERROR")
     if bypass:
         status = "BYPASSED"
         reason = "explicit_bypass"
-    elif lifecycle_status == "PASS":
-        status = "PASS"
-        reason = "gene_lifecycle_pass"
-    else:
+    elif lifecycle_status != "PASS":
         status = "HOLD"
         reason = "gene_lifecycle_not_pass"
+    elif not quality_bundle_valid:
+        status = "HOLD"
+        reason = "quality_evidence_bundle_missing_or_invalid"
+    else:
+        status = "PASS"
+        reason = "gene_lifecycle_and_quality_evidence_pass"
     return {
         "schema": "ApexRuntimeOSPromotionLifecycleGate/v1",
         "status": status,
@@ -506,6 +530,9 @@ def _promotion_lifecycle_gate() -> Dict[str, Any]:
         "gene_count": lifecycle.get("gene_count", 0),
         "counts": lifecycle.get("counts", {}),
         "promotable_count": lifecycle.get("promotable_count", 0),
+        "quality_evidence_required": evidence_binding_required,
+        "quality_evidence_valid": quality_bundle_valid,
+        "quality_evidence_hash": evidence_bundle_hash,
         "side_effects": "read_only_report",
     }
 
@@ -1103,7 +1130,7 @@ def summarize_autonomy_status(*, limit: int = 1000, min_occurrences: int = 2) ->
         "rollback_status": rollback_status,
         "rollback_events": {"count": len(rollback_events), "status": event_status},
         "cron_dryrun": summarize_cron_dryrun_ledger(limit=limit),
-        "promotion_lifecycle_gate": _promotion_lifecycle_gate(),
+        "promotion_lifecycle_gate": {},
         "default_side_effects": "disabled_unless_explicit_enforce",
     }
     try:
@@ -1194,6 +1221,7 @@ def summarize_autonomy_status(*, limit: int = 1000, min_occurrences: int = 2) ->
             "error": _safe_scalar(exc),
             "side_effects": "read_only_report",
         }
+    report["promotion_lifecycle_gate"] = _promotion_lifecycle_gate(report)
     try:
         from agent.apex_formula import build_formula_report_from_runtimeos_status
 
