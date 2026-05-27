@@ -174,6 +174,27 @@ def build_apex_v3_unified_score_report(status: Mapping[str, Any]) -> Dict[str, A
         {"code": "shadow_replay", "priority": "P1", "action": "Replay candidate genes against historical evidence bundles in shadow mode only."},
         {"code": "strategy_ledger_meta_eval", "priority": "P2", "action": "Append strategy choices and outcomes into a read-only ledger for meta-evolution scoring."},
     ]
+    base_report = {
+        "schema": "ApexV3UnifiedScoreReport/v1",
+        "score": total,
+        "weights": weights,
+        "layers": layers,
+        "bottlenecks": bottlenecks,
+        "hold_reasons": hold_reasons,
+        "recommendations": recommendations,
+        "allows_next_low_risk_cycle": total >= 50,
+    }
+    from agent.apex_inward_validator import cross_validate_unified_score
+    from agent.apex_promotion_claim_guard import evaluate_promotion_claim_guard
+
+    inward_validation = cross_validate_unified_score({
+        **base_report,
+        "allows_autonomous_promotion": False,
+    })
+    promotion_claim_guard = evaluate_promotion_claim_guard({
+        **base_report,
+        "allows_autonomous_promotion": False,
+    })
     allows_autonomous_promotion = (
         autopromote_enabled
         and promotion_enabled
@@ -185,20 +206,17 @@ def build_apex_v3_unified_score_report(status: Mapping[str, Any]) -> Dict[str, A
         and quality_gate_pass
         and _status(cross_domain.get("status")) == "PASS"
         and gep_actual_execution_allowed
+        and inward_validation.get("cross_validated") is True
+        and promotion_claim_guard.get("allowed") is True
         and not hold_reasons
     )
     status_value = "PASS" if total >= 70 and not hold_reasons else ("WATCH" if total >= 50 else "BLOCK")
     return {
-        "schema": "ApexV3UnifiedScoreReport/v1",
+        **base_report,
         "status": status_value,
-        "score": total,
-        "weights": weights,
-        "layers": layers,
-        "bottlenecks": bottlenecks,
-        "hold_reasons": hold_reasons,
-        "recommendations": recommendations,
-        "allows_next_low_risk_cycle": total >= 50,
         "allows_autonomous_promotion": allows_autonomous_promotion,
+        "inward_validation": inward_validation,
+        "promotion_claim_guard": promotion_claim_guard,
         "autonomous_promotion_policy": {
             "autopromote_enabled": autopromote_enabled,
             "promotion_enabled": promotion_enabled,
@@ -207,6 +225,8 @@ def build_apex_v3_unified_score_report(status: Mapping[str, Any]) -> Dict[str, A
             "quality_gate": quality_gate.get("status"),
             "gep_actual_execution_allowed": gep_actual_execution_allowed,
             "requires_operator_authorized_enforce_mode": True,
+            "requires_dual_inward_validation": True,
+            "requires_human_ack": True,
         },
         "agi_completion_claim": False,
         "external_ground_truth_required": True,
