@@ -373,13 +373,15 @@ def test_runtimeos_health_report_threshold_alerts():
         "stable_ready_count": 1,
         "autopromote_enabled": False,
         "cron_dryrun": {"bad_lines": 1, "unique_keys": 3},
+        "quality_gate": {"status": "BLOCK", "blocking_failed": 2, "warning_failed": 1},
     })
     assert report["status"] == "WATCH"
-    assert report["alert_count"] == 3
+    assert report["alert_count"] == 4
     codes = {item["code"] for item in report["alerts"]}
     assert "cron_ledger_bad_lines" in codes
     assert "pending_rollbacks" in codes
     assert "stable_candidates_waiting" in codes
+    assert "cmmi_quality_gate_not_pass" in codes
     assert report["side_effects"] == "read_only_report"
 
 
@@ -553,6 +555,10 @@ def test_autonomy_status_includes_read_only_quality_gate(tmp_path, monkeypatch):
     assert "test_report" in quality_gate["missing_blocking_evidence"]
     assert quality_gate["side_effects"] == "read_only_report"
     assert quality_gate["boundary"].startswith("CMMI gate is read-only")
+    health = status["health_report"]
+    assert health["status"] == "WATCH"
+    assert health["metrics"]["quality_gate_status"] == "BLOCK"
+    assert any(item["code"] == "cmmi_quality_gate_not_pass" for item in health["alerts"])
 
 
 def test_autonomy_status_uses_latest_quality_evidence_bundle(tmp_path, monkeypatch):

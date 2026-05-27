@@ -945,12 +945,24 @@ def build_runtimeos_health_report(autonomy: Mapping[str, Any]) -> Dict[str, Any]
     bad_lines = int(cron.get("bad_lines") or 0)
     pending_rollbacks = int(autonomy.get("pending_rollbacks") or 0)
     stable_ready = int(autonomy.get("stable_ready_unresolved_count", autonomy.get("stable_ready_count") or 0) or 0)
+    quality_gate_raw = autonomy.get("quality_gate")
+    quality_gate: Mapping[str, Any] = quality_gate_raw if isinstance(quality_gate_raw, Mapping) else {}
+    quality_status = str(quality_gate.get("status") or "").upper()
     if bad_lines > 0:
         alerts.append({"code": "cron_ledger_bad_lines", "severity": "warn", "count": bad_lines, "message": "cron dry-run 账本存在坏行，建议启用 repair 审计隔离"})
     if pending_rollbacks > 0:
         alerts.append({"code": "pending_rollbacks", "severity": "warn", "count": pending_rollbacks, "message": "存在待回滚晋升记录，需要人工复核后再执行"})
     if stable_ready > 0 and not autonomy.get("autopromote_enabled"):
         alerts.append({"code": "stable_candidates_waiting", "severity": "info", "count": stable_ready, "message": "存在稳定候选，但自动晋升未开启"})
+    if quality_status and quality_status != "PASS":
+        blocking_failed = int(quality_gate.get("blocking_failed") or 0)
+        warning_failed = int(quality_gate.get("warning_failed") or 0)
+        alerts.append({
+            "code": "cmmi_quality_gate_not_pass",
+            "severity": "warn" if quality_status in {"BLOCK", "ERROR"} else "info",
+            "count": blocking_failed + warning_failed,
+            "message": "CMMI质量门禁未通过，需补齐证据后再视为可晋升状态",
+        })
     if any(item.get("severity") == "warn" for item in alerts):
         status = "WATCH"
     elif alerts:
@@ -968,6 +980,7 @@ def build_runtimeos_health_report(autonomy: Mapping[str, Any]) -> Dict[str, Any]
             "stable_ready_count": stable_ready,
             "stable_ready_total_count": int(autonomy.get("stable_ready_count") or 0),
             "cron_unique_keys": int(cron.get("unique_keys") or 0),
+            "quality_gate_status": quality_status or "UNKNOWN",
         },
         "side_effects": "read_only_report",
     }
@@ -1188,6 +1201,7 @@ def summarize_autonomy_status(*, limit: int = 1000, min_occurrences: int = 2) ->
             "error": _safe_scalar(exc),
             "side_effects": "read_only_report",
         }
+    report["health_report"] = build_runtimeos_health_report(report)
     try:
         from agent.apex_runtimeos_evm_gate import build_evm_gate_from_runtimeos_status
 
