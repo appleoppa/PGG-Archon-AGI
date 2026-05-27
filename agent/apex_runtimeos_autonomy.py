@@ -1112,6 +1112,14 @@ def summarize_autonomy_status(*, limit: int = 1000, min_occurrences: int = 2) ->
             report["co_scientist_gene_candidate"] = latest_gene_candidate
     except Exception as exc:
         report["co_scientist_report_error"] = _safe_scalar(type(exc).__name__)
+    try:
+        from agent.apex_era import load_latest_era_report
+
+        latest_era = load_latest_era_report()
+        if latest_era:
+            report["era_report"] = latest_era
+    except Exception as exc:
+        report["era_report_error"] = _safe_scalar(type(exc).__name__)
     report["health_report"] = build_runtimeos_health_report(report)
     try:
         from runtime.quality.gate_runner import build_quality_gate_from_runtimeos_status

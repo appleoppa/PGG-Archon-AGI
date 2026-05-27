@@ -733,3 +733,47 @@ def test_apex_runtimeos_cli_autonomy_shows_co_scientist_gene_candidate(tmp_path,
     assert "字段：Co_Scientist基因候选状态" in output
     assert "字段：Co_Scientist基因候选已写库" in output
     assert "multi_model_debate" in output
+
+
+def test_autonomy_status_includes_era_report(tmp_path, monkeypatch):
+    monkeypatch.setenv("APEX_RUNTIMEOS_AUTOWRITE_DIR", str(tmp_path / "auto"))
+    era = {
+        "schema": "ApexERAPathSearchSummary/v1",
+        "valid": True,
+        "status": "PASS",
+        "task": "unit era",
+        "path_count": 3,
+        "selected_path_id": "safe",
+        "selected_score": 0.72,
+        "executed": False,
+        "promotion_required": True,
+        "side_effects": "read_only_report",
+    }
+    monkeypatch.setattr("agent.apex_era.load_latest_era_report", lambda: era)
+    status = summarize_autonomy_status(limit=10)
+    assert status["era_report"]["status"] == "PASS"
+    assert status["era_report"]["selected_path_id"] == "safe"
+    assert status["era_report"]["executed"] is False
+
+
+def test_apex_runtimeos_cli_autonomy_shows_era_report(tmp_path, monkeypatch):
+    from hermes_cli.apex_runtimeos import run_apex_runtimeos_cli
+
+    monkeypatch.setenv("APEX_RUNTIMEOS_AUTOWRITE_DIR", str(tmp_path / "auto"))
+    era = {
+        "schema": "ApexERAPathSearchSummary/v1",
+        "valid": True,
+        "status": "PASS",
+        "task": "cli era",
+        "path_count": 3,
+        "selected_path_id": "safe",
+        "selected_score": 0.72,
+        "executed": False,
+        "promotion_required": True,
+        "side_effects": "read_only_report",
+    }
+    monkeypatch.setattr("agent.apex_era.load_latest_era_report", lambda: era)
+    output = run_apex_runtimeos_cli(["autonomy"])
+    assert "字段：ERA路径搜索状态" in output
+    assert "字段：ERA选中路径" in output
+    assert "safe" in output

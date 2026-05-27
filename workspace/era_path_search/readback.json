@@ -1,0 +1,60 @@
+{
+  "schema": "ApexERAPathSearchReport/v1",
+  "ts": 1779860437.133483,
+  "source": "apex-runtimeos-era",
+  "task": "APEX ERA readback",
+  "path_count": 3,
+  "status": "PASS",
+  "selected_path_id": "safe",
+  "selected_score": 0.65,
+  "paths": [
+    {
+      "id": "safe",
+      "title": "只读门禁先行",
+      "summary": "",
+      "actions": [
+        "schema",
+        "tests"
+      ],
+      "risk": 0.1,
+      "cost": 0.3,
+      "reward": 0.8,
+      "evidence": 0.9,
+      "confidence": 0.8,
+      "uncertainty": 0.0,
+      "side_effects": "not_executed",
+      "score": 0.65
+    },
+    {
+      "id": "fast",
+      "title": "快速直改",
+      "summary": "",
+      "actions": [],
+      "risk": 0.4,
+      "cost": 0.2,
+      "reward": 0.6,
+      "evidence": 0.5,
+      "confidence": 0.6,
+      "uncertainty": 0.0,
+      "side_effects": "not_executed",
+      "score": 0.34
+    },
+    {
+      "id": "risky",
+      "title": "自动执行外部代码",
+      "summary": "",
+      "actions": [],
+      "risk": 0.9,
+      "cost": 0.7,
+      "reward": 0.9,
+      "evidence": 0.2,
+      "confidence": 0.2,
+      "uncertainty": 0.0,
+      "side_effects": "not_executed",
+      "score": 0.075
+    }
+  ],
+  "side_effects": "read_only_report",
+  "executed": false,
+  "promotion_required": true
+}

@@ -14,7 +14,7 @@ def _parser() -> argparse.ArgumentParser:
         prog="/apex-runtimeos",
         description="Show APEX RuntimeOS audit summary diagnostics",
     )
-    parser.add_argument("command", nargs="?", default="summary", choices=("summary", "status", "feishu", "autopromote", "rollback", "autonomy", "autonomy-candidate", "quality-evidence", "co-scientist", "co-scientist-gene", "cron-ledger", "sequence-record"))
+    parser.add_argument("command", nargs="?", default="summary", choices=("summary", "status", "feishu", "autopromote", "rollback", "autonomy", "autonomy-candidate", "quality-evidence", "co-scientist", "co-scientist-gene", "era", "cron-ledger", "sequence-record"))
     parser.add_argument("--json", action="store_true", help="emit machine-readable JSON")
     parser.add_argument("--limit", type=int, default=10000, help="max audit lines to read")
     parser.add_argument("--target", default="memory", choices=("memory", "skill", "all"), help="autopromote/rollback target")
@@ -32,6 +32,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--reviewer", action="append", default=[], help="co-scientist reviewer JSON; may be repeated")
     parser.add_argument("--synthesis", default="", help="co-scientist synthesis summary")
     parser.add_argument("--decision", default="hold", help="co-scientist decision")
+    parser.add_argument("--path", action="append", default=[], help="ERA path JSON; may be repeated")
     return parser
 
 
@@ -223,6 +224,8 @@ def run_apex_runtimeos_cli(argv: list[str] | None = None) -> str:
         co_scientist = co_scientist_raw if isinstance(co_scientist_raw, dict) else {}
         co_gene_raw = status.get("co_scientist_gene_candidate")
         co_gene = co_gene_raw if isinstance(co_gene_raw, dict) else {}
+        era_raw = status.get("era_report")
+        era_report = era_raw if isinstance(era_raw, dict) else {}
         skill_registry_policy = status.get("skill_registry_policy") if isinstance(status.get("skill_registry_policy"), dict) else {}
         gep_index_raw = gep_report.get("capability_index")
         if isinstance(gep_index_raw, dict):
@@ -381,6 +384,21 @@ def run_apex_runtimeos_cli(argv: list[str] | None = None) -> str:
             "",
             "字段：Co_Scientist基因候选已写库",
             f"值：{co_gene.get('gene_library_written', False)}",
+            "",
+            "字段：ERA路径搜索状态",
+            f"值：{era_report.get('status', 'UNKNOWN')}",
+            "",
+            "字段：ERA路径数量",
+            f"值：{era_report.get('path_count', 0)}",
+            "",
+            "字段：ERA选中路径",
+            f"值：{era_report.get('selected_path_id', '-')}",
+            "",
+            "字段：ERA选中分数",
+            f"值：{era_report.get('selected_score', '-')}",
+            "",
+            "字段：ERA已执行",
+            f"值：{era_report.get('executed', False)}",
             "",
             "字段：技能注册表策略状态",
             f"值：{skill_registry_policy.get('status', 'UNKNOWN')}",
@@ -577,6 +595,48 @@ def run_apex_runtimeos_cli(argv: list[str] | None = None) -> str:
             "",
             "字段：gene_library_written",
             f"值：{candidate.get('gene_library_written')}",
+            "",
+            "字段：written",
+            f"值：{bool(written)}",
+            "",
+        ])
+    if ns.command == "era":
+        from pathlib import Path
+        from agent.apex_era import build_era_path_search_report, default_era_report_path, write_era_report
+        paths = []
+        for raw in ns.path or []:
+            try:
+                item = json.loads(raw)
+            except json.JSONDecodeError:
+                item = {"id": "invalid", "title": "invalid path json", "risk": 1.0, "reward": 0.0, "evidence": 0.0, "confidence": 0.0}
+            if isinstance(item, dict):
+                paths.append(item)
+        report = build_era_path_search_report(task=ns.topic or "unspecified", paths=paths)
+        written = None
+        if ns.output:
+            written = write_era_report(Path(ns.output).expanduser(), report)
+        elif ns.execute:
+            written = write_era_report(default_era_report_path(ns.topic or "era_path_search"), report)
+        result = {"execute": bool(ns.execute), "report": report, "written": written}
+        if ns.json:
+            return json.dumps({"object": "hermes.apex_runtimeos.era", "result": result}, ensure_ascii=False, indent=2)
+        return "\n".join([
+            "# APEX ERA 路径搜索",
+            "",
+            "字段：status",
+            f"值：{report.get('status')}",
+            "",
+            "字段：path_count",
+            f"值：{report.get('path_count')}",
+            "",
+            "字段：selected_path_id",
+            f"值：{report.get('selected_path_id')}",
+            "",
+            "字段：selected_score",
+            f"值：{report.get('selected_score')}",
+            "",
+            "字段：executed",
+            f"值：{report.get('executed')}",
             "",
             "字段：written",
             f"值：{bool(written)}",
