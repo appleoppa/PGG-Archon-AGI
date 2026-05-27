@@ -112,3 +112,34 @@ def test_apex_runtimeos_autonomy_cli_shows_gep_safety_pipeline(tmp_path, monkeyp
     assert "字段：GEP HOLD原因" in output
     assert "值：False" in output
     assert "runtime_execution" in output
+
+def test_apex_runtimeos_cli_switch_cost_json_outputs_read_only_decision():
+    output = run_apex_runtimeos_cli([
+        "switch-cost",
+        "--json",
+        "--topic", "thrash guard",
+        "--current-route", json.dumps({"id": "stable", "reward": 0.7, "evidence": 0.8, "confidence": 0.8, "features": ["a"]}),
+        "--target-route", json.dumps({"id": "new", "reward": 0.75, "evidence": 0.8, "confidence": 0.8, "features": ["b"]}),
+        "--switching-cost", "0.5",
+    ])
+    data = json.loads(output)
+    assert data["object"] == "hermes.apex_runtimeos.switch_cost"
+    report = data["result"]["report"]
+    assert report["schema"] == "ApexSwitchCostReport/v1"
+    assert report["decision"] == "HOLD"
+    assert report["executed"] is False
+    assert data["result"]["written"] is None
+
+
+def test_apex_runtimeos_cli_switch_cost_text_outputs_chinese_fields():
+    output = run_apex_runtimeos_cli([
+        "switch-cost",
+        "--topic", "upgrade",
+        "--current-route", json.dumps({"id": "old", "reward": 0.2}),
+        "--target-route", json.dumps({"id": "new", "reward": 1.0, "evidence": 1.0, "confidence": 1.0}),
+        "--switching-cost", "0.05",
+    ])
+    assert "APEX 切换成本门禁" in output
+    assert "字段：decision" in output
+    assert "字段：executed" in output
+    assert "值：False" in output

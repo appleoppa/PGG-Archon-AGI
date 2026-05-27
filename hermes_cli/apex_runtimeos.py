@@ -14,7 +14,7 @@ def _parser() -> argparse.ArgumentParser:
         prog="/apex-runtimeos",
         description="Show APEX RuntimeOS audit summary diagnostics",
     )
-    parser.add_argument("command", nargs="?", default="summary", choices=("summary", "status", "feishu", "autopromote", "rollback", "autonomy", "autonomy-candidate", "quality-evidence", "co-scientist", "co-scientist-gene", "era", "flow-reward", "cron-ledger", "sequence-record"))
+    parser.add_argument("command", nargs="?", default="summary", choices=("summary", "status", "feishu", "autopromote", "rollback", "autonomy", "autonomy-candidate", "quality-evidence", "co-scientist", "co-scientist-gene", "era", "flow-reward", "switch-cost", "cron-ledger", "sequence-record"))
     parser.add_argument("--json", action="store_true", help="emit machine-readable JSON")
     parser.add_argument("--limit", type=int, default=10000, help="max audit lines to read")
     parser.add_argument("--target", default="memory", choices=("memory", "skill", "all"), help="autopromote/rollback target")
@@ -25,10 +25,10 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--score", type=float, default=0.8, help="sequence evidence score between 0 and 1")
     parser.add_argument("--shortcoming", default="", help="sanitized shortcoming summary for sequence evidence")
     parser.add_argument("--test-cmd", action="append", default=[], help="quality-evidence test command; may be repeated")
-    parser.add_argument("--output", default="", help="optional output path for generated quality evidence bundle")
+    parser.add_argument("--output", default="", help="optional output path for generated quality evidence bundle/report")
     parser.add_argument("--documentation", action="store_true", help="mark documentation evidence present for quality-evidence")
     parser.add_argument("--audit", action="store_true", help="mark audit evidence present for quality-evidence")
-    parser.add_argument("--topic", default="", help="co-scientist debate topic")
+    parser.add_argument("--topic", default="", help="co-scientist debate topic / APEX report task")
     parser.add_argument("--reviewer", action="append", default=[], help="co-scientist reviewer JSON; may be repeated")
     parser.add_argument("--synthesis", default="", help="co-scientist synthesis summary")
     parser.add_argument("--decision", default="hold", help="co-scientist decision")
@@ -36,6 +36,10 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--selected-path-id", default="", help="Flow reward selected path id")
     parser.add_argument("--predicted-score", type=float, default=0.0, help="Flow reward predicted path score between 0 and 1")
     parser.add_argument("--outcome", action="append", default=[], help="Flow reward outcome JSON; may be repeated")
+    parser.add_argument("--current-route", default="{}", help="Switch-cost current route JSON")
+    parser.add_argument("--target-route", default="{}", help="Switch-cost target route JSON")
+    parser.add_argument("--switching-cost", type=float, default=None, help="explicit switching cost between 0 and 1")
+    parser.add_argument("--hysteresis", type=float, default=0.15, help="minimum net gain required before switching")
     return parser
 
 
@@ -231,6 +235,8 @@ def run_apex_runtimeos_cli(argv: list[str] | None = None) -> str:
         era_report = era_raw if isinstance(era_raw, dict) else {}
         flow_reward_raw = status.get("flow_reward_report")
         flow_reward = flow_reward_raw if isinstance(flow_reward_raw, dict) else {}
+        switch_cost_raw = status.get("switch_cost_report")
+        switch_cost = switch_cost_raw if isinstance(switch_cost_raw, dict) else {}
         skill_registry_policy = status.get("skill_registry_policy") if isinstance(status.get("skill_registry_policy"), dict) else {}
         gep_index_raw = gep_report.get("capability_index")
         if isinstance(gep_index_raw, dict):
@@ -422,6 +428,27 @@ def run_apex_runtimeos_cli(argv: list[str] | None = None) -> str:
             "",
             "字段：Flow结果数量",
             f"值：{flow_reward.get('outcome_count', 0)}",
+            "",
+            "字段：切换成本状态",
+            f"值：{switch_cost.get('status', 'UNKNOWN')}",
+            "",
+            "字段：切换成本决策",
+            f"值：{switch_cost.get('decision', '-')}",
+            "",
+            "字段：当前路径",
+            f"值：{switch_cost.get('current_route_id', '-')}",
+            "",
+            "字段：目标路径",
+            f"值：{switch_cost.get('target_route_id', '-')}",
+            "",
+            "字段：切换成本",
+            f"值：{switch_cost.get('switching_cost', '-')}",
+            "",
+            "字段：净收益",
+            f"值：{switch_cost.get('net_gain', '-')}",
+            "",
+            "字段：切换已执行",
+            f"值：{switch_cost.get('executed', False)}",
             "",
             "字段：技能注册表策略状态",
             f"值：{skill_registry_policy.get('status', 'UNKNOWN')}",
@@ -710,6 +737,64 @@ def run_apex_runtimeos_cli(argv: list[str] | None = None) -> str:
             "",
             "字段：outcome_count",
             f"值：{report.get('outcome_count')}",
+            "",
+            "字段：written",
+            f"值：{bool(written)}",
+            "",
+        ])
+    if ns.command == "switch-cost":
+        from pathlib import Path
+        from agent.apex_switch_cost import build_switch_cost_report, default_switch_cost_report_path, write_switch_cost_report
+        try:
+            current_route = json.loads(ns.current_route or "{}")
+        except json.JSONDecodeError:
+            current_route = {"id": "invalid-current", "risk": 1.0, "reward": 0.0, "evidence": 0.0, "confidence": 0.0}
+        try:
+            target_route = json.loads(ns.target_route or "{}")
+        except json.JSONDecodeError:
+            target_route = {"id": "invalid-target", "risk": 1.0, "reward": 0.0, "evidence": 0.0, "confidence": 0.0}
+        if not isinstance(current_route, dict):
+            current_route = {"id": "invalid-current", "risk": 1.0}
+        if not isinstance(target_route, dict):
+            target_route = {"id": "invalid-target", "risk": 1.0}
+        report = build_switch_cost_report(
+            task=ns.topic or "unspecified",
+            current_route=current_route,
+            target_route=target_route,
+            switching_cost=ns.switching_cost,
+            hysteresis=float(ns.hysteresis),
+        )
+        written = None
+        if ns.output:
+            written = write_switch_cost_report(Path(ns.output).expanduser(), report)
+        elif ns.execute:
+            written = write_switch_cost_report(default_switch_cost_report_path(ns.topic or "switch_cost"), report)
+        result = {"execute": bool(ns.execute), "report": report, "written": written}
+        if ns.json:
+            return json.dumps({"object": "hermes.apex_runtimeos.switch_cost", "result": result}, ensure_ascii=False, indent=2)
+        return "\n".join([
+            "# APEX 切换成本门禁",
+            "",
+            "字段：status",
+            f"值：{report.get('status')}",
+            "",
+            "字段：decision",
+            f"值：{report.get('decision')}",
+            "",
+            "字段：current_route_id",
+            f"值：{report.get('current_route_id')}",
+            "",
+            "字段：target_route_id",
+            f"值：{report.get('target_route_id')}",
+            "",
+            "字段：switching_cost",
+            f"值：{report.get('switching_cost')}",
+            "",
+            "字段：net_gain",
+            f"值：{report.get('net_gain')}",
+            "",
+            "字段：executed",
+            f"值：{report.get('executed')}",
             "",
             "字段：written",
             f"值：{bool(written)}",

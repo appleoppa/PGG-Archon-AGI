@@ -1141,6 +1141,14 @@ def summarize_autonomy_status(*, limit: int = 1000, min_occurrences: int = 2) ->
             report["flow_reward_report"] = latest_flow_reward
     except Exception as exc:
         report["flow_reward_report_error"] = _safe_scalar(type(exc).__name__)
+    try:
+        from agent.apex_switch_cost import load_latest_switch_cost_report
+
+        latest_switch_cost = load_latest_switch_cost_report()
+        if latest_switch_cost:
+            report["switch_cost_report"] = latest_switch_cost
+    except Exception as exc:
+        report["switch_cost_report_error"] = _safe_scalar(type(exc).__name__)
     report["health_report"] = build_runtimeos_health_report(report)
     try:
         from runtime.quality.gate_runner import build_quality_gate_from_runtimeos_status
