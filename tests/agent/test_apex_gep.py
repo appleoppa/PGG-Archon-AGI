@@ -103,6 +103,11 @@ def test_gep_report_from_runtimeos_status_is_read_only():
     assert report["capability_index"]["component_count"] == len(REQUIRED_GEP_COMPONENTS)
     assert report["safety_pipeline"]["runtime_allowed"] is False
     assert report["resource_preflight"]["status"] == "PASS"
+    assert report["sandbox_validator_bridge"]["decision"] == "PASS"
+    bridge_stage = next(item for item in report["safety_pipeline"]["stages"] if item["id"] == "sandbox_validator_bridge")
+    assert bridge_stage["status"] == "PASS"
+    assert bridge_stage["substatus"] == "STATIC_CONTRACT_STAGED"
+    assert bridge_stage["runtime_unlocked"] is False
     assert report["substatus"] == "RESOURCE_PRECHECK_READY"
     assert report["external_code_execution"] is False
     assert report["auto_gene_promotion"] is False

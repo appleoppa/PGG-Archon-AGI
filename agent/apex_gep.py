@@ -215,6 +215,9 @@ def build_gep_safety_pipeline(index: Mapping[str, Any] | None = None, resource_p
     obfuscated_count = int(counts.get("archived_obfuscated") or 0)
     missing_count = int(counts.get("missing") or 0)
     preflight = resource_preflight if isinstance(resource_preflight, Mapping) else {}
+    bridge_raw = preflight.get("sandbox_validator_bridge")
+    bridge: Mapping[str, Any] = bridge_raw if isinstance(bridge_raw, Mapping) else {}
+    bridge_pass = str(bridge.get("decision") or bridge.get("status") or "").upper() == "PASS"
     preflight_pass = str(preflight.get("status") or "").upper() == "PASS"
     resource_index_raw = preflight.get("resource_index")
     resource_index: Mapping[str, Any] = resource_index_raw if isinstance(resource_index_raw, Mapping) else {}
@@ -247,9 +250,12 @@ def build_gep_safety_pipeline(index: Mapping[str, Any] | None = None, resource_p
         resource_preflight_stage,
         {
             "id": "sandbox_validator_bridge",
-            "status": "HOLD",
+            "status": "PASS" if bridge_pass else "HOLD",
+            "substatus": "STATIC_CONTRACT_STAGED" if bridge_pass else "STATIC_CONTRACT_MISSING",
             "required_before_runtime": True,
             "required_guards": ["feature_flag", "preflight", "sandbox", "tasks_only", "max_tasks_per_cycle"],
+            "execution_performed": bool(bridge.get("execution_performed")),
+            "runtime_unlocked": False,
         },
         {
             "id": "external_ingestion_review",
@@ -290,15 +296,19 @@ def build_gep_safety_pipeline(index: Mapping[str, Any] | None = None, resource_p
 
 def build_gep_report_from_runtimeos_status(status: Mapping[str, Any]) -> Dict[str, Any]:
     from agent.apex_gep_resources import build_gep_resource_preflight_report
+    from agent.apex_gep_sandbox_bridge import build_sandbox_validator_bridge_evidence
 
     index = build_gep_capability_index()
     resource_preflight = build_gep_resource_preflight_report()
+    sandbox_bridge = build_sandbox_validator_bridge_evidence()
+    resource_preflight["sandbox_validator_bridge"] = sandbox_bridge
     return {
         "schema": "ApexRuntimeOSGEPReport/v1",
         "status": index["status"],
         "substatus": resource_preflight["substatus"],
         "capability_index": index,
         "resource_preflight": resource_preflight,
+        "sandbox_validator_bridge": sandbox_bridge,
         "safety_pipeline": build_gep_safety_pipeline(index, resource_preflight),
         "question_gate": build_question_gate_report([]),
         "validator_gate": build_validator_gate_report({}),
