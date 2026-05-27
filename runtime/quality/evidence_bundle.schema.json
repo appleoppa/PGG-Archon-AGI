@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "ApexRuntimeOSQualityEvidenceBundle.schema.json",
+  "title": "APEX RuntimeOS quality evidence bundle",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "evidence"],
+  "properties": {
+    "schema": {"const": "ApexRuntimeOSQualityEvidenceBundle/v1"},
+    "source": {"type": "string", "maxLength": 160},
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "requirements": {"$ref": "#/$defs/evidence_item"},
+        "rollback_plan": {"$ref": "#/$defs/evidence_item"},
+        "test_report": {"$ref": "#/$defs/evidence_item"},
+        "security_review": {"$ref": "#/$defs/evidence_item"},
+        "audit_log": {"$ref": "#/$defs/evidence_item"},
+        "documentation": {"$ref": "#/$defs/evidence_item"}
+      }
+    }
+  },
+  "$defs": {
+    "evidence_item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["present"],
+      "properties": {
+        "present": {"type": "boolean"},
+        "summary": {"type": "string", "maxLength": 240},
+        "artifact": {"type": "string", "maxLength": 240},
+        "hash": {"type": "string", "maxLength": 128}
+      }
+    }
+  }
+}
