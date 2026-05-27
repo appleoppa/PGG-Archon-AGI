@@ -1,0 +1,34 @@
+{
+  "schema": "ApexCoScientistDebateReport/v1",
+  "ts": 1779848912.556133,
+  "source": "apex-runtimeos-co-scientist",
+  "topic": "APEX Co_Scientist协议固化",
+  "reviewer_count": 2,
+  "ok_count": 2,
+  "decision": "execute",
+  "synthesis": "GPT负责策略审查，Claude负责代码审查，RuntimeOS生成只读结构化审查报告，后续作为gene candidate证据入口。",
+  "reviewers": [
+    {
+      "provider": "gpt55_5yuantoken",
+      "model": "gpt-5.5",
+      "role": "reasoning",
+      "status": "ok",
+      "claim": "Co_Scientist结构化审查可落地",
+      "risk": "低风险，只读报告",
+      "verification": "tests passed"
+    },
+    {
+      "provider": "claude_opus47_5yuantoken",
+      "model": "claude-opus-4-7",
+      "role": "coding",
+      "status": "ok",
+      "claim": "CLI与模块边界清晰",
+      "risk": "注意脱敏和不自动晋升",
+      "verification": "readback passed"
+    }
+  ],
+  "side_effects": "read_only_report",
+  "promotion_required": true,
+  "applied_to_memory_or_skill": false,
+  "status": "PASS"
+}

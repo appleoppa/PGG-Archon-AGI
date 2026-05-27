@@ -14,7 +14,7 @@ def _parser() -> argparse.ArgumentParser:
         prog="/apex-runtimeos",
         description="Show APEX RuntimeOS audit summary diagnostics",
     )
-    parser.add_argument("command", nargs="?", default="summary", choices=("summary", "status", "feishu", "autopromote", "rollback", "autonomy", "autonomy-candidate", "quality-evidence", "cron-ledger", "sequence-record"))
+    parser.add_argument("command", nargs="?", default="summary", choices=("summary", "status", "feishu", "autopromote", "rollback", "autonomy", "autonomy-candidate", "quality-evidence", "co-scientist", "cron-ledger", "sequence-record"))
     parser.add_argument("--json", action="store_true", help="emit machine-readable JSON")
     parser.add_argument("--limit", type=int, default=10000, help="max audit lines to read")
     parser.add_argument("--target", default="memory", choices=("memory", "skill", "all"), help="autopromote/rollback target")
@@ -28,6 +28,10 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--output", default="", help="optional output path for generated quality evidence bundle")
     parser.add_argument("--documentation", action="store_true", help="mark documentation evidence present for quality-evidence")
     parser.add_argument("--audit", action="store_true", help="mark audit evidence present for quality-evidence")
+    parser.add_argument("--topic", default="", help="co-scientist debate topic")
+    parser.add_argument("--reviewer", action="append", default=[], help="co-scientist reviewer JSON; may be repeated")
+    parser.add_argument("--synthesis", default="", help="co-scientist synthesis summary")
+    parser.add_argument("--decision", default="hold", help="co-scientist decision")
     return parser
 
 
@@ -445,6 +449,50 @@ def run_apex_runtimeos_cli(argv: list[str] | None = None) -> str:
             "",
             "字段：documentation",
             f"值：{bundle['evidence']['documentation']['present']}",
+            "",
+            "字段：written",
+            f"值：{bool(written)}",
+            "",
+        ])
+    if ns.command == "co-scientist":
+        from pathlib import Path
+        from agent.apex_co_scientist import build_debate_report, default_debate_report_path, write_debate_report
+        reviewers = []
+        for raw in ns.reviewer or []:
+            try:
+                item = json.loads(raw)
+            except json.JSONDecodeError:
+                item = {"status": "error", "claim": "invalid reviewer json", "role": "review"}
+            if isinstance(item, dict):
+                reviewers.append(item)
+        report = build_debate_report(
+            topic=ns.topic or "unspecified",
+            reviewers=reviewers,
+            synthesis=ns.synthesis,
+            decision=ns.decision,
+        )
+        written = None
+        if ns.output:
+            written = write_debate_report(Path(ns.output).expanduser(), report)
+        elif ns.execute:
+            written = write_debate_report(default_debate_report_path(ns.topic or "debate"), report)
+        result = {"execute": bool(ns.execute), "report": report, "written": written}
+        if ns.json:
+            return json.dumps({"object": "hermes.apex_runtimeos.co_scientist", "result": result}, ensure_ascii=False, indent=2)
+        return "\n".join([
+            "# APEX Co-Scientist 结构化审查",
+            "",
+            "字段：topic",
+            f"值：{report.get('topic')}",
+            "",
+            "字段：status",
+            f"值：{report.get('status')}",
+            "",
+            "字段：reviewer_count",
+            f"值：{report.get('reviewer_count')}",
+            "",
+            "字段：decision",
+            f"值：{report.get('decision')}",
             "",
             "字段：written",
             f"值：{bool(written)}",
