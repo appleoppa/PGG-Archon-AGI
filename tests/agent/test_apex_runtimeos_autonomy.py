@@ -338,7 +338,7 @@ def test_cron_dryrun_ledger_records_redacted_idempotent_summary(tmp_path):
         "enabled": False,
         "mode": "warn",
         "ready_count": 0,
-        "secret": "sk-should-not-appear",
+        "secret": "sk-sho...pear",
         "path": str(tmp_path / "private"),
     }
     first = record_cron_dryrun_result(task="apex-runtimeos-autopromote-dryrun", result=payload, ledger_path=ledger)
@@ -346,7 +346,7 @@ def test_cron_dryrun_ledger_records_redacted_idempotent_summary(tmp_path):
     assert first["ledger_key"] == second["ledger_key"]
     assert second["count"] == 2
     raw = ledger.read_text(encoding="utf-8")
-    assert "sk-should-not-appear" not in raw
+    assert "sk-sho...pear" not in raw
     assert str(tmp_path) not in raw
     summary = summarize_cron_dryrun_ledger(ledger_path=ledger)
     assert summary["unique_keys"] == 1
@@ -444,6 +444,35 @@ def test_resolved_promoted_candidate_not_counted_as_unresolved(tmp_path, monkeyp
     assert status["stable_ready_unresolved_count"] == 0
     assert status["health_report"]["status"] == "OK"
 
+
+
+def test_pending_rollback_closed_by_legacy_content_hash_event(tmp_path, monkeypatch):
+    monkeypatch.setenv("APEX_RUNTIMEOS_AUTOWRITE_DIR", str(tmp_path / "auto"))
+    audit_path = tmp_path / "auto" / "promotions.jsonl"
+    audit_path.parent.mkdir(parents=True, exist_ok=True)
+    audit_path.write_text(
+        json.dumps({
+            "schema": "ApexRuntimeOSPromotion/v1",
+            "promotion_id": "new-style-id",
+            "target": "memory",
+            "success": True,
+            "content_hash": "legacy-hash",
+            "rollback": {"action": "remove", "old_text": "x"},
+            "rollback_status": "pending",
+        }, ensure_ascii=False) + "\n" +
+        json.dumps({
+            "schema": "ApexRuntimeOSRollbackEvent/v1",
+            "promotion_id": "legacy-hash",
+            "target": "memory",
+            "rollback_status": "done",
+        }, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+    status = summarize_autonomy_status(limit=100)
+    assert status["pending_rollbacks"] == 0
+    assert status["rollback_status"]["done"] == 1
+    assert status["health_report"]["status"] == "OK"
+    assert status["apex_v3_unified_score"]["layers"]["verification"]["signals"]["no_pending_rollbacks"] is True
 
 def test_runtimeos_health_watchdog_notice_suppresses_repeat_watch(tmp_path):
     payload = {
@@ -876,3 +905,4 @@ def test_apex_runtimeos_cli_autonomy_shows_gpo_report(tmp_path, monkeypatch):
     assert "字段：GPO原则数" in output
     assert "字段：GPO知识源" in output
     assert "字段：Omega运行接入允许" in output
+

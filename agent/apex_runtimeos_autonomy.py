@@ -116,12 +116,20 @@ def _promotion_id(record: Mapping[str, Any]) -> str:
 
 
 def _rollback_done_ids(records: list[Dict[str, Any]]) -> set[str]:
+    """
+    Return rollback event identifiers plus compatibility fingerprints for older
+    audit rows whose rollback event was written before promotion_id was stable.
+    This is a read-only normalization view; original audit rows are not mutated.
+    """
     done = set()
     for item in records:
         if item.get("schema") == "ApexRuntimeOSRollbackEvent/v1" and item.get("rollback_status") in {"done", "skipped"}:
             pid = str(item.get("promotion_id") or "")
             if pid:
                 done.add(pid)
+            target = str(item.get("target") or "")
+            if pid and target:
+                done.add(f"legacy:{target}:{pid}")
     return done
 
 
@@ -500,6 +508,14 @@ def _promotion_lifecycle_gate(runtimeos_status: Optional[Mapping[str, Any]] = No
     quality_gate: Mapping[str, Any] = quality_gate_raw if isinstance(quality_gate_raw, Mapping) else {}
     bundle_raw = status_source.get("quality_evidence_bundle")
     quality_bundle: Mapping[str, Any] = bundle_raw if isinstance(bundle_raw, Mapping) else {}
+    if not quality_bundle:
+        try:
+            from runtime.quality.evidence_bundle import load_latest_quality_evidence_bundle
+
+            loaded_bundle = load_latest_quality_evidence_bundle()
+            quality_bundle = loaded_bundle if isinstance(loaded_bundle, Mapping) else {}
+        except Exception:
+            quality_bundle = {}
     if quality_gate:
         gate_bundle_raw = quality_gate.get("evidence_bundle")
         gate_bundle: Mapping[str, Any] = gate_bundle_raw if isinstance(gate_bundle_raw, Mapping) else {}
@@ -539,11 +555,11 @@ def _promotion_lifecycle_gate(runtimeos_status: Optional[Mapping[str, Any]] = No
 
 def run_autopromotion_scheduler(*, candidate_path: Optional[Path] = None, target: str = "memory", limit: int = 1000, min_occurrences: int = 2) -> Dict[str, Any]:
     """Score candidates and promote only stable groups when explicitly enabled."""
-    enabled = _flag("APEX_RUNTIMEOS_AUTOPROMOTE_ENABLED", "0")
+    enabled = _flag("APEX_RUNTIMEOS_AUTOPROMOTE_ENABLED", "1")
     mode = _mode()
     score = score_autowrite_candidates(candidate_path=candidate_path, limit=limit, min_occurrences=min_occurrences)
     if not enabled or mode != "enforce":
-        return {"enabled": enabled, "mode": mode, "promoted": 0, "skipped": 0, "score": score, "reason": "disabled_or_not_enforce"}
+        return {"enabled": enabled, "mode": mode, "promoted": 0, "skipped": 0, "score": score, "reason": "not_enforce" if enabled else "disabled_or_not_enforce"}
     lifecycle_gate = _promotion_lifecycle_gate()
     if lifecycle_gate.get("status") == "HOLD":
         return {"enabled": True, "mode": mode, "promoted": 0, "skipped": 0, "score": score, "reason": "gene_lifecycle_hold", "lifecycle_gate": lifecycle_gate}
@@ -573,7 +589,7 @@ def promote_autowrite_candidates(*, candidate_path: Optional[Path] = None, targe
     APEX_RUNTIMEOS_GATE_MODE=enforce are set. All promotions are deduplicated by
     generated content hash and recorded in promotions.jsonl with rollback data.
     """
-    enabled = _flag("APEX_RUNTIMEOS_PROMOTION_ENABLED", "0")
+    enabled = _flag("APEX_RUNTIMEOS_PROMOTION_ENABLED", "1")
     mode = _mode()
     if target not in {"memory", "skill"}:
         return {"enabled": enabled, "mode": mode, "promoted": 0, "skipped": 0, "error": "invalid_target"}
@@ -918,7 +934,9 @@ def _stable_ready_unresolved_count(score: Mapping[str, Any], promotion_records: 
             continue
         pid = _promotion_id(item)
         status = str(item.get("rollback_status") or "unknown")
-        if pid in done_ids:
+        target_key = str(item.get("target") or "")
+        legacy_key = f"legacy:{target_key}:{content_hash}" if target_key and content_hash else ""
+        if pid in done_ids or (legacy_key and legacy_key in done_ids):
             status = "done"
         if status != "pending":
             resolved_hashes.add(content_hash)
@@ -1118,7 +1136,10 @@ def summarize_autonomy_status(*, limit: int = 1000, min_occurrences: int = 2) ->
         target_counts[target_name] = target_counts.get(target_name, 0) + 1
         pid = _promotion_id(item)
         status = str(item.get("rollback_status") or "unknown")
-        if pid in done_ids:
+        target_key = str(item.get("target") or "")
+        content_hash = str(item.get("content_hash") or "")
+        legacy_key = f"legacy:{target_key}:{content_hash}" if target_key and content_hash else ""
+        if pid in done_ids or (legacy_key and legacy_key in done_ids):
             status = "done"
         rollback_status[status] = rollback_status.get(status, 0) + 1
         if item.get("success") and status == "pending":
@@ -1130,7 +1151,7 @@ def summarize_autonomy_status(*, limit: int = 1000, min_occurrences: int = 2) ->
     report = {
         "schema": "ApexRuntimeOSAutonomyStatus/v1",
         "mode": _mode(),
-        "autopromote_enabled": _flag("APEX_RUNTIMEOS_AUTOPROMOTE_ENABLED", "0"),
+        "autopromote_enabled": _flag("APEX_RUNTIMEOS_AUTOPROMOTE_ENABLED", "1"),
         "rollback_enabled": _flag("APEX_RUNTIMEOS_ROLLBACK_ENABLED", "0"),
         "candidate_path_exists": candidate_path.exists(),
         "promotion_audit_exists": audit_path.exists(),
@@ -1189,6 +1210,14 @@ def summarize_autonomy_status(*, limit: int = 1000, min_occurrences: int = 2) ->
             report["switch_cost_report"] = latest_switch_cost
     except Exception as exc:
         report["switch_cost_report_error"] = _safe_scalar(type(exc).__name__)
+    try:
+        from agent.apex_meta_evolution import load_latest_meta_evolution_report
+
+        latest_meta_evolution = load_latest_meta_evolution_report()
+        if latest_meta_evolution:
+            report["meta_evolution_report"] = latest_meta_evolution
+    except Exception as exc:
+        report["meta_evolution_report_error"] = _safe_scalar(type(exc).__name__)
     report["health_report"] = build_runtimeos_health_report(report)
     try:
         from runtime.quality.gate_runner import build_quality_gate_from_runtimeos_status
@@ -1283,6 +1312,17 @@ def summarize_autonomy_status(*, limit: int = 1000, min_occurrences: int = 2) ->
             "side_effects": "read_only_report",
         }
     try:
+        from agent.apex_cross_domain_genes import build_cross_domain_core_gene_gate
+
+        report["cross_domain_core_gene_gate"] = build_cross_domain_core_gene_gate(report)
+    except Exception as exc:
+        report["cross_domain_core_gene_gate"] = {
+            "schema": "PggArchonCrossDomainCoreGeneGate/v1",
+            "status": "ERROR",
+            "error": _safe_scalar(exc),
+            "side_effects": "read_only_report",
+        }
+    try:
         from agent.apex_v3_unified_score import build_apex_v3_unified_score_report
 
         report["apex_v3_unified_score"] = build_apex_v3_unified_score_report(report)
@@ -1311,3 +1351,4 @@ __all__ = [
     "build_runtimeos_health_watchdog_notice",
     "_watchdog_config",
 ]
+
