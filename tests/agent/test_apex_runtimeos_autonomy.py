@@ -606,6 +606,30 @@ def test_apex_runtimeos_cli_autonomy_shows_quality_missing_evidence(tmp_path, mo
     output = run_apex_runtimeos_cli(["autonomy"])
     assert "字段：CMMI缺失阻断证据" in output
     assert "test_report" in output
+    assert "字段：CMMI证据包已读取" in output
+    assert "字段：CMMI证据包有效" in output
+
+
+def test_apex_runtimeos_cli_autonomy_shows_quality_evidence_bundle_status(tmp_path, monkeypatch):
+    from hermes_cli.apex_runtimeos import run_apex_runtimeos_cli
+
+    monkeypatch.setenv("APEX_RUNTIMEOS_AUTOWRITE_DIR", str(tmp_path / "auto"))
+    bundle = {
+        "schema": "ApexRuntimeOSQualityEvidenceBundle/v1",
+        "source": "cli-unit-test",
+        "evidence": {
+            "test_report": {"present": True, "summary": "tests passed"},
+            "audit_log": {"present": True, "summary": "audit present"},
+            "documentation": {"present": True, "summary": "docs present"},
+        },
+    }
+    monkeypatch.setattr("runtime.quality.evidence_bundle.load_latest_quality_evidence_bundle", lambda: bundle)
+    output = run_apex_runtimeos_cli(["autonomy"])
+    assert "字段：CMMI证据包已读取" in output
+    assert "字段：CMMI证据包有效" in output
+    assert "字段：CMMI证据包来源" in output
+    assert "cli-unit-test" in output
+    assert "test_report" in output
 
 
 def test_apex_runtimeos_cli_autonomy_shows_skill_registry_policy(tmp_path, monkeypatch):

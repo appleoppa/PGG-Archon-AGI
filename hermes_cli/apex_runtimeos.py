@@ -208,6 +208,10 @@ def run_apex_runtimeos_cli(argv: list[str] | None = None) -> str:
         formula_report = status.get("formula_report") if isinstance(status.get("formula_report"), dict) else {}
         gep_report = status.get("gep_report") if isinstance(status.get("gep_report"), dict) else {}
         quality_gate = status.get("quality_gate") if isinstance(status.get("quality_gate"), dict) else {}
+        quality_bundle_raw = quality_gate.get("evidence_bundle")
+        quality_bundle = quality_bundle_raw if isinstance(quality_bundle_raw, dict) else {}
+        quality_bundle_source_raw = status.get("quality_evidence_bundle")
+        quality_bundle_source = quality_bundle_source_raw if isinstance(quality_bundle_source_raw, dict) else {}
         skill_registry_policy = status.get("skill_registry_policy") if isinstance(status.get("skill_registry_policy"), dict) else {}
         gep_index_raw = gep_report.get("capability_index")
         if isinstance(gep_index_raw, dict):
@@ -306,6 +310,21 @@ def run_apex_runtimeos_cli(argv: list[str] | None = None) -> str:
             "",
             "字段：CMMI缺失警告证据",
             f"值：{quality_gate.get('missing_warning_evidence', [])}",
+            "",
+            "字段：CMMI证据包已读取",
+            f"值：{quality_bundle.get('provided', False)}",
+            "",
+            "字段：CMMI证据包有效",
+            f"值：{quality_bundle.get('valid', False)}",
+            "",
+            "字段：CMMI证据包错误",
+            f"值：{quality_bundle.get('error') or status.get('quality_evidence_bundle_error') or '-'}",
+            "",
+            "字段：CMMI证据包键",
+            f"值：{quality_bundle.get('keys', [])}",
+            "",
+            "字段：CMMI证据包来源",
+            f"值：{quality_bundle_source.get('source', '-')}",
             "",
             "字段：GEP组件数",
             f"值：{gep_index.get('component_count', 0)}",
