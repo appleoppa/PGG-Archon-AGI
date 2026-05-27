@@ -175,3 +175,56 @@ def test_classify_gene_lifecycle_issues_from_sqlite_is_read_only(tmp_path):
     assert classification["sqlite_read"]["source_table"] == "evolution_genes"
     assert classification["gene_count"] == 2
     assert classification["side_effects"] == "read_only_report"
+
+
+def test_gene_lifecycle_includes_ready_co_scientist_candidate_when_sqlite_missing(tmp_path, monkeypatch):
+    monkeypatch.setenv("APEX_GENE_LIFECYCLE_DB_PATH", str(tmp_path / "missing.sqlite3"))
+    status = {
+        "schema": "ApexRuntimeOSAutonomyStatus/v1",
+        "co_scientist_gene_candidate": {
+            "schema": "ApexCoScientistGeneCandidateSummary/v1",
+            "status": "READY",
+            "eligible": True,
+            "candidate_id": "abc123",
+            "topic": "co gene",
+            "decision": "execute",
+            "reviewer_count": 2,
+            "evidence_level": "multi_model_debate",
+            "promotion_required": True,
+            "gene_library_written": False,
+            "side_effects": "read_only_candidate",
+        },
+    }
+    report = build_gene_lifecycle_gate_from_runtimeos_status(status)
+    assert report["status"] == "PASS"
+    assert report["sqlite_read"]["status"] == "BLOCK"
+    assert report["co_scientist_gene_candidate"]["present"] is True
+    assert report["co_scientist_gene_candidate"]["gene_library_written"] is False
+    assert report["gene_count"] == 1
+    assert report["promotable_count"] == 1
+    assert report["genes"][0]["gene"] == "co_scientist:abc123"
+
+
+def test_gene_lifecycle_holds_non_ready_co_scientist_candidate(tmp_path, monkeypatch):
+    monkeypatch.setenv("APEX_GENE_LIFECYCLE_DB_PATH", str(tmp_path / "missing.sqlite3"))
+    status = {
+        "schema": "ApexRuntimeOSAutonomyStatus/v1",
+        "co_scientist_gene_candidate": {
+            "schema": "ApexCoScientistGeneCandidateSummary/v1",
+            "status": "HOLD",
+            "eligible": False,
+            "candidate_id": "weak123",
+            "topic": "weak gene",
+            "decision": "hold",
+            "reviewer_count": 1,
+            "evidence_level": "insufficient",
+            "promotion_required": True,
+            "gene_library_written": False,
+            "side_effects": "read_only_candidate",
+        },
+    }
+    report = build_gene_lifecycle_gate_from_runtimeos_status(status)
+    assert report["status"] == "PASS"
+    assert report["co_scientist_gene_candidate"]["present"] is True
+    assert report["promotable_count"] == 0
+    assert report["genes"][0]["status"] == "active"

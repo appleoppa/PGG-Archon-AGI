@@ -219,16 +219,50 @@ def build_gene_lifecycle_gate_report(genes: Sequence[Mapping[str, Any]] | None =
     }
 
 
+def _co_scientist_candidate_to_gene(candidate: Mapping[str, Any]) -> Dict[str, Any] | None:
+    """Map a read-only Co-Scientist gene candidate into lifecycle metadata."""
+    if candidate.get("schema") != "ApexCoScientistGeneCandidateSummary/v1":
+        return None
+    candidate_id = str(candidate.get("candidate_id") or "").strip()
+    if not candidate_id:
+        return None
+    eligible = bool(candidate.get("eligible")) and str(candidate.get("status") or "") == "READY"
+    return {
+        "gene": f"co_scientist:{candidate_id}",
+        "status": "verified" if eligible else "active",
+        "evidence_hash": candidate_id,
+        "evidence": str(candidate.get("evidence_level") or "co_scientist_candidate"),
+        "validation_passed": eligible,
+        "verified_at": "co_scientist_candidate_ready" if eligible else "",
+        "source": "co_scientist_gene_candidate",
+    }
+
+
 def build_gene_lifecycle_gate_from_runtimeos_status(status: Mapping[str, Any]) -> Dict[str, Any]:
-    """Expose lifecycle readiness from the local gene DB without mutation."""
+    """Expose lifecycle readiness from the local gene DB and read-only candidates."""
     db_read = load_gene_lifecycle_candidates_from_sqlite(limit=500)
-    report = build_gene_lifecycle_gate_report(db_read.get("genes") if isinstance(db_read.get("genes"), list) else [])
+    raw_genes_any = db_read.get("genes")
+    raw_genes = raw_genes_any if isinstance(raw_genes_any, list) else []
+    genes: list[Mapping[str, Any]] = [item for item in raw_genes if isinstance(item, Mapping)]
+    co_gene_raw = status.get("co_scientist_gene_candidate") if isinstance(status, Mapping) else None
+    co_gene: Mapping[str, Any] = co_gene_raw if isinstance(co_gene_raw, Mapping) else {}
+    co_lifecycle_gene = _co_scientist_candidate_to_gene(co_gene)
+    if co_lifecycle_gene:
+        genes.append(co_lifecycle_gene)
+    report = build_gene_lifecycle_gate_report(genes)
     report["sqlite_read"] = {
         "schema": db_read.get("schema"),
         "status": db_read.get("status"),
         "db_exists": db_read.get("db_exists"),
         "source_table": db_read.get("source_table"),
         "gene_count": db_read.get("gene_count", 0),
+        "side_effects": "read_only_report",
+    }
+    report["co_scientist_gene_candidate"] = {
+        "present": bool(co_lifecycle_gene),
+        "status": co_gene.get("status", "UNKNOWN") if co_gene else "UNKNOWN",
+        "eligible": bool(co_gene.get("eligible")) if co_gene else False,
+        "gene_library_written": bool(co_gene.get("gene_library_written")) if co_gene else False,
         "side_effects": "read_only_report",
     }
     return report
