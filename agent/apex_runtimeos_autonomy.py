@@ -1101,6 +1101,14 @@ def summarize_autonomy_status(*, limit: int = 1000, min_occurrences: int = 2) ->
             report["quality_evidence_bundle"] = latest_quality_evidence
     except Exception as exc:
         report["quality_evidence_bundle_error"] = _safe_scalar(type(exc).__name__)
+    try:
+        from agent.apex_co_scientist import load_latest_debate_report
+
+        latest_debate = load_latest_debate_report()
+        if latest_debate:
+            report["co_scientist_report"] = latest_debate
+    except Exception as exc:
+        report["co_scientist_report_error"] = _safe_scalar(type(exc).__name__)
     report["health_report"] = build_runtimeos_health_report(report)
     try:
         from runtime.quality.gate_runner import build_quality_gate_from_runtimeos_status

@@ -219,6 +219,8 @@ def run_apex_runtimeos_cli(argv: list[str] | None = None) -> str:
         quality_bundle = quality_bundle_raw if isinstance(quality_bundle_raw, dict) else {}
         quality_bundle_source_raw = status.get("quality_evidence_bundle")
         quality_bundle_source = quality_bundle_source_raw if isinstance(quality_bundle_source_raw, dict) else {}
+        co_scientist_raw = status.get("co_scientist_report")
+        co_scientist = co_scientist_raw if isinstance(co_scientist_raw, dict) else {}
         skill_registry_policy = status.get("skill_registry_policy") if isinstance(status.get("skill_registry_policy"), dict) else {}
         gep_index_raw = gep_report.get("capability_index")
         if isinstance(gep_index_raw, dict):
@@ -347,6 +349,24 @@ def run_apex_runtimeos_cli(argv: list[str] | None = None) -> str:
             "",
             "字段：GEP HOLD原因",
             f"值：{gep_safety.get('hold_reasons', [])}",
+            "",
+            "字段：Co_Scientist状态",
+            f"值：{co_scientist.get('status', 'UNKNOWN')}",
+            "",
+            "字段：Co_Scientist有效",
+            f"值：{co_scientist.get('valid', False)}",
+            "",
+            "字段：Co_Scientist审查员数",
+            f"值：{co_scientist.get('reviewer_count', 0)}",
+            "",
+            "字段：Co_Scientist决策",
+            f"值：{co_scientist.get('decision', '-')}",
+            "",
+            "字段：Co_Scientist主题",
+            f"值：{co_scientist.get('topic', '-')}",
+            "",
+            "字段：Co_Scientist错误",
+            f"值：{status.get('co_scientist_report_error', '-')}",
             "",
             "字段：技能注册表策略状态",
             f"值：{skill_registry_policy.get('status', 'UNKNOWN')}",

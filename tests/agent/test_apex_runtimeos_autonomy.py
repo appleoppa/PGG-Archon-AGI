@@ -640,3 +640,48 @@ def test_apex_runtimeos_cli_autonomy_shows_skill_registry_policy(tmp_path, monke
     assert "字段：技能注册表策略状态" in output
     assert "deny_by_default" in output
     assert "desktop-super-evolution-source" in output
+
+
+def test_autonomy_status_includes_co_scientist_report(tmp_path, monkeypatch):
+    monkeypatch.setenv("APEX_RUNTIMEOS_AUTOWRITE_DIR", str(tmp_path / "auto"))
+    report = {
+        "schema": "ApexCoScientistDebateSummary/v1",
+        "valid": True,
+        "status": "PASS",
+        "topic": "unit co scientist",
+        "reviewer_count": 2,
+        "ok_count": 2,
+        "decision": "execute",
+        "promotion_required": True,
+        "applied_to_memory_or_skill": False,
+        "validation_errors": [],
+        "side_effects": "read_only_report",
+    }
+    monkeypatch.setattr("agent.apex_co_scientist.load_latest_debate_report", lambda: report)
+    status = summarize_autonomy_status(limit=10)
+    assert status["co_scientist_report"]["status"] == "PASS"
+    assert status["co_scientist_report"]["reviewer_count"] == 2
+
+
+def test_apex_runtimeos_cli_autonomy_shows_co_scientist_report(tmp_path, monkeypatch):
+    from hermes_cli.apex_runtimeos import run_apex_runtimeos_cli
+
+    monkeypatch.setenv("APEX_RUNTIMEOS_AUTOWRITE_DIR", str(tmp_path / "auto"))
+    report = {
+        "schema": "ApexCoScientistDebateSummary/v1",
+        "valid": True,
+        "status": "PASS",
+        "topic": "cli co scientist",
+        "reviewer_count": 2,
+        "ok_count": 2,
+        "decision": "execute",
+        "promotion_required": True,
+        "applied_to_memory_or_skill": False,
+        "validation_errors": [],
+        "side_effects": "read_only_report",
+    }
+    monkeypatch.setattr("agent.apex_co_scientist.load_latest_debate_report", lambda: report)
+    output = run_apex_runtimeos_cli(["autonomy"])
+    assert "字段：Co_Scientist状态" in output
+    assert "字段：Co_Scientist审查员数" in output
+    assert "cli co scientist" in output

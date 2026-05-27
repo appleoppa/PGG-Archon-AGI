@@ -80,4 +80,74 @@ def default_debate_report_path(topic: str) -> Path:
     return _DEFAULT_REPORT_DIR / f"{int(time.time())}_{safe}.json"
 
 
-__all__ = ["build_debate_report", "default_debate_report_path", "write_debate_report"]
+def _safe_report_dir(path: Path | None = None) -> Path:
+    resolved = (path or _DEFAULT_REPORT_DIR).expanduser().resolve()
+    repo_workspace = (Path(__file__).resolve().parents[1] / "workspace").resolve()
+    try:
+        resolved.relative_to(repo_workspace)
+    except ValueError as exc:
+        raise ValueError("co-scientist report directory must stay under repository workspace") from exc
+    return resolved
+
+
+def validate_debate_report(report: Mapping[str, Any]) -> Dict[str, Any]:
+    """Return a compact validation report for a Co-Scientist debate report."""
+    errors: list[str] = []
+    if report.get("schema") != "ApexCoScientistDebateReport/v1":
+        errors.append("schema")
+    reviewers = report.get("reviewers")
+    if not isinstance(reviewers, list):
+        errors.append("reviewers")
+    if not isinstance(report.get("reviewer_count"), int):
+        errors.append("reviewer_count")
+    if str(report.get("side_effects") or "") != "read_only_report":
+        errors.append("side_effects")
+    return {
+        "schema": "ApexCoScientistDebateValidation/v1",
+        "valid": not errors,
+        "errors": errors,
+        "side_effects": "read_only_report",
+    }
+
+
+def summarize_debate_report(report: Mapping[str, Any]) -> Dict[str, Any]:
+    """Reduce a debate report to autonomy-safe aggregate fields."""
+    validation = validate_debate_report(report)
+    return {
+        "schema": "ApexCoScientistDebateSummary/v1",
+        "valid": bool(validation.get("valid")),
+        "status": _safe_text(report.get("status"), limit=40),
+        "topic": _safe_text(report.get("topic"), limit=160),
+        "reviewer_count": int(report.get("reviewer_count") or 0) if isinstance(report.get("reviewer_count"), int) else 0,
+        "ok_count": int(report.get("ok_count") or 0) if isinstance(report.get("ok_count"), int) else 0,
+        "decision": _safe_text(report.get("decision"), limit=80),
+        "promotion_required": bool(report.get("promotion_required")),
+        "applied_to_memory_or_skill": bool(report.get("applied_to_memory_or_skill")),
+        "validation_errors": validation.get("errors", []),
+        "side_effects": "read_only_report",
+    }
+
+
+def load_latest_debate_report(directory: Path | None = None) -> Dict[str, Any] | None:
+    """Load and summarize the newest Co-Scientist report under workspace."""
+    root = _safe_report_dir(directory)
+    if not root.exists():
+        return None
+    candidates = [item for item in root.glob("*.json") if item.is_file() and not item.is_symlink()]
+    if not candidates:
+        return None
+    latest = max(candidates, key=lambda item: (item.stat().st_mtime, item.name))
+    data = json.loads(latest.read_text(encoding="utf-8"))
+    if not isinstance(data, dict):
+        raise ValueError("co-scientist report must be a mapping")
+    return summarize_debate_report(data)
+
+
+__all__ = [
+    "build_debate_report",
+    "default_debate_report_path",
+    "load_latest_debate_report",
+    "summarize_debate_report",
+    "validate_debate_report",
+    "write_debate_report",
+]

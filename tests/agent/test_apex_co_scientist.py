@@ -3,7 +3,13 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from agent.apex_co_scientist import build_debate_report, write_debate_report
+from agent.apex_co_scientist import (
+    build_debate_report,
+    load_latest_debate_report,
+    summarize_debate_report,
+    validate_debate_report,
+    write_debate_report,
+)
 from hermes_cli.apex_runtimeos import run_apex_runtimeos_cli
 
 
@@ -34,6 +40,46 @@ def test_write_debate_report(tmp_path):
     assert result["written"] is True
     assert out.exists()
     assert json.loads(out.read_text(encoding="utf-8"))["schema"] == "ApexCoScientistDebateReport/v1"
+
+
+def test_debate_report_summary_and_validation():
+    report = build_debate_report(topic="co", reviewers=[{"status": "ok"}, {"status": "ok"}], decision="execute")
+    validation = validate_debate_report(report)
+    summary = summarize_debate_report(report)
+    assert validation["valid"] is True
+    assert summary["schema"] == "ApexCoScientistDebateSummary/v1"
+    assert summary["status"] == "PASS"
+    assert summary["reviewer_count"] == 2
+    assert summary["promotion_required"] is True
+    assert summary["applied_to_memory_or_skill"] is False
+
+
+def test_load_latest_debate_report_under_workspace():
+    workspace = Path.cwd() / "workspace" / "co_scientist_test"
+    workspace.mkdir(parents=True, exist_ok=True)
+    older = build_debate_report(topic="old", reviewers=[], decision="hold")
+    newer = build_debate_report(topic="new", reviewers=[{"status": "ok"}, {"status": "ok"}], decision="execute")
+    older_path = workspace / "old.json"
+    newer_path = workspace / "new.json"
+    write_debate_report(older_path, older)
+    write_debate_report(newer_path, newer)
+    older_path.touch()
+    newer_path.touch()
+    loaded = load_latest_debate_report(workspace)
+    assert loaded is not None
+    assert loaded["topic"] == "new"
+    assert loaded["status"] == "PASS"
+
+
+def test_load_latest_debate_report_rejects_outside_workspace(tmp_path):
+    outside = tmp_path / "co_scientist"
+    outside.mkdir()
+    try:
+        load_latest_debate_report(outside)
+    except ValueError as exc:
+        assert "repository workspace" in str(exc)
+    else:  # pragma: no cover
+        raise AssertionError("expected ValueError")
 
 
 def test_cli_co_scientist_json_report(tmp_path):
