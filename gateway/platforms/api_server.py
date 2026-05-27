@@ -54,6 +54,18 @@ try:
 except Exception:  # pragma: no cover - identity fallback keeps API server importable
     USER_FACING_SYSTEM_LABEL = "PGG Archon AGI（原 APEX RuntimeOS）"
 
+
+_ARCHON_API_ENDPOINTS = {
+    "audit_summary": "/v1/pgg-archon/audit-summary",
+    "dashboard": "/v1/pgg-archon/dashboard",
+    "autonomy_status": "/v1/pgg-archon/autonomy-status",
+}
+_LEGACY_APEX_API_ENDPOINTS = {
+    "audit_summary": "/v1/apex-runtimeos/audit-summary",
+    "dashboard": "/v1/apex-runtimeos/dashboard",
+    "autonomy_status": "/v1/apex-runtimeos/autonomy-status",
+}
+
 try:
     from aiohttp import web
     AIOHTTP_AVAILABLE = True
@@ -243,6 +255,24 @@ def _safe_apex_runtimeos_metadata(result: Dict[str, Any]) -> Optional[Dict[str, 
     elif meta.get("status") == "FAIL":
         safe["error_code"] = "apex_runtimeos_gate_failed"
     return safe
+
+
+def _safe_archon_public_payload(value: Any) -> Any:
+    """Recursively trim internal prompt/message hints from public Archon payloads."""
+    if isinstance(value, dict):
+        out: Dict[str, Any] = {}
+        for key, item in value.items():
+            key_text = str(key)
+            lowered = key_text.lower()
+            if lowered in {"defect_lexicon"} or "prompt" in lowered or "messages" in lowered:
+                continue
+            out[key_text] = _safe_archon_public_payload(item)
+        return out
+    if isinstance(value, list):
+        return [_safe_archon_public_payload(item) for item in value]
+    if isinstance(value, str):
+        return re.sub(r"prompt|messages", "redacted", value, flags=re.IGNORECASE)
+    return value
 
 
 def _coerce_port(value: Any, default: int = DEFAULT_PORT) -> int:
@@ -1265,6 +1295,10 @@ class APIServerAdapter(BasePlatformAdapter):
                 "run_events_sse": True,
                 "run_stop": True,
                 "run_approval_response": True,
+                "pgg_archon_audit_summary": summarize_audit is not None,
+                "pgg_archon_dashboard": summarize_audit is not None,
+                "pgg_archon_autonomy_status": summarize_autonomy_status is not None,
+                # Compatibility feature flags for older APEX RuntimeOS clients.
                 "apex_runtimeos_audit_summary": summarize_audit is not None,
                 "apex_runtimeos_dashboard": summarize_audit is not None,
                 "apex_runtimeos_recommendation_gate": summarize_audit is not None,
@@ -1286,10 +1320,13 @@ class APIServerAdapter(BasePlatformAdapter):
                 "run_events": {"method": "GET", "path": "/v1/runs/{run_id}/events"},
                 "run_approval": {"method": "POST", "path": "/v1/runs/{run_id}/approval"},
                 "run_stop": {"method": "POST", "path": "/v1/runs/{run_id}/stop"},
-                "apex_runtimeos_audit_summary": {"method": "GET", "path": "/v1/apex-runtimeos/audit-summary"},
-                "apex_runtimeos_dashboard": {"method": "GET", "path": "/v1/apex-runtimeos/dashboard"},
-                "apex_runtimeos_recommendation_gate": {"method": "GET", "path": "/v1/apex-runtimeos/recommendation-gate"},
-                "apex_runtimeos_autonomy_status": {"method": "GET", "path": "/v1/apex-runtimeos/autonomy-status"},
+                "pgg_archon_audit_summary": {"method": "GET", "path": _ARCHON_API_ENDPOINTS["audit_summary"]},
+                "pgg_archon_dashboard": {"method": "GET", "path": _ARCHON_API_ENDPOINTS["dashboard"]},
+                "pgg_archon_autonomy_status": {"method": "GET", "path": _ARCHON_API_ENDPOINTS["autonomy_status"]},
+                "apex_runtimeos_audit_summary": {"method": "GET", "path": _LEGACY_APEX_API_ENDPOINTS["audit_summary"], "alias_of": "pgg_archon_audit_summary"},
+                "apex_runtimeos_dashboard": {"method": "GET", "path": _LEGACY_APEX_API_ENDPOINTS["dashboard"], "alias_of": "pgg_archon_dashboard"},
+                "apex_runtimeos_recommendation_gate": {"method": "GET", "path": "/v1/apex-runtimeos/recommendation-gate", "legacy_only": True},
+                "apex_runtimeos_autonomy_status": {"method": "GET", "path": _LEGACY_APEX_API_ENDPOINTS["autonomy_status"], "alias_of": "pgg_archon_autonomy_status"},
             },
         })
 
@@ -1331,7 +1368,7 @@ class APIServerAdapter(BasePlatformAdapter):
         summary.pop("audit_path", None)
         if summarize_autonomy_status is not None:
             try:
-                summary["autonomy"] = summarize_autonomy_status(limit=limit)
+                summary["autonomy"] = _safe_archon_public_payload(summarize_autonomy_status(limit=limit))
             except Exception:
                 logger.exception("[%s] Failed to summarize APEX RuntimeOS autonomy", self.name)
                 summary["autonomy"] = {"schema": "ApexRuntimeOSAutonomyStatus/v1", "status": "error", "error_code": "apex_runtimeos_autonomy_status_error"}
@@ -1373,7 +1410,7 @@ class APIServerAdapter(BasePlatformAdapter):
             if repair:
                 os.environ["APEX_RUNTIMEOS_CRON_LEDGER_REPAIR_ENABLED"] = "1"
             try:
-                status = summarize_autonomy_status(limit=limit, min_occurrences=min_occurrences)
+                status = _safe_archon_public_payload(summarize_autonomy_status(limit=limit, min_occurrences=min_occurrences))
             finally:
                 if repair:
                     if previous_repair is None:
@@ -1423,7 +1460,7 @@ class APIServerAdapter(BasePlatformAdapter):
         summary.pop("audit_path", None)
         if summarize_autonomy_status is not None:
             try:
-                summary["autonomy"] = summarize_autonomy_status(limit=limit)
+                summary["autonomy"] = _safe_archon_public_payload(summarize_autonomy_status(limit=limit))
             except Exception:
                 logger.exception("[%s] Failed to summarize APEX RuntimeOS autonomy for dashboard", self.name)
                 summary["autonomy"] = {"schema": "ApexRuntimeOSAutonomyStatus/v1", "status": "error", "error_code": "apex_runtimeos_autonomy_status_error"}
@@ -3835,9 +3872,12 @@ class APIServerAdapter(BasePlatformAdapter):
             self._app.router.add_get("/v1/health", self._handle_health)
             self._app.router.add_get("/v1/models", self._handle_models)
             self._app.router.add_get("/v1/capabilities", self._handle_capabilities)
-            self._app.router.add_get("/v1/apex-runtimeos/audit-summary", self._handle_apex_runtimeos_audit_summary)
-            self._app.router.add_get("/v1/apex-runtimeos/dashboard", self._handle_apex_runtimeos_dashboard)
-            self._app.router.add_get("/v1/apex-runtimeos/autonomy-status", self._handle_apex_runtimeos_autonomy_status)
+            self._app.router.add_get(_ARCHON_API_ENDPOINTS["audit_summary"], self._handle_apex_runtimeos_audit_summary)
+            self._app.router.add_get(_ARCHON_API_ENDPOINTS["dashboard"], self._handle_apex_runtimeos_dashboard)
+            self._app.router.add_get(_ARCHON_API_ENDPOINTS["autonomy_status"], self._handle_apex_runtimeos_autonomy_status)
+            self._app.router.add_get(_LEGACY_APEX_API_ENDPOINTS["audit_summary"], self._handle_apex_runtimeos_audit_summary)
+            self._app.router.add_get(_LEGACY_APEX_API_ENDPOINTS["dashboard"], self._handle_apex_runtimeos_dashboard)
+            self._app.router.add_get(_LEGACY_APEX_API_ENDPOINTS["autonomy_status"], self._handle_apex_runtimeos_autonomy_status)
             self._app.router.add_post("/v1/chat/completions", self._handle_chat_completions)
             self._app.router.add_post("/v1/responses", self._handle_responses)
             self._app.router.add_get("/v1/responses/{response_id}", self._handle_get_response)

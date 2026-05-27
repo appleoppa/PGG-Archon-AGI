@@ -413,6 +413,9 @@ def _create_app(adapter: APIServerAdapter) -> web.Application:
     app.router.add_get("/v1/health", adapter._handle_health)
     app.router.add_get("/v1/models", adapter._handle_models)
     app.router.add_get("/v1/capabilities", adapter._handle_capabilities)
+    app.router.add_get("/v1/pgg-archon/audit-summary", adapter._handle_apex_runtimeos_audit_summary)
+    app.router.add_get("/v1/pgg-archon/dashboard", adapter._handle_apex_runtimeos_dashboard)
+    app.router.add_get("/v1/pgg-archon/autonomy-status", adapter._handle_apex_runtimeos_autonomy_status)
     app.router.add_get("/v1/apex-runtimeos/audit-summary", adapter._handle_apex_runtimeos_audit_summary)
     app.router.add_get("/v1/apex-runtimeos/dashboard", adapter._handle_apex_runtimeos_dashboard)
     app.router.add_get("/v1/apex-runtimeos/autonomy-status", adapter._handle_apex_runtimeos_autonomy_status)
@@ -658,14 +661,23 @@ class TestCapabilitiesEndpoint:
             assert data["features"]["chat_completions"] is True
             assert data["features"]["run_status"] is True
             assert data["features"]["run_events_sse"] is True
+            assert data["features"]["pgg_archon_audit_summary"] is True
+            assert data["features"]["pgg_archon_dashboard"] is True
+            assert data["features"]["pgg_archon_autonomy_status"] is True
             assert data["features"]["apex_runtimeos_audit_summary"] is True
             assert data["features"]["apex_runtimeos_dashboard"] is True
             assert data["features"]["apex_runtimeos_autonomy_status"] is True
             assert data["features"]["session_continuity_header"] == "X-Hermes-Session-Id"
             assert data["endpoints"]["run_status"]["path"] == "/v1/runs/{run_id}"
+            assert data["endpoints"]["pgg_archon_audit_summary"]["path"] == "/v1/pgg-archon/audit-summary"
+            assert data["endpoints"]["pgg_archon_dashboard"]["path"] == "/v1/pgg-archon/dashboard"
+            assert data["endpoints"]["pgg_archon_autonomy_status"]["path"] == "/v1/pgg-archon/autonomy-status"
             assert data["endpoints"]["apex_runtimeos_audit_summary"]["path"] == "/v1/apex-runtimeos/audit-summary"
+            assert data["endpoints"]["apex_runtimeos_audit_summary"]["alias_of"] == "pgg_archon_audit_summary"
             assert data["endpoints"]["apex_runtimeos_dashboard"]["path"] == "/v1/apex-runtimeos/dashboard"
+            assert data["endpoints"]["apex_runtimeos_dashboard"]["alias_of"] == "pgg_archon_dashboard"
             assert data["endpoints"]["apex_runtimeos_autonomy_status"]["path"] == "/v1/apex-runtimeos/autonomy-status"
+            assert data["endpoints"]["apex_runtimeos_autonomy_status"]["alias_of"] == "pgg_archon_autonomy_status"
 
     @pytest.mark.asyncio
     async def test_capabilities_requires_auth_when_key_configured(self, auth_adapter):
@@ -704,7 +716,7 @@ class TestApexRuntimeOSAuditSummaryEndpoint:
         )
         app = _create_app(adapter)
         async with TestClient(TestServer(app)) as cli:
-            resp = await cli.get("/v1/apex-runtimeos/audit-summary?limit=10")
+            resp = await cli.get("/v1/pgg-archon/audit-summary?limit=10")
             assert resp.status == 200
             data = await resp.json()
             assert data["object"] == "hermes.apex_runtimeos.audit_summary"
@@ -759,7 +771,7 @@ class TestApexRuntimeOSAuditSummaryEndpoint:
         )
         app = _create_app(adapter)
         async with TestClient(TestServer(app)) as cli:
-            resp = await cli.get("/v1/apex-runtimeos/dashboard?limit=10")
+            resp = await cli.get("/v1/pgg-archon/dashboard?limit=10")
             assert resp.status == 200
             assert resp.content_type == "text/html"
             text = await resp.text()
@@ -822,7 +834,7 @@ class TestApexRuntimeOSAuditSummaryEndpoint:
         )
         app = _create_app(adapter)
         async with TestClient(TestServer(app)) as cli:
-            resp = await cli.get("/v1/apex-runtimeos/autonomy-status?limit=10&min_occurrences=2")
+            resp = await cli.get("/v1/pgg-archon/autonomy-status?limit=10&min_occurrences=2")
             assert resp.status == 200
             data = await resp.json()
             assert data["object"] == "hermes.apex_runtimeos.autonomy_status"
