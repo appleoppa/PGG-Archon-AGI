@@ -204,6 +204,7 @@ def run_apex_runtimeos_cli(argv: list[str] | None = None) -> str:
         formula_report = status.get("formula_report") if isinstance(status.get("formula_report"), dict) else {}
         gep_report = status.get("gep_report") if isinstance(status.get("gep_report"), dict) else {}
         quality_gate = status.get("quality_gate") if isinstance(status.get("quality_gate"), dict) else {}
+        skill_registry_policy = status.get("skill_registry_policy") if isinstance(status.get("skill_registry_policy"), dict) else {}
         gep_index_raw = gep_report.get("capability_index")
         if isinstance(gep_index_raw, dict):
             gep_index = gep_index_raw
@@ -307,6 +308,18 @@ def run_apex_runtimeos_cli(argv: list[str] | None = None) -> str:
             "",
             "字段：GEP混淆组件数",
             f"值：{gep_counts.get('archived_obfuscated', 0)}",
+            "",
+            "字段：技能注册表策略状态",
+            f"值：{skill_registry_policy.get('status', 'UNKNOWN')}",
+            "",
+            "字段：技能注册表默认策略",
+            f"值：{skill_registry_policy.get('policy', '-')}",
+            "",
+            "字段：高风险只读来源数",
+            f"值：{skill_registry_policy.get('reference_only_high_risk_count', 0)}",
+            "",
+            "字段：高风险只读来源ID",
+            f"值：{skill_registry_policy.get('reference_only_high_risk_ids', [])}",
             "",
             "字段：高风险晋升生命周期门禁",
             f"值：{promotion_lifecycle_gate.get('status', 'UNKNOWN')}",

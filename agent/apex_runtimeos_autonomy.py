@@ -1160,6 +1160,17 @@ def summarize_autonomy_status(*, limit: int = 1000, min_occurrences: int = 2) ->
             "error": _safe_scalar(exc),
             "side_effects": "read_only_report",
         }
+    try:
+        from runtime.skills.registry_validator import validate_skill_registry_policy
+
+        report["skill_registry_policy"] = validate_skill_registry_policy()
+    except Exception as exc:
+        report["skill_registry_policy"] = {
+            "schema": "ApexRuntimeOSSkillRegistryPolicyReport/v1",
+            "status": "ERROR",
+            "error": _safe_scalar(exc),
+            "side_effects": "read_only_report",
+        }
     return report
 
 

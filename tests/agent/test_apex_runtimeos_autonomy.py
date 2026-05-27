@@ -553,6 +553,18 @@ def test_autonomy_status_includes_read_only_quality_gate(tmp_path, monkeypatch):
     assert quality_gate["boundary"].startswith("CMMI gate is read-only")
 
 
+def test_autonomy_status_includes_read_only_skill_registry_policy(tmp_path, monkeypatch):
+    monkeypatch.setenv("APEX_RUNTIMEOS_AUTOWRITE_DIR", str(tmp_path / "auto"))
+    status = summarize_autonomy_status(limit=10)
+    policy = status["skill_registry_policy"]
+    assert policy["schema"] == "ApexRuntimeOSSkillRegistryPolicyReport/v1"
+    assert policy["status"] == "PASS"
+    assert policy["policy"] == "deny_by_default"
+    assert policy["reference_only_high_risk_count"] >= 4
+    assert "desktop-super-evolution-source" in policy["reference_only_high_risk_ids"]
+    assert policy["side_effects"] == "read_only_report"
+
+
 def test_apex_runtimeos_cli_autonomy_shows_quality_missing_evidence(tmp_path, monkeypatch):
     from hermes_cli.apex_runtimeos import run_apex_runtimeos_cli
 
@@ -560,3 +572,13 @@ def test_apex_runtimeos_cli_autonomy_shows_quality_missing_evidence(tmp_path, mo
     output = run_apex_runtimeos_cli(["autonomy"])
     assert "字段：CMMI缺失阻断证据" in output
     assert "test_report" in output
+
+
+def test_apex_runtimeos_cli_autonomy_shows_skill_registry_policy(tmp_path, monkeypatch):
+    from hermes_cli.apex_runtimeos import run_apex_runtimeos_cli
+
+    monkeypatch.setenv("APEX_RUNTIMEOS_AUTOWRITE_DIR", str(tmp_path / "auto"))
+    output = run_apex_runtimeos_cli(["autonomy"])
+    assert "字段：技能注册表策略状态" in output
+    assert "deny_by_default" in output
+    assert "desktop-super-evolution-source" in output
