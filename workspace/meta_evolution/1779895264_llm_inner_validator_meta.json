@@ -1,0 +1,49 @@
+{
+  "schema": "ApexMetaEvolutionReport/v1",
+  "ts": 1779895264.64198,
+  "status": "PASS",
+  "score": 100.0,
+  "signals": {
+    "strategy_ledger": true,
+    "shadow_replay": true,
+    "drift_sensor": true,
+    "cost_sensor": true,
+    "era_feedback_bound": true,
+    "co_scientist_bound": true,
+    "quality_feedback_bound": true
+  },
+  "missing": [],
+  "strategy_ledger": {
+    "valid": true,
+    "unique_keys": 129,
+    "bad_lines": 0,
+    "ledger_source": "cron_dryrun_read_only"
+  },
+  "shadow_replay": {
+    "valid": true,
+    "flow_status": "PASS",
+    "selected_path_id": "safe",
+    "realized_score": 0.7925,
+    "mode": "read_only_shadow_observation"
+  },
+  "drift_sensor": {
+    "valid": true,
+    "score_delta": 0.0925,
+    "mode": "flow_reward_delta_read_only"
+  },
+  "cost_sensor": {
+    "valid": true,
+    "switch_status": "WATCH",
+    "net_gain": 0.114,
+    "cron_total_lines": 129,
+    "cron_task_count": 4,
+    "mode": "switch_cost_or_cron_activity_read_only"
+  },
+  "llm_validator": {
+    "valid": true,
+    "role": "inner_reasoning_validator_only",
+    "boundary": "LLM review can propose engineering fixes but cannot mark external code trusted or complete AGI."
+  },
+  "side_effects": "read_only_report",
+  "agi_completion_claim": false
+}

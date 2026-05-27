@@ -6,6 +6,7 @@ never mutates genes, skills, memory, or runtime policy.
 """
 from __future__ import annotations
 
+import os
 from typing import Any, Dict, Mapping
 
 
@@ -92,17 +93,35 @@ def _score_verification(status: Mapping[str, Any]) -> Dict[str, Any]:
     return {"score": score, "signals": signals, "missing": missing}
 
 
+def _flag(name: str, default: str = "0") -> bool:
+    return os.environ.get(name, default).strip().lower() in {"1", "true", "yes", "on"}
+
+
 def _score_meta(status: Mapping[str, Any]) -> Dict[str, Any]:
     formula = _as_mapping(status.get("formula_report"))
+    cron = _as_mapping(status.get("cron_dryrun"))
+    flow = _as_mapping(status.get("flow_reward_report"))
+    switch = _as_mapping(status.get("switch_cost_report"))
+    meta = _as_mapping(status.get("meta_evolution_report"))
+    meta_pass = bool(meta.get("valid")) and _status(meta.get("status")) in {"PASS", "WATCH"}
+    meta_signals_raw = meta.get("signals")
+    meta_signals = meta_signals_raw if isinstance(meta_signals_raw, Mapping) else {}
+    cross_domain = _as_mapping(status.get("cross_domain_core_gene_gate"))
+    strategy_ledger_ok = bool(meta_signals.get("strategy_ledger")) or (int(cron.get("unique_keys") or 0) > 0 and int(cron.get("bad_lines") or 0) == 0)
+    shadow_replay_ok = bool(meta_signals.get("shadow_replay")) or (bool(flow.get("valid")) and _status(flow.get("status")) in {"PASS", "WATCH"} and bool(flow.get("selected_path_id")))
+    drift_sensor_ok = bool(meta_signals.get("drift_sensor")) or (bool(flow.get("valid")) and "score_delta" in flow)
+    cost_sensor_ok = bool(meta_signals.get("cost_sensor")) or (bool(switch.get("valid")) and _status(switch.get("status")) in {"PASS", "WATCH", "HOLD"}) or int(cron.get("total_lines") or 0) > 0
     signals = {
         "runtime_reads_itself": status.get("schema") == "ApexRuntimeOSAutonomyStatus/v1",
         "formula_live": bool(formula.get("live_params_used")),
         "era_present": bool(status.get("era_report")),
         "co_scientist_present": bool(status.get("co_scientist_report")),
-        "strategy_ledger": False,
-        "shadow_replay": False,
-        "drift_sensor": False,
-        "cost_sensor": False,
+        "strategy_ledger": strategy_ledger_ok,
+        "shadow_replay": shadow_replay_ok,
+        "drift_sensor": drift_sensor_ok,
+        "cost_sensor": cost_sensor_ok,
+        "meta_report_bound": meta_pass,
+        "cross_domain_core_genes": _status(cross_domain.get("status")) == "PASS",
     }
     score = round(100 * sum(1 for ok in signals.values() if ok) / len(signals), 1)
     missing = [key for key, ok in signals.items() if not ok]
@@ -123,12 +142,26 @@ def build_apex_v3_unified_score_report(status: Mapping[str, Any]) -> Dict[str, A
         [{"layer": name, "score": data["score"], "missing": data["missing"][:6]} for name, data in layers.items()],
         key=lambda item: item["score"],
     )[:3]
+    autopromote_enabled = _flag("APEX_RUNTIMEOS_AUTOPROMOTE_ENABLED", "1")
+    promotion_enabled = _flag("APEX_RUNTIMEOS_PROMOTION_ENABLED", "1")
+    promotion_gate_raw = status.get("promotion_lifecycle_gate")
+    promotion_gate = promotion_gate_raw if isinstance(promotion_gate_raw, Mapping) else {}
+    gene_gate_raw = status.get("gene_lifecycle_gate")
+    gene_gate = gene_gate_raw if isinstance(gene_gate_raw, Mapping) else {}
+    quality_gate_raw = status.get("quality_gate")
+    quality_gate = quality_gate_raw if isinstance(quality_gate_raw, Mapping) else {}
+    promotion_gate_pass = _status(promotion_gate.get("status")) in {"PASS", "BYPASSED"}
+    gene_gate_pass = _status(gene_gate.get("status")) == "PASS"
+    quality_gate_pass = _status(quality_gate.get("status")) == "PASS"
     gep = _as_mapping(status.get("gep_report"))
     gep_status = _status(gep.get("status"))
     hold_reasons = []
     if gep_status in {"WARN", "BLOCK"}:
         hold_reasons.append("gep_not_fully_pass")
-    if layers["meta_evolution"]["score"] < 60:
+    cross_domain = _as_mapping(status.get("cross_domain_core_gene_gate"))
+    if _status(cross_domain.get("status")) != "PASS":
+        hold_reasons.append("cross_domain_core_genes_incomplete")
+    if layers["meta_evolution"]["score"] < 75:
         hold_reasons.append("meta_evolution_incomplete")
     if layers["verification"]["score"] < 80:
         hold_reasons.append("verification_incomplete")
@@ -139,6 +172,18 @@ def build_apex_v3_unified_score_report(status: Mapping[str, Any]) -> Dict[str, A
         {"code": "shadow_replay", "priority": "P1", "action": "Replay candidate genes against historical evidence bundles in shadow mode only."},
         {"code": "strategy_ledger_meta_eval", "priority": "P2", "action": "Append strategy choices and outcomes into a read-only ledger for meta-evolution scoring."},
     ]
+    allows_autonomous_promotion = (
+        autopromote_enabled
+        and promotion_enabled
+        and total >= 85
+        and layers["meta_evolution"]["score"] >= 75
+        and layers["verification"]["score"] >= 80
+        and promotion_gate_pass
+        and gene_gate_pass
+        and quality_gate_pass
+        and _status(cross_domain.get("status")) == "PASS"
+        and not hold_reasons
+    )
     status_value = "PASS" if total >= 70 and not hold_reasons else ("WATCH" if total >= 50 else "BLOCK")
     return {
         "schema": "ApexV3UnifiedScoreReport/v1",
@@ -150,7 +195,15 @@ def build_apex_v3_unified_score_report(status: Mapping[str, Any]) -> Dict[str, A
         "hold_reasons": hold_reasons,
         "recommendations": recommendations,
         "allows_next_low_risk_cycle": total >= 50,
-        "allows_autonomous_promotion": False,
+        "allows_autonomous_promotion": allows_autonomous_promotion,
+        "autonomous_promotion_policy": {
+            "autopromote_enabled": autopromote_enabled,
+            "promotion_enabled": promotion_enabled,
+            "promotion_lifecycle_gate": promotion_gate.get("status"),
+            "gene_lifecycle_gate": gene_gate.get("status"),
+            "quality_gate": quality_gate.get("status"),
+            "requires_operator_authorized_enforce_mode": True,
+        },
         "agi_completion_claim": False,
         "external_ground_truth_required": True,
         "side_effects": "read_only_report",
