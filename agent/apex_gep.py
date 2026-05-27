@@ -238,10 +238,25 @@ def build_gep_safety_pipeline(index: Mapping[str, Any] | None = None) -> Dict[st
             "required_guards": ["feature_flag", "preflight", "sandbox", "tasks_only", "max_tasks_per_cycle"],
         },
         {
+            "id": "external_ingestion_review",
+            "status": "HOLD",
+            "required_before_runtime": True,
+            "surfaces": ["book_to_skill", "github_ingestion"],
+            "required_guards": [
+                "source_manifest",
+                "license_review",
+                "checksum_or_hash",
+                "read_only_parser",
+                "no_unknown_code_execution",
+                "quality_evidence_bundle",
+            ],
+            "reason": "Book-to-skill and GitHub ingestion stay as read-only metadata pipelines until provenance, license, checksum, tests, and quality evidence are present.",
+        },
+        {
             "id": "runtime_execution",
             "status": "HOLD",
             "allowed_now": False,
-            "reason": "archived_or_external_code_must_remain_read_only_until_all_prior_stages_pass",
+            "reason": "archived_or_external_code_and_generated_skills_must_remain_read_only_until_all_prior_stages_pass",
         },
     ]
     if missing_count:
@@ -254,7 +269,7 @@ def build_gep_safety_pipeline(index: Mapping[str, Any] | None = None) -> Dict[st
         "runtime_allowed": False,
         "stages": stages,
         "hold_reasons": [stage["id"] for stage in stages if stage.get("status") in {"HOLD", "BLOCK"}],
-        "boundary": "Read-only gate only; no external repositories, archived JavaScript, validators, or generated skills are executed.",
+        "boundary": "Read-only gate only; no external repositories, archived JavaScript, validators, books, GitHub ingestion, or generated skills are executed.",
         "side_effects": "read_only_report",
     }
 

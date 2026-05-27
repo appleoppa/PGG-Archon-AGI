@@ -78,9 +78,22 @@ def test_gep_safety_pipeline_keeps_archived_components_on_hold():
     assert pipeline["status"] == "HOLD"
     assert pipeline["runtime_allowed"] is False
     assert "deobfuscation_review" in pipeline["hold_reasons"]
+    assert "external_ingestion_review" in pipeline["hold_reasons"]
     assert "runtime_execution" in pipeline["hold_reasons"]
     assert pipeline["side_effects"] == "read_only_report"
     assert "no external repositories" in pipeline["boundary"]
+
+
+def test_gep_safety_pipeline_keeps_book_and_github_ingestion_read_only():
+    pipeline = build_gep_safety_pipeline(build_gep_capability_index())
+    stage = next(item for item in pipeline["stages"] if item["id"] == "external_ingestion_review")
+    assert stage["status"] == "HOLD"
+    assert stage["surfaces"] == ["book_to_skill", "github_ingestion"]
+    assert "no_unknown_code_execution" in stage["required_guards"]
+    assert "quality_evidence_bundle" in stage["required_guards"]
+    assert "Book-to-skill" in stage["reason"]
+    assert pipeline["runtime_allowed"] is False
+    assert "GitHub ingestion" in pipeline["boundary"]
 
 
 def test_gep_report_from_runtimeos_status_is_read_only():
