@@ -849,3 +849,22 @@ def test_apex_runtimeos_cli_autonomy_shows_apex_v3_unified_score(tmp_path, monke
     assert "字段：APEX v3统一评分状态" in output
     assert "字段：APEX v3统一评分" in output
     assert "字段：APEX v3允许自动晋升" in output
+
+
+def test_autonomy_status_includes_gpo_report(tmp_path, monkeypatch):
+    monkeypatch.setenv("APEX_RUNTIMEOS_AUTOWRITE_DIR", str(tmp_path / "auto"))
+    status = summarize_autonomy_status(limit=10)
+    gpo = status["gpo_report"]
+    assert gpo["schema"] == "ApexGenePrincipleOntologyReport/v1"
+    assert gpo["runtime_allowed"] is False
+    assert gpo["side_effects"] == "read_only_report"
+
+
+def test_apex_runtimeos_cli_autonomy_shows_gpo_report(tmp_path, monkeypatch):
+    from hermes_cli.apex_runtimeos import run_apex_runtimeos_cli
+
+    monkeypatch.setenv("APEX_RUNTIMEOS_AUTOWRITE_DIR", str(tmp_path / "auto"))
+    output = run_apex_runtimeos_cli(["autonomy"])
+    assert "字段：GPO状态" in output
+    assert "字段：GPO原则数" in output
+    assert "字段：Omega运行接入允许" in output

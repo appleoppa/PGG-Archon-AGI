@@ -238,6 +238,10 @@ def run_apex_runtimeos_cli(argv: list[str] | None = None) -> str:
         switch_cost_raw = status.get("switch_cost_report")
         switch_cost = switch_cost_raw if isinstance(switch_cost_raw, dict) else {}
         skill_registry_policy = status.get("skill_registry_policy") if isinstance(status.get("skill_registry_policy"), dict) else {}
+        gpo_raw = status.get("gpo_report")
+        gpo_report = gpo_raw if isinstance(gpo_raw, dict) else {}
+        gpo_scan_raw = gpo_report.get("omega_static_scan")
+        gpo_scan = gpo_scan_raw if isinstance(gpo_scan_raw, dict) else {}
         unified_raw = status.get("apex_v3_unified_score")
         unified_score = unified_raw if isinstance(unified_raw, dict) else {}
         gep_index_raw = gep_report.get("capability_index")
@@ -466,6 +470,21 @@ def run_apex_runtimeos_cli(argv: list[str] | None = None) -> str:
             "",
             "字段：APEX v3允许自动晋升",
             f"值：{unified_score.get('allows_autonomous_promotion', False)}",
+            "",
+            "字段：GPO状态",
+            f"值：{gpo_report.get('status', 'UNKNOWN')}",
+            "",
+            "字段：GPO原则数",
+            f"值：{gpo_report.get('principle_count', 0)}",
+            "",
+            "字段：Omega静态扫描文件数",
+            f"值：{gpo_scan.get('py_file_count', 0)}",
+            "",
+            "字段：Omega静态扫描类数",
+            f"值：{gpo_scan.get('class_count', 0)}",
+            "",
+            "字段：Omega运行接入允许",
+            f"值：{gpo_report.get('runtime_allowed', False)}",
             "",
             "字段：技能注册表策略状态",
             f"值：{skill_registry_policy.get('status', 'UNKNOWN')}",
