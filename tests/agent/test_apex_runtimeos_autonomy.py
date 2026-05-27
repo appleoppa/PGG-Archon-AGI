@@ -855,7 +855,8 @@ def test_autonomy_status_includes_gpo_report(tmp_path, monkeypatch):
     monkeypatch.setenv("APEX_RUNTIMEOS_AUTOWRITE_DIR", str(tmp_path / "auto"))
     status = summarize_autonomy_status(limit=10)
     gpo = status["gpo_report"]
-    assert gpo["schema"] == "ApexGenePrincipleOntologyReport/v1"
+    assert gpo["schema"] == "ApexGenePrincipleOntologyReport/v2"
+    assert gpo["source_repo"] == "omega-agi-supremacy"
     assert gpo["runtime_allowed"] is False
     assert gpo["side_effects"] == "read_only_report"
 
@@ -867,4 +868,5 @@ def test_apex_runtimeos_cli_autonomy_shows_gpo_report(tmp_path, monkeypatch):
     output = run_apex_runtimeos_cli(["autonomy"])
     assert "字段：GPO状态" in output
     assert "字段：GPO原则数" in output
+    assert "字段：GPO知识源" in output
     assert "字段：Omega运行接入允许" in output

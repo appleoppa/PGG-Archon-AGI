@@ -1264,8 +1264,10 @@ def summarize_autonomy_status(*, limit: int = 1000, min_occurrences: int = 2) ->
         report["gpo_report"] = build_gpo_report()
     except Exception as exc:
         report["gpo_report"] = {
-            "schema": "ApexGenePrincipleOntologyReport/v1",
+            "schema": "ApexGenePrincipleOntologyReport/v2",
             "status": "ERROR",
+            "source_repo": "omega-agi-supremacy",
+            "source_policy": "reference_only_static_knowledge",
             "error": _safe_scalar(exc),
             "side_effects": "read_only_report",
         }
