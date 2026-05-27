@@ -798,3 +798,23 @@ def test_apex_runtimeos_cli_autonomy_shows_era_report(tmp_path, monkeypatch):
     assert "字段：ERA路径搜索状态" in output
     assert "字段：ERA选中路径" in output
     assert "safe" in output
+
+
+def test_autonomy_status_includes_apex_v3_unified_score(tmp_path, monkeypatch):
+    monkeypatch.setenv("APEX_RUNTIMEOS_AUTOWRITE_DIR", str(tmp_path / "auto"))
+    status = summarize_autonomy_status(limit=10)
+    report = status["apex_v3_unified_score"]
+    assert report["schema"] == "ApexV3UnifiedScoreReport/v1"
+    assert report["agi_completion_claim"] is False
+    assert report["allows_autonomous_promotion"] is False
+    assert report["side_effects"] == "read_only_report"
+
+
+def test_apex_runtimeos_cli_autonomy_shows_apex_v3_unified_score(tmp_path, monkeypatch):
+    from hermes_cli.apex_runtimeos import run_apex_runtimeos_cli
+
+    monkeypatch.setenv("APEX_RUNTIMEOS_AUTOWRITE_DIR", str(tmp_path / "auto"))
+    output = run_apex_runtimeos_cli(["autonomy"])
+    assert "字段：APEX v3统一评分状态" in output
+    assert "字段：APEX v3统一评分" in output
+    assert "字段：APEX v3允许自动晋升" in output

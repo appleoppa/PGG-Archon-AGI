@@ -1227,6 +1227,17 @@ def summarize_autonomy_status(*, limit: int = 1000, min_occurrences: int = 2) ->
             "error": _safe_scalar(exc),
             "side_effects": "read_only_report",
         }
+    try:
+        from agent.apex_v3_unified_score import build_apex_v3_unified_score_report
+
+        report["apex_v3_unified_score"] = build_apex_v3_unified_score_report(report)
+    except Exception as exc:
+        report["apex_v3_unified_score"] = {
+            "schema": "ApexV3UnifiedScoreReport/v1",
+            "status": "ERROR",
+            "error": _safe_scalar(exc),
+            "side_effects": "read_only_report",
+        }
     return report
 
 

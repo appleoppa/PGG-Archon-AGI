@@ -1,0 +1,160 @@
+"""APEX v3.0 unified evolution score report.
+
+This module turns the AGI unified evolution architecture into an executable,
+read-only scoring surface for RuntimeOS.  It does not claim AGI completion and
+never mutates genes, skills, memory, or runtime policy.
+"""
+from __future__ import annotations
+
+from typing import Any, Dict, Mapping
+
+
+def _status(value: Any) -> str:
+    return str(value or "UNKNOWN").upper()
+
+
+def _bool(value: Any) -> bool:
+    return bool(value)
+
+
+def _as_mapping(value: Any) -> Mapping[str, Any]:
+    return value if isinstance(value, Mapping) else {}
+
+
+def _score_sensor(status: Mapping[str, Any]) -> Dict[str, Any]:
+    quality_gate = _as_mapping(status.get("quality_gate"))
+    quality_bundle = _as_mapping(quality_gate.get("evidence_bundle"))
+    health = _as_mapping(status.get("health_report"))
+    cron = _as_mapping(status.get("cron_dryrun"))
+    signals = {
+        "quality_gate": _status(quality_gate.get("status")) == "PASS",
+        "quality_bundle": bool(quality_bundle.get("valid")),
+        "health": _status(health.get("status")) in {"OK", "INFO"},
+        "cron_clean": int(cron.get("bad_lines") or 0) == 0,
+        "era": bool(status.get("era_report")),
+        "co_scientist": bool(status.get("co_scientist_report")),
+        "gene_lifecycle": bool(status.get("gene_lifecycle_gate")),
+    }
+    score = round(100 * sum(1 for ok in signals.values() if ok) / len(signals), 1)
+    missing = [key for key, ok in signals.items() if not ok]
+    return {"score": score, "signals": signals, "missing": missing}
+
+
+def _score_diagnosis(status: Mapping[str, Any]) -> Dict[str, Any]:
+    gep = _as_mapping(status.get("gep_report"))
+    gene_gate = _as_mapping(status.get("gene_lifecycle_gate"))
+    quality_gate = _as_mapping(status.get("quality_gate"))
+    era = _as_mapping(status.get("era_report"))
+    signals = {
+        "health_report": bool(status.get("health_report")),
+        "quality_missing_evidence_visible": "missing_blocking_evidence" in quality_gate,
+        "gene_issues_visible": isinstance(gene_gate.get("issues"), list),
+        "gep_warn_visible": _status(gep.get("status")) in {"PASS", "WARN", "BLOCK"},
+        "era_path_selected": bool(era.get("selected_path_id")),
+    }
+    score = round(100 * sum(1 for ok in signals.values() if ok) / len(signals), 1)
+    missing = [key for key, ok in signals.items() if not ok]
+    return {"score": score, "signals": signals, "missing": missing}
+
+
+def _score_evolution(status: Mapping[str, Any]) -> Dict[str, Any]:
+    co_gene = _as_mapping(status.get("co_scientist_gene_candidate"))
+    gene_gate = _as_mapping(status.get("gene_lifecycle_gate"))
+    era = _as_mapping(status.get("era_report"))
+    co = _as_mapping(status.get("co_scientist_report"))
+    gep = _as_mapping(status.get("gep_report"))
+    signals = {
+        "era_pass": _status(era.get("status")) == "PASS",
+        "co_scientist_pass": _status(co.get("status")) == "PASS",
+        "gene_candidate_ready": _status(co_gene.get("status")) == "READY",
+        "gene_lifecycle_pass": _status(gene_gate.get("status")) == "PASS",
+        "gene_not_written": not bool(co_gene.get("gene_library_written")),
+        "gep_not_block": _status(gep.get("status")) != "BLOCK",
+    }
+    score = round(100 * sum(1 for ok in signals.values() if ok) / len(signals), 1)
+    missing = [key for key, ok in signals.items() if not ok]
+    return {"score": score, "signals": signals, "missing": missing}
+
+
+def _score_verification(status: Mapping[str, Any]) -> Dict[str, Any]:
+    quality = _as_mapping(status.get("quality_gate"))
+    formula = _as_mapping(status.get("formula_report"))
+    skill = _as_mapping(status.get("skill_registry_policy"))
+    signals = {
+        "quality_gate_pass": _status(quality.get("status")) == "PASS",
+        "formula_pass": _status(formula.get("status")) == "PASS",
+        "skill_policy_pass": _status(skill.get("status")) == "PASS",
+        "no_pending_rollbacks": int(status.get("pending_rollbacks") or 0) == 0,
+        "rollback_gate_present": bool(status.get("promotion_lifecycle_gate")),
+    }
+    score = round(100 * sum(1 for ok in signals.values() if ok) / len(signals), 1)
+    missing = [key for key, ok in signals.items() if not ok]
+    return {"score": score, "signals": signals, "missing": missing}
+
+
+def _score_meta(status: Mapping[str, Any]) -> Dict[str, Any]:
+    formula = _as_mapping(status.get("formula_report"))
+    signals = {
+        "runtime_reads_itself": status.get("schema") == "ApexRuntimeOSAutonomyStatus/v1",
+        "formula_live": bool(formula.get("live_params_used")),
+        "era_present": bool(status.get("era_report")),
+        "co_scientist_present": bool(status.get("co_scientist_report")),
+        "strategy_ledger": False,
+        "shadow_replay": False,
+        "drift_sensor": False,
+        "cost_sensor": False,
+    }
+    score = round(100 * sum(1 for ok in signals.values() if ok) / len(signals), 1)
+    missing = [key for key, ok in signals.items() if not ok]
+    return {"score": score, "signals": signals, "missing": missing}
+
+
+def build_apex_v3_unified_score_report(status: Mapping[str, Any]) -> Dict[str, Any]:
+    layers = {
+        "sensor": _score_sensor(status),
+        "diagnosis": _score_diagnosis(status),
+        "evolution": _score_evolution(status),
+        "verification": _score_verification(status),
+        "meta_evolution": _score_meta(status),
+    }
+    weights = {"sensor": 0.18, "diagnosis": 0.18, "evolution": 0.22, "verification": 0.24, "meta_evolution": 0.18}
+    total = round(sum(layers[name]["score"] * weight for name, weight in weights.items()), 1)
+    bottlenecks = sorted(
+        [{"layer": name, "score": data["score"], "missing": data["missing"][:6]} for name, data in layers.items()],
+        key=lambda item: item["score"],
+    )[:3]
+    gep = _as_mapping(status.get("gep_report"))
+    gep_status = _status(gep.get("status"))
+    hold_reasons = []
+    if gep_status in {"WARN", "BLOCK"}:
+        hold_reasons.append("gep_not_fully_pass")
+    if layers["meta_evolution"]["score"] < 60:
+        hold_reasons.append("meta_evolution_incomplete")
+    if layers["verification"]["score"] < 80:
+        hold_reasons.append("verification_incomplete")
+    recommendations = [
+        {"code": "gep_warn_diagnosis", "priority": "P0", "action": "Generate read-only GEP WARN diagnosis and feed it into ERA; do not auto-fix."},
+        {"code": "evidence_chain_binding", "priority": "P0", "action": "Require evidence_bundle identity in gene lifecycle decisions before promotion."},
+        {"code": "sensor_drift_cost", "priority": "P1", "action": "Add read-only drift and cost sensors for token/latency/regression tracking."},
+        {"code": "shadow_replay", "priority": "P1", "action": "Replay candidate genes against historical evidence bundles in shadow mode only."},
+        {"code": "strategy_ledger_meta_eval", "priority": "P2", "action": "Append strategy choices and outcomes into a read-only ledger for meta-evolution scoring."},
+    ]
+    status_value = "PASS" if total >= 70 and not hold_reasons else ("WATCH" if total >= 50 else "BLOCK")
+    return {
+        "schema": "ApexV3UnifiedScoreReport/v1",
+        "status": status_value,
+        "score": total,
+        "weights": weights,
+        "layers": layers,
+        "bottlenecks": bottlenecks,
+        "hold_reasons": hold_reasons,
+        "recommendations": recommendations,
+        "allows_next_low_risk_cycle": total >= 50,
+        "allows_autonomous_promotion": False,
+        "agi_completion_claim": False,
+        "external_ground_truth_required": True,
+        "side_effects": "read_only_report",
+    }
+
+
+__all__ = ["build_apex_v3_unified_score_report"]
