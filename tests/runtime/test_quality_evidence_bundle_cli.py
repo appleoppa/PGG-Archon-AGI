@@ -7,7 +7,9 @@ from unittest.mock import Mock, patch
 from hermes_cli.apex_runtimeos import run_apex_runtimeos_cli
 from runtime.quality.evidence_bundle import (
     build_quality_evidence_bundle,
+    load_latest_quality_evidence_bundle,
     run_test_command_for_evidence,
+    write_quality_evidence_bundle,
 )
 
 
@@ -78,3 +80,31 @@ def test_cli_quality_evidence_failed_test_stays_not_present(mock_run):
     bundle = payload["result"]["bundle"]
     assert bundle["evidence"]["test_report"]["present"] is False
     assert bundle["evidence"]["audit_log"]["present"] is False
+
+
+def test_load_latest_quality_evidence_bundle_reads_newest_under_workspace():
+    workspace = Path.cwd() / "workspace" / "quality_evidence_test"
+    workspace.mkdir(parents=True, exist_ok=True)
+    old = build_quality_evidence_bundle(test_exit_code=1, source="old")
+    new = build_quality_evidence_bundle(test_exit_code=0, audit_present=True, documentation_present=True, source="new")
+    old_path = workspace / "old.json"
+    new_path = workspace / "new.json"
+    write_quality_evidence_bundle(old_path, old)
+    write_quality_evidence_bundle(new_path, new)
+    old_path.touch()
+    new_path.touch()
+    loaded = load_latest_quality_evidence_bundle(workspace)
+    assert loaded is not None
+    assert loaded["source"] == "new"
+    assert loaded["evidence"]["test_report"]["present"] is True
+
+
+def test_load_latest_quality_evidence_bundle_rejects_outside_workspace(tmp_path):
+    outside = tmp_path / "quality"
+    outside.mkdir()
+    try:
+        load_latest_quality_evidence_bundle(outside)
+    except ValueError as exc:
+        assert "repository workspace" in str(exc)
+    else:  # pragma: no cover
+        raise AssertionError("expected ValueError")

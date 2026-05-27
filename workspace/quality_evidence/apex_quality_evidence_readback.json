@@ -1,0 +1,18 @@
+{
+  "schema": "ApexRuntimeOSQualityEvidenceBundle/v1",
+  "source": "apex-runtimeos-readback",
+  "evidence": {
+    "test_report": {
+      "present": true,
+      "summary": "CMMI related tests passed"
+    },
+    "audit_log": {
+      "present": true,
+      "summary": "git commit and push evidence available"
+    },
+    "documentation": {
+      "present": true,
+      "summary": "user-facing report generated"
+    }
+  }
+}

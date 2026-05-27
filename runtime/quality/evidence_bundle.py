@@ -10,6 +10,7 @@ from typing import Any, Dict, Sequence
 from runtime.quality.gate_runner import load_evidence_bundle_schema
 
 _MAX_SUMMARY = 240
+_DEFAULT_EVIDENCE_DIR = Path(__file__).resolve().parents[2] / "workspace" / "quality_evidence"
 
 
 def _truncate(value: Any, *, limit: int = _MAX_SUMMARY) -> str:
@@ -100,8 +101,40 @@ def write_quality_evidence_bundle(path: Path, bundle: Dict[str, Any]) -> Dict[st
     return {"written": True, "path": str(path), "schema": bundle.get("schema")}
 
 
+def _safe_evidence_dir(path: Path | None = None) -> Path:
+    resolved = (path or _DEFAULT_EVIDENCE_DIR).expanduser().resolve()
+    repo_workspace = (Path(__file__).resolve().parents[2] / "workspace").resolve()
+    try:
+        resolved.relative_to(repo_workspace)
+    except ValueError as exc:
+        raise ValueError("quality evidence directory must stay under repository workspace") from exc
+    return resolved
+
+
+def load_latest_quality_evidence_bundle(directory: Path | None = None) -> Dict[str, Any] | None:
+    """Load the newest schema-valid quality evidence bundle from workspace.
+
+    This is read-only and deterministic: it only scans `*.json` files under the
+    repository workspace quality evidence area, ignores symlinks, and validates
+    the selected bundle before returning it.
+    """
+    root = _safe_evidence_dir(directory)
+    if not root.exists():
+        return None
+    candidates = [item for item in root.glob("*.json") if item.is_file() and not item.is_symlink()]
+    if not candidates:
+        return None
+    latest = max(candidates, key=lambda item: (item.stat().st_mtime, item.name))
+    data = json.loads(latest.read_text(encoding="utf-8"))
+    from jsonschema import Draft202012Validator
+
+    Draft202012Validator(load_evidence_bundle_schema()).validate(data)
+    return dict(data)
+
+
 __all__ = [
     "build_quality_evidence_bundle",
+    "load_latest_quality_evidence_bundle",
     "run_test_command_for_evidence",
     "write_quality_evidence_bundle",
 ]

@@ -1093,6 +1093,14 @@ def summarize_autonomy_status(*, limit: int = 1000, min_occurrences: int = 2) ->
         "promotion_lifecycle_gate": _promotion_lifecycle_gate(),
         "default_side_effects": "disabled_unless_explicit_enforce",
     }
+    try:
+        from runtime.quality.evidence_bundle import load_latest_quality_evidence_bundle
+
+        latest_quality_evidence = load_latest_quality_evidence_bundle()
+        if latest_quality_evidence:
+            report["quality_evidence_bundle"] = latest_quality_evidence
+    except Exception as exc:
+        report["quality_evidence_bundle_error"] = _safe_scalar(type(exc).__name__)
     report["health_report"] = build_runtimeos_health_report(report)
     try:
         from runtime.quality.gate_runner import build_quality_gate_from_runtimeos_status

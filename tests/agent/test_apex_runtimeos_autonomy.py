@@ -542,6 +542,7 @@ def test_autonomy_status_includes_read_only_gep_report(tmp_path, monkeypatch):
 
 def test_autonomy_status_includes_read_only_quality_gate(tmp_path, monkeypatch):
     monkeypatch.setenv("APEX_RUNTIMEOS_AUTOWRITE_DIR", str(tmp_path / "auto"))
+    monkeypatch.setattr("runtime.quality.evidence_bundle.load_latest_quality_evidence_bundle", lambda: None)
     status = summarize_autonomy_status(limit=10)
     quality_gate = status["quality_gate"]
     assert quality_gate["schema"] == "ApexRuntimeOSQualityGateReport/v1"
@@ -551,6 +552,38 @@ def test_autonomy_status_includes_read_only_quality_gate(tmp_path, monkeypatch):
     assert "test_report" in quality_gate["missing_blocking_evidence"]
     assert quality_gate["side_effects"] == "read_only_report"
     assert quality_gate["boundary"].startswith("CMMI gate is read-only")
+
+
+def test_autonomy_status_uses_latest_quality_evidence_bundle(tmp_path, monkeypatch):
+    monkeypatch.setenv("APEX_RUNTIMEOS_AUTOWRITE_DIR", str(tmp_path / "auto"))
+    bundle = {
+        "schema": "ApexRuntimeOSQualityEvidenceBundle/v1",
+        "source": "unit-test",
+        "evidence": {
+            "test_report": {"present": True, "summary": "tests passed"},
+            "audit_log": {"present": True, "summary": "audit present"},
+            "documentation": {"present": True, "summary": "docs present"},
+        },
+    }
+    monkeypatch.setattr("runtime.quality.evidence_bundle.load_latest_quality_evidence_bundle", lambda: bundle)
+    status = summarize_autonomy_status(limit=10)
+    quality_gate = status["quality_gate"]
+    assert status["quality_evidence_bundle"]["source"] == "unit-test"
+    assert quality_gate["status"] == "PASS"
+    assert quality_gate["blocking_failed"] == 0
+    assert quality_gate["evidence_bundle"]["valid"] is True
+
+
+def test_autonomy_status_reports_quality_evidence_load_error(tmp_path, monkeypatch):
+    monkeypatch.setenv("APEX_RUNTIMEOS_AUTOWRITE_DIR", str(tmp_path / "auto"))
+
+    def fail():
+        raise ValueError("bad bundle")
+
+    monkeypatch.setattr("runtime.quality.evidence_bundle.load_latest_quality_evidence_bundle", fail)
+    status = summarize_autonomy_status(limit=10)
+    assert status["quality_evidence_bundle_error"] == "ValueError"
+    assert status["quality_gate"]["status"] == "BLOCK"
 
 
 def test_autonomy_status_includes_read_only_skill_registry_policy(tmp_path, monkeypatch):
@@ -569,6 +602,7 @@ def test_apex_runtimeos_cli_autonomy_shows_quality_missing_evidence(tmp_path, mo
     from hermes_cli.apex_runtimeos import run_apex_runtimeos_cli
 
     monkeypatch.setenv("APEX_RUNTIMEOS_AUTOWRITE_DIR", str(tmp_path / "auto"))
+    monkeypatch.setattr("runtime.quality.evidence_bundle.load_latest_quality_evidence_bundle", lambda: None)
     output = run_apex_runtimeos_cli(["autonomy"])
     assert "字段：CMMI缺失阻断证据" in output
     assert "test_report" in output
