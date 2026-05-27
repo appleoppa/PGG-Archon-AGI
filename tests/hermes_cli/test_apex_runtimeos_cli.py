@@ -7,6 +7,8 @@ from hermes_cli.commands import resolve_command
 def test_apex_runtimeos_command_registered_with_alias():
     assert resolve_command("apex-runtimeos").name == "apex-runtimeos"
     assert resolve_command("apex").name == "apex-runtimeos"
+    assert resolve_command("archon").name == "apex-runtimeos"
+    assert resolve_command("pgg-archon").name == "apex-runtimeos"
 
 
 def test_apex_runtimeos_cli_summary_outputs_chinese_aggregate(tmp_path, monkeypatch):
@@ -27,7 +29,8 @@ def test_apex_runtimeos_cli_summary_outputs_chinese_aggregate(tmp_path, monkeypa
         encoding="utf-8",
     )
     output = run_apex_runtimeos_cli(["summary", "--limit", "10"])
-    assert "APEX RuntimeOS 诊断摘要" in output
+    assert "PGG Archon AGI" in output
+    assert "原 APEX RuntimeOS" in output
     assert "| 有效记录 | 1 |" in output
     assert "| 坏行 | 1 |" in output
     assert "router" in output
@@ -65,7 +68,8 @@ def test_apex_runtimeos_cli_feishu_outputs_safe_markdown(tmp_path, monkeypatch):
         encoding="utf-8",
     )
     output = run_apex_runtimeos_cli(["feishu", "--limit", "10"])
-    assert "APEX RuntimeOS 体征摘要" in output
+    assert "PGG Archon AGI" in output
+    assert "原 APEX RuntimeOS" in output
     assert "手动只读摘要" in output
     assert "gene_selector" in output
     assert "pre_completion" in output

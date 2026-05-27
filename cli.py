@@ -8511,7 +8511,7 @@ class HermesCLI:
             self._show_usage()
         elif canonical == "insights":
             self._show_insights(cmd_original)
-        elif canonical == "apex-runtimeos":
+        elif canonical in {"apex-runtimeos", "archon", "pgg-archon"}:
             self._handle_apex_runtimeos_command(cmd_original)
         elif canonical == "copy":
             self._handle_copy_command(cmd_original)
@@ -8764,9 +8764,9 @@ class HermesCLI:
             output = run_apex_runtimeos_cli(parts)
             self._console_print(output)
         except SystemExit:
-            self._console_print("  Usage: /apex-runtimeos [summary|status|feishu] [--json] [--limit N]")
+            self._console_print("  Usage: /apex-runtimeos|/archon [summary|status|feishu] [--json] [--limit N]")
         except Exception as exc:
-            self._console_print(f"  APEX RuntimeOS diagnostics failed: {exc}")
+            self._console_print(f"  PGG Archon AGI diagnostics failed: {exc}")
     
     def _handle_background_command(self, cmd: str):
         """Handle /background <prompt> — run a prompt in a separate background session.

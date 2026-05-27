@@ -21,6 +21,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from utils import is_truthy_value
+from agent.apex_system_identity import DIAGNOSTIC_COMMAND_ALIASES
 
 logger = logging.getLogger(__name__)
 
@@ -206,8 +207,8 @@ COMMAND_REGISTRY: list[CommandDef] = [
                cli_only=True, aliases=("gateway",)),
     CommandDef("platform", "Pause, resume, or list a failing gateway platform", "Info",
                gateway_only=True, args_hint="<pause|resume|list> [name]"),
-    CommandDef("apex-runtimeos", "Show APEX RuntimeOS audit summary diagnostics", "Info",
-               aliases=("apex",), args_hint="[summary|feishu] [--json] [--limit N]"),
+    CommandDef("apex-runtimeos", "Show PGG Archon AGI diagnostics (legacy APEX RuntimeOS command)", "Info",
+               aliases=DIAGNOSTIC_COMMAND_ALIASES, args_hint="[summary|feishu] [--json] [--limit N]"),
     CommandDef("copy", "Copy the last assistant response to clipboard", "Info",
                cli_only=True, args_hint="[number]"),
     CommandDef("paste", "Attach clipboard image from your clipboard", "Info",

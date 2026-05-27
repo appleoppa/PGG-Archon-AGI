@@ -1,0 +1,35 @@
+{
+  "schema": "PggArchonLocalFusionRealityCheck/v1",
+  "ts": 1779891583.0807061,
+  "source": "local-hermes-agent-current-system",
+  "repo_private": "https://github.com/appleoppa/PGG-Archon-AGI.git",
+  "branch": "apex-runtimeos-super-evolution-20260526-200123",
+  "local_head": "4e0e5641f8c6fd07df3920752f6d761533025c20",
+  "remote_head": "4e0e5641f8c6fd07df3920752f6d761533025c20",
+  "current_public_name": "PGG Archon AGI",
+  "legacy_name": "APEX RuntimeOS",
+  "stable_command": "/apex-runtimeos",
+  "new_aliases": [
+    "/archon",
+    "/pgg-archon"
+  ],
+  "string_file_counts": {
+    "apex-runtimeos": 28,
+    "apex_runtimeos": 32,
+    "RuntimeOS": 62,
+    "PGG-Archon-AGI": 0,
+    "Archon": 4
+  },
+  "finding": [
+    "private remote and GitHub default branch already renamed to PGG-Archon-AGI",
+    "code-facing RuntimeOS identifiers still dominate and should be treated as legacy/stable implementation names",
+    "desktop sync package is not a valid integration target for current local system",
+    "fusion should update local Hermes agent entrypoints and cron prompts, not copy desktop files"
+  ],
+  "action_taken": [
+    "added agent/apex_system_identity.py as current naming authority",
+    "updated CLI user-facing headings to PGG Archon AGI（原 APEX RuntimeOS）",
+    "added /archon and /pgg-archon aliases while keeping /apex-runtimeos compatible"
+  ],
+  "side_effects": "code_and_tests_only_no_desktop_sync_no_secret_read"
+}

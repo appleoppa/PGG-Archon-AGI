@@ -7,12 +7,18 @@ import json
 from typing import Any, Mapping
 
 from agent.apex_runtimeos_audit_summary import render_markdown, summarize_audit
+from agent.apex_system_identity import (
+    CURRENT_SYSTEM_NAME,
+    DIAGNOSTIC_COMMAND_ALIASES,
+    LEGACY_RUNTIME_NAME,
+    USER_FACING_SYSTEM_LABEL,
+)
 
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="/apex-runtimeos",
-        description="Show APEX RuntimeOS audit summary diagnostics",
+        description=f"Show {USER_FACING_SYSTEM_LABEL} audit summary diagnostics",
     )
     parser.add_argument("command", nargs="?", default="summary", choices=("summary", "status", "feishu", "autopromote", "rollback", "autonomy", "autonomy-candidate", "quality-evidence", "co-scientist", "co-scientist-gene", "era", "flow-reward", "switch-cost", "cron-ledger", "sequence-record"))
     parser.add_argument("--json", action="store_true", help="emit machine-readable JSON")
@@ -68,7 +74,7 @@ def _feishu_markdown(summary: Mapping[str, Any]) -> str:
     recommendation_gate = str(summary.get("recommendation_gate", "OK"))
     icon = _status_icon(summary)
     lines = [
-        f"# {icon} APEX RuntimeOS 体征摘要",
+        f"# {icon} {USER_FACING_SYSTEM_LABEL} 体征摘要",
         "",
         "**状态：手动只读摘要，未自动推送，未修改运行状态。**",
         "",
@@ -159,7 +165,7 @@ def _cn_markdown(summary: Mapping[str, Any]) -> str:
     organs = summary.get("organs") or {}
     stages = summary.get("stages") or {}
     lines = [
-        "# APEX RuntimeOS 诊断摘要",
+        f"# {USER_FACING_SYSTEM_LABEL} 诊断摘要",
         "",
         "| 字段 | 数值 |",
         "|---|---:|",
@@ -256,7 +262,7 @@ def run_apex_runtimeos_cli(argv: list[str] | None = None) -> str:
             gep_counts = {}
         promotion_lifecycle_gate = status.get("promotion_lifecycle_gate") if isinstance(status.get("promotion_lifecycle_gate"), dict) else {}
         return "\n".join([
-            "# APEX RuntimeOS 自主化状态",
+            f"# {USER_FACING_SYSTEM_LABEL} 自主化状态",
             "",
             "字段：运行模式",
             f"值：{status.get('mode')}",
