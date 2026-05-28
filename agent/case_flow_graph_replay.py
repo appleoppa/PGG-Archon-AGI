@@ -130,10 +130,24 @@ def _build_edges() -> list[dict[str, str]]:
 def build_case_flow_graph_replay(
     ledger: Mapping[str, Any],
     *,
+    evidence_gate_packet: Mapping[str, Any] | None = None,
     write_replay: bool = False,
     replay_dir: str | Path = DEFAULT_REPLAY_DIR,
 ) -> dict[str, Any]:
-    """Build a deterministic replay graph from a sanitized case-flow ledger."""
+    """Build a deterministic replay graph from a sanitized case-flow ledger.
+
+    When *evidence_gate_packet* is provided and carries a valid
+    ``evidence_gate_status``, the ``evidence_gate`` node is overridden with the
+    packet's resolution — allowing the packet builder (e.g. a human reviewer or
+    bounded repair plan) to unblock a previously-stuck replay without changing
+    the root ledger.
+
+    Packet-driven override rules:
+    - ``PASS`` → evidence_gate node becomes PASS.
+    - ``BLOCK`` → evidence_gate node stays BLOCK.
+    - ``HOLD`` / others → evidence_gate node becomes ACTION_REQUIRED.
+    - ``None`` (default) → pure ledger-driven replay, unchanged.
+    """
     nodes = _initial_nodes()
     ledger_status = _safe_text(ledger.get("status") or "UNKNOWN").upper()
     preflight_status = _safe_text(ledger.get("preflight_status") or "UNKNOWN").upper()
@@ -191,6 +205,17 @@ def build_case_flow_graph_replay(
             status = "PENDING"
             reason = "no_department_event"
         _replace_node(nodes, node_id, status=status, reason=reason, source_event_count=len(dept_events) + len(action_events))
+
+    # -- evidence_gate packet override (after department loop, before downstream nodes) --
+    if evidence_gate_packet is not None and isinstance(evidence_gate_packet, Mapping):
+        pkt_status = _safe_text(evidence_gate_packet.get("evidence_gate_status")).upper()
+        if pkt_status in _PASS_STATUSES:
+            _replace_node(nodes, "evidence_gate", status="PASS", reason="evidence_gate_packet_pass", source_event_count=nodes["evidence_gate"].source_event_count)
+        elif pkt_status in _BLOCK_STATUSES:
+            _replace_node(nodes, "evidence_gate", status="BLOCK", reason="evidence_gate_packet_block", source_event_count=nodes["evidence_gate"].source_event_count)
+        elif pkt_status:
+            label = _safe_text(evidence_gate_packet.get("missing_evidence_or_exception_label") or "evidence_gate_packet_hold")
+            _replace_node(nodes, "evidence_gate", status="ACTION_REQUIRED", reason=label, source_event_count=nodes["evidence_gate"].source_event_count)
 
     internal_actions = required_actions_by_node["internal_report"]
     if ledger.get("safe_to_continue_internal_work") and not internal_actions:

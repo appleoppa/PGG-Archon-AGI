@@ -100,3 +100,80 @@ def test_graph_replay_summary_counts_statuses_and_next_nodes():
     assert summary["next_node_counts"]["intake"] == 1
     assert summary["next_node_counts"]["NONE"] == 1
     assert summary["agi_completion_claim"] is False
+
+
+def _evidence_gate_packet(status: str, label: str = "") -> dict:
+    return {
+        "evidence_gate_status": status,
+        "missing_evidence_or_exception_label": label or f"evidence_gate_packet_{status.lower()}",
+    }
+
+
+def test_graph_replay_evidence_gate_packet_pass_unblocks_evidence_gate(tmp_path):
+    """A PASS packet overrides a BLOCK evidence_gate node to PASS."""
+    ledger = build_case_flow_orchestrator_ledger(
+        "开车",
+        {
+            "case_id": "TEMP-002",
+            "case_id_generated_by": "苹果中枢",
+            "formal_workflow_started": True,
+            "evidence_gate_status": "HOLD",
+            "intended_output": "法律意见书",
+            "internal_report_generated": True,
+            "department_results": [
+                {"department": "证据管理部", "status": "TIMEOUT", "exception_labeled": False},
+            ],
+        },
+    )
+    packet = _evidence_gate_packet("PASS", "evidence_resolved")
+    replay = build_case_flow_graph_replay(ledger, evidence_gate_packet=packet,
+                                          write_replay=True, replay_dir=tmp_path)
+    nodes = {n["node_id"]: n for n in replay["nodes"]}
+    assert nodes["evidence_gate"]["status"] == "PASS"
+    assert nodes["evidence_gate"]["reason"] == "evidence_gate_packet_pass"
+
+
+def test_graph_replay_evidence_gate_packet_block_keeps_block():
+    """A BLOCK packet keeps evidence_gate as BLOCK."""
+    ledger = build_case_flow_orchestrator_ledger(
+        "开车",
+        {
+            "case_id": "TEMP-002",
+            "case_id_generated_by": "苹果中枢",
+            "formal_workflow_started": True,
+            "evidence_gate_status": "HOLD",
+            "intended_output": "法律意见书",
+            "internal_report_generated": True,
+            "department_results": [
+                {"department": "证据管理部", "status": "TIMEOUT", "exception_labeled": False},
+            ],
+        },
+    )
+    packet = _evidence_gate_packet("BLOCK", "still_missing")
+    replay = build_case_flow_graph_replay(ledger, evidence_gate_packet=packet)
+    nodes = {n["node_id"]: n for n in replay["nodes"]}
+    assert nodes["evidence_gate"]["status"] == "BLOCK"
+    assert nodes["evidence_gate"]["reason"] == "evidence_gate_packet_block"
+
+
+def test_graph_replay_evidence_gate_packet_hold_sets_action_required():
+    """A HOLD packet sets evidence_gate to ACTION_REQUIRED with the label as reason."""
+    ledger = build_case_flow_orchestrator_ledger(
+        "开车",
+        {
+            "case_id": "TEMP-002",
+            "case_id_generated_by": "苹果中枢",
+            "formal_workflow_started": True,
+            "evidence_gate_status": "HOLD",
+            "intended_output": "法律意见书",
+            "internal_report_generated": True,
+            "department_results": [
+                {"department": "证据管理部", "status": "TIMEOUT", "exception_labeled": False},
+            ],
+        },
+    )
+    packet = _evidence_gate_packet("HOLD", "waiting_for_original")
+    replay = build_case_flow_graph_replay(ledger, evidence_gate_packet=packet)
+    nodes = {n["node_id"]: n for n in replay["nodes"]}
+    assert nodes["evidence_gate"]["status"] == "ACTION_REQUIRED"
+    assert nodes["evidence_gate"]["reason"] == "waiting_for_original"

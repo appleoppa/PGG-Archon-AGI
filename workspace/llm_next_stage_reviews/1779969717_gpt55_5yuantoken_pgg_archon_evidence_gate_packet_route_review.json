@@ -1,0 +1,7 @@
+{
+  "model": "gpt-5.5",
+  "verdict": "PASS",
+  "risk": "low",
+  "boundary_ok": true,
+  "reason": "Optional packet-driven override is narrowly scoped to evidence_gate, preserves existing behavior when absent, and new tests cover PASS/BLOCK/HOLD mappings."
+}
