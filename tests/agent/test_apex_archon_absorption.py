@@ -4,9 +4,12 @@ import json
 
 from agent.apex_archon_absorption import (
     build_absorption_gene_candidate,
+    build_absorption_quality_evidence_bundle,
+    build_absorption_quality_gate_report,
     build_guarded_absorption_report,
     validate_guarded_absorption_report,
 )
+from runtime.quality.gate_runner import normalize_quality_evidence_bundle
 
 
 def _review_pair():
@@ -97,3 +100,37 @@ def test_absorption_gene_candidate_holds_without_two_ok_reviews():
     assert candidate["status"] == "HOLD"
     assert candidate["eligible"] is False
     assert "insufficient_model_review" in candidate["blockers"]
+
+
+def test_absorption_quality_evidence_bundle_is_schema_valid_and_aggregate_only():
+    gpt_review, claude_review = _review_pair()
+    report = build_guarded_absorption_report(gpt_review=gpt_review, claude_review=claude_review)
+    bundle = build_absorption_quality_evidence_bundle(report, test_passed=True)
+    normalized = normalize_quality_evidence_bundle(bundle)
+
+    assert bundle["schema"] == "ApexRuntimeOSQualityEvidenceBundle/v1"
+    assert normalized["requirements"] is True
+    assert normalized["rollback_plan"] is True
+    assert normalized["test_report"] is True
+    assert normalized["security_review"] is True
+    assert normalized["audit_log"] is True
+    assert normalized["documentation"] is True
+
+
+def test_absorption_quality_gate_blocks_without_test_evidence():
+    gpt_review, claude_review = _review_pair()
+    report = build_guarded_absorption_report(gpt_review=gpt_review, claude_review=claude_review)
+    gate = build_absorption_quality_gate_report(report, test_passed=False)
+
+    assert gate["schema"] == "ApexRuntimeOSQualityGateReport/v1"
+    assert gate["status"] == "BLOCK"
+    assert "test_report" in gate["missing_blocking_evidence"]
+
+
+def test_absorption_quality_gate_passes_with_test_evidence():
+    gpt_review, claude_review = _review_pair()
+    report = build_guarded_absorption_report(gpt_review=gpt_review, claude_review=claude_review)
+    gate = build_absorption_quality_gate_report(report, test_passed=True)
+
+    assert gate["status"] == "PASS"
+    assert gate["evidence_bundle"]["valid"] is True

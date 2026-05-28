@@ -238,6 +238,25 @@ def _co_scientist_candidate_to_gene(candidate: Mapping[str, Any]) -> Dict[str, A
     }
 
 
+def _archon_absorption_candidate_to_gene(candidate: Mapping[str, Any]) -> Dict[str, Any] | None:
+    """Map a guarded PGG Archon absorption candidate into lifecycle metadata."""
+    if candidate.get("schema") != "PGGArchonGuardedAbsorptionGene/v1":
+        return None
+    candidate_id = str(candidate.get("gene_id") or "").strip()
+    if not candidate_id:
+        return None
+    eligible = bool(candidate.get("eligible")) and str(candidate.get("status") or "") == "READY"
+    return {
+        "gene": f"archon_absorption:{candidate_id}",
+        "status": "verified" if eligible else "active",
+        "evidence_hash": candidate_id,
+        "evidence": str(candidate.get("evidence_level") or "guarded_absorption_candidate"),
+        "validation_passed": eligible,
+        "verified_at": "guarded_absorption_candidate_ready" if eligible else "",
+        "source": "pgg_archon_guarded_absorption_candidate",
+    }
+
+
 def build_gene_lifecycle_gate_from_runtimeos_status(status: Mapping[str, Any]) -> Dict[str, Any]:
     """Expose lifecycle readiness from the local gene DB and read-only candidates."""
     db_read = load_gene_lifecycle_candidates_from_sqlite(limit=500)
@@ -249,6 +268,11 @@ def build_gene_lifecycle_gate_from_runtimeos_status(status: Mapping[str, Any]) -
     co_lifecycle_gene = _co_scientist_candidate_to_gene(co_gene)
     if co_lifecycle_gene:
         genes.append(co_lifecycle_gene)
+    absorption_gene_raw = status.get("archon_absorption_gene_candidate") if isinstance(status, Mapping) else None
+    absorption_gene: Mapping[str, Any] = absorption_gene_raw if isinstance(absorption_gene_raw, Mapping) else {}
+    absorption_lifecycle_gene = _archon_absorption_candidate_to_gene(absorption_gene)
+    if absorption_lifecycle_gene:
+        genes.append(absorption_lifecycle_gene)
     report = build_gene_lifecycle_gate_report(genes)
     report["sqlite_read"] = {
         "schema": db_read.get("schema"),
@@ -263,6 +287,13 @@ def build_gene_lifecycle_gate_from_runtimeos_status(status: Mapping[str, Any]) -
         "status": co_gene.get("status", "UNKNOWN") if co_gene else "UNKNOWN",
         "eligible": bool(co_gene.get("eligible")) if co_gene else False,
         "gene_library_written": bool(co_gene.get("gene_library_written")) if co_gene else False,
+        "side_effects": "read_only_report",
+    }
+    report["archon_absorption_gene_candidate"] = {
+        "present": bool(absorption_lifecycle_gene),
+        "status": absorption_gene.get("status", "UNKNOWN") if absorption_gene else "UNKNOWN",
+        "eligible": bool(absorption_gene.get("eligible")) if absorption_gene else False,
+        "gene_library_written": bool(absorption_gene.get("gene_library_written")) if absorption_gene else False,
         "side_effects": "read_only_report",
     }
     return report

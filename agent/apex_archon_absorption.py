@@ -10,6 +10,9 @@ import hashlib
 import json
 from typing import Any, Dict, Mapping, Sequence
 
+from runtime.quality.evidence_bundle import build_quality_evidence_bundle
+from runtime.quality.gate_runner import build_quality_gate_from_runtimeos_status
+
 _SCHEMA = "PGGArchonGuardedAbsorption/v1"
 _GENE_SCHEMA = "PGGArchonGuardedAbsorptionGene/v1"
 
@@ -190,8 +193,67 @@ def build_absorption_gene_candidate(report: Mapping[str, Any]) -> Dict[str, Any]
     }
 
 
+def build_absorption_quality_evidence_bundle(
+    report: Mapping[str, Any],
+    *,
+    test_passed: bool = False,
+    audit_present: bool = True,
+    documentation_present: bool = True,
+) -> Dict[str, Any]:
+    """Build a schema-valid quality evidence bundle for absorption promotion.
+
+    Test evidence must be supplied by the caller after running relevant tests;
+    this helper never executes commands or upgrades missing tests into a pass.
+    """
+    validation = validate_guarded_absorption_report(report)
+    requirements_present = bool(validation["valid"])
+    rollback_present = bool(validation["valid"] and report.get("applied_to_core_runtime") is False)
+    security_present = bool(
+        validation["valid"]
+        and report.get("credentials_stored") is False
+        and report.get("raw_prompts_stored") is False
+        and report.get("raw_responses_stored") is False
+    )
+    bundle = build_quality_evidence_bundle(
+        test_exit_code=0 if test_passed else 1,
+        test_summary="guarded absorption targeted tests passed" if test_passed else "guarded absorption tests not supplied",
+        audit_present=audit_present,
+        audit_summary="GPT and Claude guarded architecture review recorded" if audit_present else "model review audit missing",
+        documentation_present=documentation_present,
+        documentation_summary="guarded absorption evidence report and module docs present" if documentation_present else "documentation missing",
+        source="pgg-archon-guarded-absorption",
+    )
+    bundle["evidence"]["requirements"] = {
+        "present": requirements_present,
+        "summary": "guarded absorption schema and claim boundaries validated" if requirements_present else "guarded absorption report invalid",
+        "hash": str(report.get("report_id") or "")[:128],
+    }
+    bundle["evidence"]["rollback_plan"] = {
+        "present": rollback_present,
+        "summary": "read-only candidate; rollback is removing the candidate/report files" if rollback_present else "candidate touched core runtime",
+    }
+    bundle["evidence"]["security_review"] = {
+        "present": security_present,
+        "summary": "raw prompts, raw responses, credentials, and core runtime application are disabled"
+        if security_present
+        else "security boundary failed",
+    }
+    return bundle
+
+
+def build_absorption_quality_gate_report(report: Mapping[str, Any], *, test_passed: bool = False) -> Dict[str, Any]:
+    """Evaluate the standard RuntimeOS quality gate for guarded absorption."""
+    bundle = build_absorption_quality_evidence_bundle(report, test_passed=test_passed)
+    return build_quality_gate_from_runtimeos_status({
+        "default_side_effects": "disabled_unless_explicit_enforce",
+        "quality_evidence_bundle": bundle,
+    })
+
+
 __all__ = [
     "build_absorption_gene_candidate",
+    "build_absorption_quality_evidence_bundle",
+    "build_absorption_quality_gate_report",
     "build_guarded_absorption_report",
     "validate_guarded_absorption_report",
 ]
