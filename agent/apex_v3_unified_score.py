@@ -250,11 +250,11 @@ def build_apex_v3_unified_score_report(status: Mapping[str, Any]) -> Dict[str, A
         "multi_model_ledger": multi_model_evidence_ledger.get("entries", ()),
     })
     try:
-        from agent.apex_runtime_status_surface import build_apex_runtime_status_surface
-        runtime_status_surface = build_apex_runtime_status_surface()
+        from agent.pgg_archon_status_surface import build_pgg_archon_status_surface
+        runtime_status_surface = build_pgg_archon_status_surface()
     except Exception as exc:
         runtime_status_surface = {
-            "schema": "ApexRuntimeStatusSurface/v1",
+            "schema": "PGGArchonStatusSurface/v1",
             "status": "ERROR",
             "score": 0.0,
             "missing": ["runtime_status_surface_error"],
