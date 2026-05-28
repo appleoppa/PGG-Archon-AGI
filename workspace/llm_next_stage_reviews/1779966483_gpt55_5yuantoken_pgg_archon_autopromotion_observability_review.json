@@ -1,0 +1,11 @@
+{
+  "provider": "gpt55_5yuantoken",
+  "model": "gpt-5.5",
+  "status": "HTTP_200",
+  "decision": "PASS",
+  "content_hash": "45af7abb9196fb54c94fe99cda24f666fe3289bb94589d2013f208735447203c",
+  "content_excerpt": "{\"decision\":\"PASS\",\"risk\":\"low\",\"reason\":\"该记录显示自动晋级在明确用户授权下以 enforce 模式运行，门禁未被绕过；实际结果 promoted=0，仅因 duplicate_existing_promotion 跳过已有晋级候选，未产生新的 memory/skill 晋级。补丁仅增强 skipped 原因的可观测性，测试 57 passed，整体风险低。\"}",
+  "raw_response_stored": false,
+  "credential_stored": false,
+  "created_at": "2026-05-28T19:08:03+0800"
+}

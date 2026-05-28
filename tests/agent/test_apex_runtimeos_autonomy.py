@@ -148,6 +148,7 @@ def test_promote_candidate_to_memory_with_audit_and_dedup(tmp_path, monkeypatch)
     assert first["promoted"] == 1
     assert first["skipped"] == 1
     assert second["promoted"] == 0
+    assert second["details"][0]["reason"] == "duplicate_existing_promotion"
     assert (home / "memories" / "MEMORY.md").exists()
     memory_text = (home / "memories" / "MEMORY.md").read_text(encoding="utf-8")
     assert "planner_context_heavy" in memory_text

@@ -616,15 +616,18 @@ def promote_autowrite_candidates(*, candidate_path: Optional[Path] = None, targe
     for candidate in candidates:
         if candidate.get("schema") != "ApexRuntimeOSAutoWriteCandidate/v1":
             skipped += 1
+            details.append({"target": target, "success": False, "reason": "invalid_candidate_schema"})
             continue
         if not candidate.get("promotion_required"):
             skipped += 1
+            details.append({"target": target, "success": False, "reason": "promotion_not_required"})
             continue
         if target == "memory":
             content = _candidate_to_memory_entry(candidate)
             content_hash = _hash_text("memory:" + content)
             if content_hash in existing_hashes:
                 skipped += 1
+                details.append({"target": "memory", "success": False, "reason": "duplicate_existing_promotion", "content_hash": content_hash})
                 continue
             store = MemoryStore(memory_char_limit=10000, user_char_limit=10000)
             store.load_from_disk()
@@ -654,6 +657,7 @@ def promote_autowrite_candidates(*, candidate_path: Optional[Path] = None, targe
             content_hash = _hash_text("skill:" + content)
             if content_hash in existing_hashes:
                 skipped += 1
+                details.append({"target": "skill", "success": False, "reason": "duplicate_existing_promotion", "content_hash": content_hash})
                 continue
             skill_dir = get_hermes_home() / "skills" / "apex-runtimeos-autogen"
             skill_path = skill_dir / "SKILL.md"
