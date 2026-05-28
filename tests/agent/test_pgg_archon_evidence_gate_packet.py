@@ -69,3 +69,34 @@ def test_evidence_gate_packet_only_allows_external_delivery_on_pass_and_ready_in
     assert packet["requires_internal_report"] is False
     assert packet["allows_external_delivery"] is True
     assert packet["not_executed"] is True
+
+
+def test_evidence_gate_safety_precheck_skipped_by_default():
+    """When safety_precheck_code is empty, safety_precheck is disabled."""
+    packet = build_pgg_archon_evidence_gate_packet(_status_surface())
+    assert packet["safety_precheck"]["enabled"] is False
+
+
+def test_evidence_gate_safety_precheck_detects_risk():
+    """When safety_precheck_code contains a vulnerability, risk_score > 0."""
+    risky_code = 'cursor.execute(f"SELECT * FROM users WHERE id = {uid}")'
+    packet = build_pgg_archon_evidence_gate_packet(
+        _status_surface(),
+        safety_precheck_code=risky_code,
+    )
+    assert packet["safety_precheck"]["enabled"] is True
+    assert packet["safety_precheck"]["risk_score"] > 0
+    assert packet["safety_precheck"]["vulnerability_count"] >= 1
+    assert any("SQL Injection" in v["type"] for v in packet["safety_precheck"]["vulnerabilities"])
+
+
+def test_evidence_gate_safety_precheck_passes_clean_code():
+    """Clean code should have risk_score == 0."""
+    clean_code = "def hello(): return 'world'"
+    packet = build_pgg_archon_evidence_gate_packet(
+        _status_surface(),
+        safety_precheck_code=clean_code,
+    )
+    assert packet["safety_precheck"]["enabled"] is True
+    assert packet["safety_precheck"]["risk_score"] == 0
+    assert packet["safety_precheck"]["vulnerability_count"] == 0
