@@ -1,0 +1,11 @@
+{
+  "provider": "gpt55_5yuantoken",
+  "model": "gpt-5.5",
+  "status": "HTTP_200",
+  "decision": "PASS",
+  "content_hash": "4018de805b350c8b88e7bd41efbc2c1131b743acb984b9d387060b9e902e395d",
+  "content_excerpt": "{\"decision\":\"PASS\",\"risk\":\"low\",\"reason\":\"只扩展 no_agi_completion_claims 信号覆盖面到 autonomy_status、promotion_claim_guard、evidence_loop_surface，并新增测试验证 evidence loop 中 agi_completion_claim=True 会被捕获；边界保持只读状态检查、无基因写入、无自动晋升、无 AGI 完成声明，符合反 AGI 完成声明纪律。\"}",
+  "raw_response_stored": false,
+  "credential_stored": false,
+  "created_at": "2026-05-28T18:48:28+0800"
+}

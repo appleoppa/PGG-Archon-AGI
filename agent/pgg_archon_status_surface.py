@@ -123,9 +123,12 @@ def build_pgg_archon_status_surface(
         "promotion_claim_guard_present": _signal(bool(promotion_guard.get("schema")), promotion_guard, f"promotion_guard_allowed={promotion_guard_allowed}"),
         "no_external_delivery_from_blocked_graph": _signal(not (graph_status == "BLOCK" and bool(graph.get("allows_external_delivery"))), graph, "blocked_graph_must_not_allow_external_delivery"),
         "no_agi_completion_claims": _signal(
-            not any(bool(item.get("agi_completion_claim")) for item in (unlock, graph, eval_report, golden)),
+            not any(
+                bool(item.get("agi_completion_claim"))
+                for item in (unlock, graph, eval_report, golden, autonomy, promotion_guard, evidence_loop)
+            ),
             {},
-            "all_runtime_surface_reports_keep_agi_completion_claim_false",
+            "all_pgg_archon_status_inputs_keep_agi_completion_claim_false",
         ),
     }
     ok_count = sum(1 for item in signals.values() if item["ok"])

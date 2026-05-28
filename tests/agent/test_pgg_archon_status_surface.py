@@ -138,6 +138,22 @@ def test_pgg_archon_status_surface_catches_agi_completion_claim():
     assert "no_agi_completion_claims" in report["missing"]
 
 
+def test_pgg_archon_status_surface_catches_agi_claim_from_bound_evidence_loop(monkeypatch):
+    monkeypatch.setattr("agent.pgg_archon_status_surface.summarize_autonomy_status", lambda: _autonomy(mode="ENFORCE", autopromote_enabled=False))
+
+    report = build_pgg_archon_status_surface(
+        unlock_report=_unlock(),
+        graph_replay_report=_graph(status="PASS"),
+        eval_regression_report=_eval(status="PASS", failed_count=0),
+        golden_regression_report=_golden(),
+        promotion_guard_report={"schema": "ApexPromotionClaimGuard/v1", "allowed": True, "hold_reasons": [], "agi_completion_claim": False},
+        evidence_loop_report={"schema": "PGGArchonEvidenceLoopSurface/v1", "status": "PASS", "missing": [], "agi_completion_claim": True},
+    )
+
+    assert report["signals"]["no_agi_completion_claims"]["ok"] is False
+    assert "no_agi_completion_claims" in report["missing"]
+
+
 def test_pgg_archon_status_surface_blocks_when_required_reports_absent():
     report = build_pgg_archon_status_surface(
         unlock_report={},
