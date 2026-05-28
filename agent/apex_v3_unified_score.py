@@ -249,6 +249,18 @@ def build_apex_v3_unified_score_report(status: Mapping[str, Any]) -> Dict[str, A
         "autonomy_candidates": tuple(status.get("autonomy_candidates", ())) + autonomy_candidates,
         "multi_model_ledger": multi_model_evidence_ledger.get("entries", ()),
     })
+    try:
+        from agent.apex_runtime_status_surface import build_apex_runtime_status_surface
+        runtime_status_surface = build_apex_runtime_status_surface()
+    except Exception as exc:
+        runtime_status_surface = {
+            "schema": "ApexRuntimeStatusSurface/v1",
+            "status": "ERROR",
+            "score": 0.0,
+            "missing": ["runtime_status_surface_error"],
+            "error": str(exc)[:200],
+            "agi_completion_claim": False,
+        }
 
     inward_validation = cross_validate_unified_score({
         **base_report,
@@ -298,6 +310,7 @@ def build_apex_v3_unified_score_report(status: Mapping[str, Any]) -> Dict[str, A
         "failure_sample_library": failure_library_status,
         "task_retrospective_status": task_retrospective_status,
         "multi_model_evidence_ledger": multi_model_evidence_ledger,
+        "runtime_status_surface": runtime_status_surface,
     }
 
 
