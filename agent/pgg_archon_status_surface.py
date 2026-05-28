@@ -23,6 +23,7 @@ from agent.pgg_archon_apex_agi_absorption import build_pgg_archon_apex_agi_absor
 from agent.pgg_archon_evidence_loop_surface import build_pgg_archon_evidence_loop_surface
 from agent.pgg_archon_pua_standards import build_pgg_archon_pua_standard_report
 from agent.pgg_archon_p0_surface import build_pgg_archon_p0_surface
+from agent.pgg_archon_quality_gate_surface import build_pgg_archon_quality_gate_surface
 from agent.apex_co_scientist import load_latest_debate_report, load_latest_gene_candidate
 from agent.apex_era import load_latest_era_report
 from agent.apex_flow_reward import load_latest_flow_reward_report
@@ -78,6 +79,60 @@ def _signal(ok: bool, source: Mapping[str, Any], reason: str) -> dict[str, Any]:
     }
 
 
+def _build_promotion_readiness(
+    *,
+    surface_status: str,
+    score: float,
+    missing: Sequence[str],
+    graph_status: str,
+    promotion_guard_allowed: bool,
+    promotion_guard_holds: Sequence[str],
+    small_bottlenecks: Sequence[Mapping[str, Any]],
+) -> dict[str, Any]:
+    """Derive a read-only promotion readiness gate from the status surface.
+
+    The status score measures whether observability inputs are present. Promotion
+    readiness is stricter: a green surface still must not imply autonomous
+    promotion while human acknowledgements, blocked case-flow nodes, or other
+    bounded repair bottlenecks remain.
+    """
+    blocker_codes = [str(item.get("code") or "UNKNOWN") for item in small_bottlenecks]
+    human_gate_codes = {
+        str(item.get("code") or "UNKNOWN")
+        for item in small_bottlenecks
+        if str(item.get("code") or "") in {"Agt/Pan", "Aut/Guard"}
+    }
+    human_ack_pending = (not promotion_guard_allowed) or "human_ack_required" in set(str(item) for item in promotion_guard_holds)
+    safety_missing = [name for name in missing if name in {"no_external_delivery_from_blocked_graph", "no_agi_completion_claims"}]
+
+    if human_ack_pending:
+        readiness_status = "HUMAN_ACK_REQUIRED"
+    elif safety_missing:
+        readiness_status = "BLOCKED_BY_SAFETY_GATE"
+    elif graph_status == "BLOCK":
+        readiness_status = "BLOCKED_BY_CASE_FLOW_GATE"
+    elif small_bottlenecks:
+        readiness_status = "BOUNDED_REPAIR_REQUIRED"
+    elif surface_status == "PASS" and score >= 90.0 and graph_status == "PASS" and promotion_guard_allowed:
+        readiness_status = "READY_FOR_HUMAN_REVIEW"
+    else:
+        readiness_status = "NOT_READY"
+
+    return {
+        "schema": "PGGArchonPromotionReadiness/v1",
+        "status": readiness_status,
+        "allows_autonomous_promotion": False,
+        "requires_human_ack": True,
+        "human_ack_pending": bool(human_ack_pending or human_gate_codes),
+        "blocker_codes": blocker_codes,
+        "human_gate_codes": sorted(human_gate_codes),
+        "safety_missing": safety_missing,
+        "promotion_guard_allowed": bool(promotion_guard_allowed),
+        "reason": "read_only_gate_no_auto_promotion_no_agi_completion_claim",
+        "agi_completion_claim": False,
+    }
+
+
 def build_pgg_archon_status_surface(
     *,
     unlock_report: Mapping[str, Any] | None = None,
@@ -88,6 +143,7 @@ def build_pgg_archon_status_surface(
     evidence_loop_report: Mapping[str, Any] | None = None,
     apex_agi_absorption_report: Mapping[str, Any] | None = None,
     p0_surface_report: Mapping[str, Any] | None = None,
+    quality_gate_report: Mapping[str, Any] | None = None,
     unlock_dir: str | Path = DEFAULT_UNLOCK_DIR,
     graph_replay_dir: str | Path = DEFAULT_GRAPH_REPLAY_DIR,
     eval_dir: str | Path = DEFAULT_EVAL_DIR,
@@ -160,6 +216,14 @@ def build_pgg_archon_status_surface(
     ]
     p0_surfaces_ok = _as_int(p0_surface.get("aggregate", {}).get("surfaces_ok"))
     p0_surfaces_total = _as_int(p0_surface.get("aggregate", {}).get("surfaces_total"))
+    try:
+        quality_gate = dict(quality_gate_report) if quality_gate_report is not None else dict(build_pgg_archon_quality_gate_surface())
+    except Exception as exc:
+        quality_gate = {"schema": "PGGArchonQualityGateSurface/v1", "status": "ERROR", "blocking_failures": [f"quality_gate_unavailable:{type(exc).__name__}"], "warning_failures": [], "agi_completion_claim": False}
+    quality_gate_status = _status(quality_gate.get("status"))
+    quality_gate_schema_ok = quality_gate.get("schema") == "PGGArchonQualityGateSurface/v1"
+    quality_gate_blocking = [str(item) for item in _as_sequence(quality_gate.get("blocking_failures"))[:8]]
+    quality_gate_warnings = [str(item) for item in _as_sequence(quality_gate.get("warning_failures"))[:8]]
 
     # --- Read-only lookups for standalone APEX modules ---
     def _safe_load(fn, empty=None):
@@ -200,6 +264,11 @@ def build_pgg_archon_status_surface(
             p0_surface,
             f"p0_surface_status={p0_surface_status} ok={p0_surfaces_ok}/{p0_surfaces_total}",
         ),
+        "quality_gate_surface_ready": _signal(
+            quality_gate_schema_ok and quality_gate_status in {"PASS", "WATCH"},
+            quality_gate,
+            f"quality_gate_status={quality_gate_status} blocking={len(quality_gate_blocking)} warnings={len(quality_gate_warnings)}",
+        ),
         "era_report_present": _signal(era_status == "PASS", era_report, f"era_status={era_status}"),
         "flow_reward_report_present": _signal(flow_status == "PASS", flow_report, f"flow_status={flow_status}"),
         "switch_cost_report_present": _signal(switch_status in {"PASS", "HOLD"}, switch_report, f"switch_status={switch_status}"),
@@ -212,7 +281,7 @@ def build_pgg_archon_status_surface(
             not any(
                 bool(item.get("agi_completion_claim"))
                 for item in (unlock, graph, eval_report, golden, autonomy, promotion_guard,
-                            evidence_loop, apex_agi_absorption, pua_report, p0_surface,
+                            evidence_loop, apex_agi_absorption, pua_report, p0_surface, quality_gate,
                             era_report, flow_report, switch_report, co_debate, co_gene,
                             gpo_report, quality_ev)
             ),
@@ -306,6 +375,34 @@ def build_pgg_archon_status_surface(
             "action": "resolve_p0_surface_smoke_failures_before_promotion",
             "risk": "low",
         })
+    if not quality_gate_schema_ok:
+        small_bottlenecks.append({
+            "code": "QG/Schema",
+            "source": "pgg_archon_quality_gate_surface",
+            "status": quality_gate_status,
+            "action": "reject_or_rebuild_malformed_quality_gate_report",
+            "risk": "low",
+        })
+    elif quality_gate_status == "BLOCK":
+        small_bottlenecks.append({
+            "code": "QG/Block",
+            "source": "pgg_archon_quality_gate_surface",
+            "status": quality_gate_status,
+            "blocking_failures": quality_gate_blocking,
+            "warning_failures": quality_gate_warnings,
+            "action": "supply_or_fix_quality_gate_evidence_before_promotion",
+            "risk": "low",
+        })
+    elif quality_gate_status in {"WATCH", "ERROR", "UNKNOWN"}:
+        small_bottlenecks.append({
+            "code": "QG/Watch",
+            "source": "pgg_archon_quality_gate_surface",
+            "status": quality_gate_status,
+            "blocking_failures": quality_gate_blocking,
+            "warning_failures": quality_gate_warnings,
+            "action": "review_quality_gate_warning_evidence_before_promotion_claim",
+            "risk": "low",
+        })
     if era_status not in {"PASS", ""}:
         small_bottlenecks.append({
             "code": "ERA/Warn",
@@ -356,6 +453,16 @@ def build_pgg_archon_status_surface(
             "risk": "low",
         })
 
+    promotion_readiness = _build_promotion_readiness(
+        surface_status=status,
+        score=score,
+        missing=missing,
+        graph_status=graph_status,
+        promotion_guard_allowed=promotion_guard_allowed,
+        promotion_guard_holds=promotion_guard_holds,
+        small_bottlenecks=small_bottlenecks,
+    )
+
     return {
         "schema": "PGGArchonStatusSurface/v1",
         "created_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
@@ -391,6 +498,10 @@ def build_pgg_archon_status_surface(
             "apex_agi_absorption_blocking_failures": apex_agi_absorption_blocking,
             "pua_p0_status": pua_p0_status,
             "pua_total_violations": pua_total_violations,
+            "quality_gate_status": quality_gate_status,
+            "quality_gate_schema_ok": quality_gate_schema_ok,
+            "quality_gate_blocking_failures": quality_gate_blocking,
+            "quality_gate_warning_failures": quality_gate_warnings,
             "era_status": era_status,
             "flow_status": flow_status,
             "switch_status": switch_status,
@@ -398,6 +509,9 @@ def build_pgg_archon_status_surface(
             "co_gene_status": co_gene_status,
             "gpo_status": gpo_status,
             "quality_evidence_valid": quality_ev_valid,
+            "promotion_readiness_status": promotion_readiness["status"],
+            "promotion_requires_human_ack": promotion_readiness["requires_human_ack"],
+            "promotion_human_ack_pending": promotion_readiness["human_ack_pending"],
         },
         "autonomy_status": autonomy,
         "promotion_claim_guard": promotion_guard,
@@ -411,6 +525,7 @@ def build_pgg_archon_status_surface(
         "co_scientist_gene_candidate": co_gene,
         "gpo_report": gpo_report,
         "quality_evidence_bundle": quality_ev,
+        "promotion_readiness": promotion_readiness,
         "small_bottlenecks": small_bottlenecks,
         "side_effects": "read_only_status_surface",
         "agi_completion_claim": False,

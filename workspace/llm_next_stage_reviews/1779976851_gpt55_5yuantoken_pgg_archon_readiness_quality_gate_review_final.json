@@ -1,0 +1,8 @@
+{
+  "provider": "gpt55_5yuantoken",
+  "model": "gpt-5.5",
+  "http_status": 200,
+  "decision": "PASS",
+  "risk": "low",
+  "content": "{\"decision\":\"PASS\",\"risk\":\"low\",\"findings\":[\"Read-only promotion_readiness preserves no autonomous promotion: allows_autonomous_promotion=false and requires_human_ack=true in all paths.\",\"READY_FOR_HUMAN_REVIEW is gated on surface PASS, score>=90, graph PASS, promotion_guard_allowed=true, no small_bottlenecks, and no pending human ack.\",\"promotion_guard_allowed=false forces HUMAN_ACK_REQUIRED and human_ack_pending=true.\",\"Blocked graph and safety-missing cases remain promotion blockers even when status surface can otherwise PASS.\",\"Quality gate WATCH/ERROR/UNKNOWN becomes a bounded bottleneck and prevents READY_FOR_HUMAN_REVIEW; malformed or explicit empty quality gate input blocks via schema failure.\",\"No AGI completion claim introduced; quality_gate is included in the no_agi_completion_claims aggregate check.\",\"No shell/model/git side effects apparent in shown code; added call is read-only status construction.\",\"Tests reported passing: 58/58.\"]}"
+}

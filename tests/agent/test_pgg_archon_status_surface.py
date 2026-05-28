@@ -86,6 +86,7 @@ def _mock_all_pass(monkeypatch):
     monkeypatch.setattr("agent.pgg_archon_status_surface.load_latest_gene_candidate", _passing_co_gene)
     monkeypatch.setattr("agent.pgg_archon_status_surface.build_gpo_report", lambda: _passing_report(status="PASS"))
     monkeypatch.setattr("agent.pgg_archon_status_surface.load_latest_quality_evidence_bundle", lambda: _passing_report(valid=True))
+    monkeypatch.setattr("agent.pgg_archon_status_surface.build_pgg_archon_quality_gate_surface", lambda: _passing_report(schema="PGGArchonQualityGateSurface/v1", status="PASS", blocking_failures=[], warning_failures=[]))
 
 
 def test_pgg_archon_status_surface_passes_when_all_surfaces_present_and_safe(monkeypatch):
@@ -110,6 +111,12 @@ def test_pgg_archon_status_surface_passes_when_all_surfaces_present_and_safe(mon
     assert report["autonomy_status"]["mode"] == "ENFORCE"
     assert report["promotion_claim_guard"]["schema"] == "ApexPromotionClaimGuard/v1"
     assert report["small_bottlenecks"][0]["source"] == "promotion_claim_guard"
+    assert report["promotion_readiness"]["schema"] == "PGGArchonPromotionReadiness/v1"
+    assert report["promotion_readiness"]["status"] == "HUMAN_ACK_REQUIRED"
+    assert report["promotion_readiness"]["allows_autonomous_promotion"] is False
+    assert report["summary"]["promotion_readiness_status"] == "HUMAN_ACK_REQUIRED"
+    assert report["summary"]["promotion_requires_human_ack"] is True
+    assert report["summary"]["promotion_human_ack_pending"] is True
     assert report["agi_completion_claim"] is False
 
 
@@ -143,6 +150,69 @@ def test_pgg_archon_status_surface_accepts_explicit_promotion_guard(monkeypatch)
     assert report["signals"]["promotion_claim_guard_present"]["ok"] is True
     assert report["summary"]["promotion_guard_allowed"] is True
     assert not any(item.get("code") == "Aut/Guard" for item in report["small_bottlenecks"])
+
+
+def test_pgg_archon_promotion_readiness_ready_only_when_surface_clean_and_guard_allowed(monkeypatch):
+    _mock_all_pass(monkeypatch)
+
+    report = build_pgg_archon_status_surface(
+        unlock_report=_unlock(),
+        graph_replay_report=_graph(status="PASS"),
+        eval_regression_report=_eval(),
+        golden_regression_report=_golden(),
+        promotion_guard_report={"schema": "ApexPromotionClaimGuard/v1", "allowed": True, "hold_reasons": [], "agi_completion_claim": False},
+        evidence_loop_report={"schema": "PGGArchonEvidenceLoopSurface/v1", "status": "PASS", "missing": [], "agi_completion_claim": False},
+        apex_agi_absorption_report={"schema": "PGGArchonApexAGIAbsorptionSurface/v1", "status": "PASS", "ready_candidate_count": 0, "blocking_failures": [], "agi_completion_claim": False},
+        p0_surface_report={"schema": "PGGArchonP0Surface/v1", "status": "PASS", "aggregate": {"blocking_failures": [], "surfaces_ok": 3, "surfaces_total": 3}, "agi_completion_claim": False},
+    )
+
+    assert report["status"] == "PASS"
+    assert report["missing"] == []
+    assert report["small_bottlenecks"] == []
+    assert report["promotion_readiness"]["status"] == "READY_FOR_HUMAN_REVIEW"
+    assert report["promotion_readiness"]["allows_autonomous_promotion"] is False
+    assert report["summary"]["promotion_requires_human_ack"] is True
+    assert report["summary"]["promotion_human_ack_pending"] is False
+
+
+def test_pgg_archon_promotion_readiness_keeps_blocked_case_flow_as_gate(monkeypatch):
+    _mock_all_pass(monkeypatch)
+
+    report = build_pgg_archon_status_surface(
+        unlock_report=_unlock(),
+        graph_replay_report=_graph(status="BLOCK", allows_external_delivery=False),
+        eval_regression_report=_eval(),
+        golden_regression_report=_golden(),
+        promotion_guard_report={"schema": "ApexPromotionClaimGuard/v1", "allowed": True, "hold_reasons": [], "agi_completion_claim": False},
+        evidence_loop_report={"schema": "PGGArchonEvidenceLoopSurface/v1", "status": "PASS", "missing": [], "agi_completion_claim": False},
+        apex_agi_absorption_report={"schema": "PGGArchonApexAGIAbsorptionSurface/v1", "status": "PASS", "ready_candidate_count": 0, "blocking_failures": [], "agi_completion_claim": False},
+        p0_surface_report={"schema": "PGGArchonP0Surface/v1", "status": "PASS", "aggregate": {"blocking_failures": [], "surfaces_ok": 3, "surfaces_total": 3}, "agi_completion_claim": False},
+    )
+
+    assert report["status"] == "PASS"
+    assert report["promotion_readiness"]["status"] == "BLOCKED_BY_CASE_FLOW_GATE"
+    assert "Agt/Pan" in report["promotion_readiness"]["blocker_codes"]
+    assert report["promotion_readiness"]["allows_autonomous_promotion"] is False
+
+
+def test_pgg_archon_promotion_readiness_requires_guard_allowed_even_without_hold_reasons(monkeypatch):
+    _mock_all_pass(monkeypatch)
+
+    report = build_pgg_archon_status_surface(
+        unlock_report=_unlock(),
+        graph_replay_report=_graph(status="PASS"),
+        eval_regression_report=_eval(),
+        golden_regression_report=_golden(),
+        promotion_guard_report={"schema": "ApexPromotionClaimGuard/v1", "allowed": False, "hold_reasons": [], "agi_completion_claim": False},
+        evidence_loop_report={"schema": "PGGArchonEvidenceLoopSurface/v1", "status": "PASS", "missing": [], "agi_completion_claim": False},
+        apex_agi_absorption_report={"schema": "PGGArchonApexAGIAbsorptionSurface/v1", "status": "PASS", "ready_candidate_count": 0, "blocking_failures": [], "agi_completion_claim": False},
+        p0_surface_report={"schema": "PGGArchonP0Surface/v1", "status": "PASS", "aggregate": {"blocking_failures": [], "surfaces_ok": 3, "surfaces_total": 3}, "agi_completion_claim": False},
+    )
+
+    assert report["promotion_readiness"]["status"] == "HUMAN_ACK_REQUIRED"
+    assert report["promotion_readiness"]["requires_human_ack"] is True
+    assert report["promotion_readiness"]["human_ack_pending"] is True
+    assert report["promotion_readiness"]["allows_autonomous_promotion"] is False
 
 
 def test_pgg_archon_status_surface_blocks_illegal_external_delivery_on_blocked_graph():
@@ -213,6 +283,7 @@ def test_pgg_archon_status_surface_blocks_when_required_reports_absent(monkeypat
         evidence_loop_report={},
         apex_agi_absorption_report={},
         p0_surface_report={},
+        quality_gate_report={},
     )
 
     assert report["status"] == "BLOCK"
