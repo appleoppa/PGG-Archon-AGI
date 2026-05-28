@@ -14,6 +14,7 @@ from typing import Any, Mapping, Sequence
 
 from agent.apex_runtimeos_autonomy import summarize_autonomy_status
 from agent.apex_promotion_claim_guard import evaluate_promotion_claim_guard
+from agent.pgg_archon_apex_agi_absorption import build_pgg_archon_apex_agi_absorption_surface
 from agent.pgg_archon_evidence_loop_surface import build_pgg_archon_evidence_loop_surface
 
 DEFAULT_UNLOCK_DIR = Path("/Users/appleoppa/.hermes/workspace/agi-routing/apex-module-unlocks")
@@ -49,6 +50,12 @@ def _as_int(value: Any) -> int:
         return 0
 
 
+def _as_sequence(value: Any) -> Sequence[Any]:
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
+        return value
+    return ()
+
+
 def _signal(ok: bool, source: Mapping[str, Any], reason: str) -> dict[str, Any]:
     return {
         "ok": bool(ok),
@@ -66,6 +73,7 @@ def build_pgg_archon_status_surface(
     golden_regression_report: Mapping[str, Any] | None = None,
     promotion_guard_report: Mapping[str, Any] | None = None,
     evidence_loop_report: Mapping[str, Any] | None = None,
+    apex_agi_absorption_report: Mapping[str, Any] | None = None,
     unlock_dir: str | Path = DEFAULT_UNLOCK_DIR,
     graph_replay_dir: str | Path = DEFAULT_GRAPH_REPLAY_DIR,
     eval_dir: str | Path = DEFAULT_EVAL_DIR,
@@ -113,6 +121,15 @@ def build_pgg_archon_status_surface(
         evidence_loop = {"schema": "PGGArchonEvidenceLoopSurface/v1", "status": "ERROR", "missing": [f"evidence_loop_unavailable:{type(exc).__name__}"], "agi_completion_claim": False}
     evidence_loop_status = _status(evidence_loop.get("status"))
     evidence_loop_missing = [str(item) for item in evidence_loop.get("missing", [])[:8]] if isinstance(evidence_loop.get("missing"), list) else []
+    try:
+        apex_agi_absorption = dict(apex_agi_absorption_report) if apex_agi_absorption_report is not None else dict(build_pgg_archon_apex_agi_absorption_surface())
+    except Exception as exc:
+        apex_agi_absorption = {"schema": "PGGArchonApexAGIAbsorptionSurface/v1", "status": "ERROR", "blocking_failures": [f"apex_agi_absorption_unavailable:{type(exc).__name__}"], "agi_completion_claim": False}
+    apex_agi_absorption_status = _status(apex_agi_absorption.get("status"))
+    apex_agi_absorption_blocking = [
+        str(item.get("gate_name") if isinstance(item, Mapping) else item)
+        for item in _as_sequence(apex_agi_absorption.get("blocking_failures"))[:8]
+    ]
 
     signals = {
         "module_unlock_surface": _signal(unlockable_count > 0, unlock, f"unlockable_count={unlockable_count}"),
@@ -121,11 +138,12 @@ def build_pgg_archon_status_surface(
         "golden_regression_passed": _signal(golden_status == "PASS" and _as_int(golden.get("failed_expectation_count")) == 0, golden, f"golden_status={golden_status}"),
         "autonomy_mode_ready": _signal(autonomy_mode in {"DRY_RUN", "ENFORCE"}, autonomy, f"autonomy_mode={autonomy_mode}"),
         "promotion_claim_guard_present": _signal(bool(promotion_guard.get("schema")), promotion_guard, f"promotion_guard_allowed={promotion_guard_allowed}"),
+        "apex_agi_absorption_surface_ready": _signal(apex_agi_absorption_status == "PASS", apex_agi_absorption, f"apex_agi_absorption_status={apex_agi_absorption_status}"),
         "no_external_delivery_from_blocked_graph": _signal(not (graph_status == "BLOCK" and bool(graph.get("allows_external_delivery"))), graph, "blocked_graph_must_not_allow_external_delivery"),
         "no_agi_completion_claims": _signal(
             not any(
                 bool(item.get("agi_completion_claim"))
-                for item in (unlock, graph, eval_report, golden, autonomy, promotion_guard, evidence_loop)
+                for item in (unlock, graph, eval_report, golden, autonomy, promotion_guard, evidence_loop, apex_agi_absorption)
             ),
             {},
             "all_pgg_archon_status_inputs_keep_agi_completion_claim_false",
@@ -188,6 +206,15 @@ def build_pgg_archon_status_surface(
             "action": "bind_learning_loop_evidence_before_next_promotion_claim",
             "risk": "low",
         })
+    if apex_agi_absorption_status != "PASS":
+        small_bottlenecks.append({
+            "code": "Abs/APEX",
+            "source": "pgg_archon_apex_agi_absorption",
+            "status": apex_agi_absorption_status,
+            "blocking_failures": apex_agi_absorption_blocking,
+            "action": "resolve_apex_agi_absorption_gates_before_runtime_import",
+            "risk": "low",
+        })
 
     return {
         "schema": "PGGArchonStatusSurface/v1",
@@ -219,10 +246,14 @@ def build_pgg_archon_status_surface(
             "promotion_guard_hold_reasons": promotion_guard_holds,
             "evidence_loop_status": evidence_loop_status,
             "evidence_loop_missing": evidence_loop_missing,
+            "apex_agi_absorption_status": apex_agi_absorption_status,
+            "apex_agi_absorption_ready_candidate_count": apex_agi_absorption.get("ready_candidate_count"),
+            "apex_agi_absorption_blocking_failures": apex_agi_absorption_blocking,
         },
         "autonomy_status": autonomy,
         "promotion_claim_guard": promotion_guard,
         "evidence_loop_surface": evidence_loop,
+        "apex_agi_absorption_surface": apex_agi_absorption,
         "small_bottlenecks": small_bottlenecks,
         "side_effects": "read_only_status_surface",
         "agi_completion_claim": False,
@@ -232,3 +263,4 @@ def build_pgg_archon_status_surface(
 build_apex_runtime_status_surface = build_pgg_archon_status_surface
 
 __all__ = ["build_pgg_archon_status_surface", "build_apex_runtime_status_surface"]
+
