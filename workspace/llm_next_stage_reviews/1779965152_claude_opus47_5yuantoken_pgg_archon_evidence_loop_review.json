@@ -1,0 +1,11 @@
+{
+  "provider": "claude_opus47_5yuantoken",
+  "model": "claude-opus-4-7",
+  "status": "HTTP_200",
+  "decision": "PASS",
+  "content_hash": "63aff99b6aa3fa184e7d2bc9e076d543204bc4686ec8e43ddd585eea9187365a",
+  "content_excerpt": "{\"decision\":\"PASS\",\"risk\":\"low\",\"reason\":\"Patch is read-only surface aggregation plus bounded non-executing repair plan generation; explicitly avoids gene writes, autopromotion, model calls, and AGI completion claims; 22 tests pass and scope is limited to evidence_loop_surface wiring.\"}",
+  "raw_response_stored": false,
+  "credential_stored": false,
+  "created_at": "2026-05-28T18:45:52+0800"
+}

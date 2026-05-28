@@ -1,0 +1,11 @@
+{
+  "provider": "gpt55_5yuantoken",
+  "model": "gpt-5.5",
+  "status": "HTTP_200",
+  "decision": "PASS",
+  "content_hash": "6d7e5c8388eaa315198a47837db58f387e376b97904c38bd677f8f63c7acaa52",
+  "content_excerpt": "{\"decision\":\"PASS\",\"risk\":\"low\",\"reason\":\"补丁范围限于 evidence loop 状态表面展示与小型修复规划的非执行性转换；声明为只读、无模型调用、无 gene 写入、无自动晋级、无 AGI 完成宣称，也未涉及核心 patch。测试覆盖相关 evidence loop/status/small repair 与 capability/failure library，整体符合低风险演化纪律。\"}",
+  "raw_response_stored": false,
+  "credential_stored": false,
+  "created_at": "2026-05-28T18:45:48+0800"
+}

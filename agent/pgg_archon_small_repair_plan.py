@@ -101,6 +101,20 @@ def _repair_for_bottleneck(item: Mapping[str, Any], index: int) -> dict[str, Any
             "hold_reasons": list(_as_sequence(item.get("hold_reasons")))[:8],
             "not_executed": True,
         }
+    if source == "pgg_archon_evidence_loop":
+        return {
+            "repair_id": f"pgg_archon_small_repair_{index}_evidence_loop",
+            "source": source,
+            "targets": code.split("/") if code else [],
+            "priority": "P1",
+            "risk": "low",
+            "action": "bind_event_failure_retrospective_metric_evidence",
+            "inputs_required": ["event_ledger_status", "failure_sample_status", "task_retrospective_status", "multi_model_ledger_status", "capability_metrics_status"],
+            "completion_standard": "Learning-loop evidence is observed or explicitly labeled UNKNOWN/WATCH before any next promotion claim; no raw sensitive content is stored.",
+            "blocked_side_effects": ["no_model_call", "no_gene_write", "no_autopromote", "no_sensitive_content_storage"],
+            "missing": list(_as_sequence(item.get("missing")))[:8],
+            "not_executed": True,
+        }
     return {
         "repair_id": f"pgg_archon_small_repair_{index}_manual_review",
         "source": source or "UNKNOWN",

@@ -14,6 +14,7 @@ from typing import Any, Mapping, Sequence
 
 from agent.apex_runtimeos_autonomy import summarize_autonomy_status
 from agent.apex_promotion_claim_guard import evaluate_promotion_claim_guard
+from agent.pgg_archon_evidence_loop_surface import build_pgg_archon_evidence_loop_surface
 
 DEFAULT_UNLOCK_DIR = Path("/Users/appleoppa/.hermes/workspace/agi-routing/apex-module-unlocks")
 DEFAULT_GRAPH_REPLAY_DIR = Path("/Users/appleoppa/.hermes/workspace/agi-routing/case-flow-graph-replays")
@@ -64,6 +65,7 @@ def build_pgg_archon_status_surface(
     eval_regression_report: Mapping[str, Any] | None = None,
     golden_regression_report: Mapping[str, Any] | None = None,
     promotion_guard_report: Mapping[str, Any] | None = None,
+    evidence_loop_report: Mapping[str, Any] | None = None,
     unlock_dir: str | Path = DEFAULT_UNLOCK_DIR,
     graph_replay_dir: str | Path = DEFAULT_GRAPH_REPLAY_DIR,
     eval_dir: str | Path = DEFAULT_EVAL_DIR,
@@ -105,6 +107,12 @@ def build_pgg_archon_status_surface(
         promotion_guard = {"schema": None, "allowed": False, "hold_reasons": [f"promotion_guard_unavailable:{type(exc).__name__}"]}
     promotion_guard_allowed = bool(promotion_guard.get("allowed"))
     promotion_guard_holds = [str(item) for item in promotion_guard.get("hold_reasons", [])[:8]] if isinstance(promotion_guard.get("hold_reasons"), list) else []
+    try:
+        evidence_loop = dict(evidence_loop_report) if evidence_loop_report is not None else dict(build_pgg_archon_evidence_loop_surface())
+    except Exception as exc:
+        evidence_loop = {"schema": "PGGArchonEvidenceLoopSurface/v1", "status": "ERROR", "missing": [f"evidence_loop_unavailable:{type(exc).__name__}"], "agi_completion_claim": False}
+    evidence_loop_status = _status(evidence_loop.get("status"))
+    evidence_loop_missing = [str(item) for item in evidence_loop.get("missing", [])[:8]] if isinstance(evidence_loop.get("missing"), list) else []
 
     signals = {
         "module_unlock_surface": _signal(unlockable_count > 0, unlock, f"unlockable_count={unlockable_count}"),
@@ -168,6 +176,15 @@ def build_pgg_archon_status_surface(
             "action": "clear_promotion_claim_guard_holds_before_autopromote",
             "risk": "low",
         })
+    if evidence_loop_status in {"UNKNOWN", "WATCH", "ERROR"}:
+        small_bottlenecks.append({
+            "code": "Evd/Loop",
+            "source": "pgg_archon_evidence_loop",
+            "status": evidence_loop_status,
+            "missing": evidence_loop_missing,
+            "action": "bind_learning_loop_evidence_before_next_promotion_claim",
+            "risk": "low",
+        })
 
     return {
         "schema": "PGGArchonStatusSurface/v1",
@@ -197,9 +214,12 @@ def build_pgg_archon_status_surface(
             "pending_rollbacks": pending_rollbacks,
             "promotion_guard_allowed": promotion_guard_allowed,
             "promotion_guard_hold_reasons": promotion_guard_holds,
+            "evidence_loop_status": evidence_loop_status,
+            "evidence_loop_missing": evidence_loop_missing,
         },
         "autonomy_status": autonomy,
         "promotion_claim_guard": promotion_guard,
+        "evidence_loop_surface": evidence_loop,
         "small_bottlenecks": small_bottlenecks,
         "side_effects": "read_only_status_surface",
         "agi_completion_claim": False,
