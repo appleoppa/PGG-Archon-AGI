@@ -15,6 +15,8 @@ import time
 from pathlib import Path
 from typing import Any, Mapping
 
+from agent.controlled_auto_core_patch import controlled_auto_core_patch
+
 DEFAULT_GENE_DB_PATH = Path("/Users/appleoppa/.hermes/workspace/开智/02-进化基因/apex_evolution_genes.sqlite3")
 DEFAULT_AUDIT_DIR = Path("/Users/appleoppa/.hermes/workspace/agi-routing/auto-promotions")
 
@@ -212,6 +214,8 @@ def record_controlled_autonomous_promotion(
     gene_write_report: Mapping[str, Any],
     *,
     audit_dir: str | Path = DEFAULT_AUDIT_DIR,
+    enable_core_patch: bool = False,
+    core_patch_request: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     audit_dir = Path(audit_dir)
     audit_dir.mkdir(parents=True, exist_ok=True)
@@ -233,7 +237,26 @@ def record_controlled_autonomous_promotion(
     record["promotion_hash"] = _sha256_obj(record)
     path = audit_dir / f"{int(time.time())}_{record.get('gene_id') or 'blocked'}.json"
     path.write_text(json.dumps(record, ensure_ascii=False, indent=2), encoding="utf-8")
-    return {**record, "audit_path": str(path)}
+    result = {**record, "audit_path": str(path)}
+    if enable_core_patch:
+        if not allowed:
+            result["core_patch"] = {"status": "BLOCK", "issues": ["promotion_not_allowed"], "side_effects": "none"}
+        elif not isinstance(core_patch_request, Mapping):
+            result["core_patch"] = {"status": "BLOCK", "issues": ["core_patch_request_missing"], "side_effects": "none"}
+        else:
+            result["core_patch"] = controlled_auto_core_patch(
+                promotion_path=str(path),
+                target_path=str(core_patch_request.get("target_path") or ""),
+                old_text=str(core_patch_request.get("old_text") or ""),
+                new_text=str(core_patch_request.get("new_text") or ""),
+                reason=str(core_patch_request.get("reason") or "route-chain controlled promotion callback"),
+                verify_commands=core_patch_request.get("verify_commands") or [],
+                allowlist=core_patch_request.get("allowlist") or (),
+                audit_dir=core_patch_request.get("audit_dir") or Path("/Users/appleoppa/.hermes/workspace/agi-routing/core-patch-audits"),
+                backup_dir=core_patch_request.get("backup_dir") or Path("/Users/appleoppa/.hermes/backups/auto_core_patch_runtime"),
+                max_changed_chars=int(core_patch_request.get("max_changed_chars") or 12000),
+            )
+    return result
 
 
 __all__ = [

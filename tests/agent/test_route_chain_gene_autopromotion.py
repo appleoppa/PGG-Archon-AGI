@@ -105,6 +105,45 @@ def test_write_candidate_to_gene_db_and_record_controlled_promotion(tmp_path):
     assert Path(promotion["audit_path"]).exists()
 
 
+def test_controlled_promotion_core_patch_callback_blocks_without_request(tmp_path):
+    candidate_path = _candidate_fixture(tmp_path)
+    db = tmp_path / "genes.sqlite3"
+    _create_gene_db(db)
+    report = write_route_chain_candidate_to_gene_db(candidate_path, db_path=db)
+    promotion = record_controlled_autonomous_promotion(report, audit_dir=tmp_path / "audit", enable_core_patch=True)
+    assert promotion["status"] == "PROMOTED_CONTROLLED"
+    assert promotion["core_patch"]["status"] == "BLOCK"
+    assert "core_patch_request_missing" in promotion["core_patch"]["issues"]
+
+
+def test_controlled_promotion_core_patch_callback_applies_allowlisted_patch(tmp_path, monkeypatch):
+    monkeypatch.setenv("PGG_AUTO_CORE_PATCH_ALLOW_EXTERNAL_TEST_TARGETS", "1")
+    candidate_path = _candidate_fixture(tmp_path)
+    db = tmp_path / "genes.sqlite3"
+    _create_gene_db(db)
+    report = write_route_chain_candidate_to_gene_db(candidate_path, db_path=db)
+    target = tmp_path / "target.py"
+    target.write_text("VALUE = 'old'\n", encoding="utf-8")
+    promotion = record_controlled_autonomous_promotion(
+        report,
+        audit_dir=tmp_path / "audit",
+        enable_core_patch=True,
+        core_patch_request={
+            "target_path": str(target),
+            "old_text": "VALUE = 'old'",
+            "new_text": "VALUE = 'new'",
+            "reason": "unit test promotion callback",
+            "verify_commands": [f"python -m py_compile {target}"],
+            "allowlist": [str(target)],
+            "audit_dir": tmp_path / "core-audit",
+            "backup_dir": tmp_path / "backup",
+        },
+    )
+    assert promotion["status"] == "PROMOTED_CONTROLLED"
+    assert promotion["core_patch"]["status"] == "PASS"
+    assert "VALUE = 'new'" in target.read_text(encoding="utf-8")
+
+
 def test_write_candidate_blocks_when_claude_missing(tmp_path):
     candidate_path = _candidate_fixture(tmp_path)
     candidate = json.loads(candidate_path.read_text(encoding="utf-8"))
