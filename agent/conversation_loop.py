@@ -442,6 +442,28 @@ def run_conversation(
     # never stored in the messages list. This keeps them ephemeral: they won't
     # be saved to session DB, session logs, or batch trajectories, but they're
     # automatically re-applied on every API call (including session continuations).
+
+    # PGG legal case workflow guard: when the user starts a formal case workflow
+    # (e.g. "启动办案程序"), inject a mandatory pre-flight gate before the model
+    # answers.  This prevents the real entry point from silently degrading into
+    # a central-only material preview while still claiming the formal workflow
+    # has started.  The guard is side-effect-light: pure plan + low-sensitive
+    # audit record; no case files are read and no legal work product is delivered.
+    try:
+        from agent.pgg_case_workflow_runtime_guard import maybe_build_case_workflow_runtime_guard
+
+        _case_guard = maybe_build_case_workflow_runtime_guard(
+            user_message,
+            session_id=getattr(agent, "session_id", None),
+            persist_audit=True,
+        )
+        if _case_guard:
+            _guard_msg = {"role": "system", "content": _case_guard["system_injection"]}
+            messages.append(_guard_msg)
+            if not agent.quiet_mode:
+                agent._emit_status("PGG办案流程前置门禁已触发：正式流程必须先过门禁。")
+    except Exception:
+        logger.exception("PGG case workflow runtime guard failed; continuing without guard injection")
     
     # Track user turns for memory flush and periodic nudge logic
     agent._user_turn_count += 1
