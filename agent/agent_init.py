@@ -1086,6 +1086,17 @@ def init_agent(
     if not agent.quiet_mode and agent._full_toolcall_enabled:
         _ra().logger.info("Full Tool-Call trajectory plan injection enabled")
 
+    # Route-Chain Evidence Gate soft integration config
+    try:
+        agent._route_chain_gate_cfg = _agent_cfg
+        _rc_cfg = _agent_cfg.get("route_chain_gate", {}) or {}
+        agent._route_chain_gate_enabled = bool(_rc_cfg.get("enabled", False))
+    except Exception:
+        agent._route_chain_gate_cfg = {}
+        agent._route_chain_gate_enabled = False
+    if not agent.quiet_mode and agent._route_chain_gate_enabled:
+        _ra().logger.info("Route-Chain Evidence Gate soft integration enabled")
+
     # Memory provider plugin (external — one at a time, alongside built-in)
     agent._memory_manager = None
     # Reads memory.provider from config to select which plugin to activate.

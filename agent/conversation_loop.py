@@ -557,6 +557,111 @@ def run_conversation(
         except Exception as _ftc_exc:
             logger.debug("Full Tool-Call plan skipped: %s", _ftc_exc)
 
+    # ── Route-Chain Evidence Gate hard integration ──
+    # AGI/evolution/core-change turns are now hard-gated through the local
+    # route_chain_evidence_gate sidecar.  "Hard" means the route-chain result is
+    # injected as a mandatory policy constraint and, when configured, verified
+    # candidate genes are written to the local gene DB with an audited controlled
+    # promotion record.  It still does NOT auto-patch files, switch providers, or
+    # claim AGI completion.
+    try:
+        import json as _rc_json
+        import subprocess as _rc_subprocess
+        from pathlib import Path as _RcPath
+
+        _cfg = getattr(agent, '_route_chain_gate_cfg', None)
+        if _cfg is None:
+            try:
+                from hermes_cli.config import load_config as _rc_load_config
+                _cfg = _rc_load_config() or {}
+            except Exception:
+                _cfg = {}
+        _rc_cfg = _cfg.get('route_chain_gate', {}) if isinstance(_cfg, dict) else {}
+        if _rc_cfg.get('enabled', False) and isinstance(user_message, str) and len(user_message.strip()) > 8:
+            _rc_low = user_message.lower()
+            _rc_is_agi = any(_k in _rc_low for _k in [
+                'agi', 'apex', 'pgg', 'archon', '准agi', '进化', '自我改造',
+                '自改进', '核心架构', '量子路由', '河图洛书'
+            ])
+            _rc_trigger_phrases = _rc_cfg.get('trigger_phrases') or []
+            if not isinstance(_rc_trigger_phrases, list):
+                _rc_trigger_phrases = []
+            _rc_triggered = any(str(_p).lower() in _rc_low for _p in _rc_trigger_phrases)
+            _rc_requires_trigger = bool(_rc_cfg.get('require_trigger_phrase', False))
+            _rc_hard_enforce = bool(_rc_cfg.get('hard_enforce', False) and _rc_is_agi)
+            _rc_execute = bool(
+                _rc_cfg.get('execute_for_all', False)
+                or (_rc_is_agi and _rc_triggered)
+                or (_rc_is_agi and _rc_cfg.get('execute_for_agi', True) and (not _rc_requires_trigger or _rc_hard_enforce))
+            )
+            _rc_script = _RcPath('/Users/appleoppa/.hermes/workspace/agi-routing/route_chain_evidence_gate.py')
+            if _rc_script.exists():
+                _rc_cmd = [
+                    'python3', str(_rc_script), user_message[:2000], '--task-class', 'auto',
+                    '--max-tokens', str(int(_rc_cfg.get('max_tokens', 250))),
+                ]
+                if _rc_execute:
+                    _rc_cmd.append('--execute-stages')
+                if _rc_cfg.get('emit_gene_candidate', False) and _rc_execute:
+                    _rc_cmd.append('--emit-gene-candidate')
+                _rc_timeout = int(_rc_cfg.get('timeout_seconds', 420))
+                _rc_proc = _rc_subprocess.run(_rc_cmd, text=True, stdout=_rc_subprocess.PIPE, stderr=_rc_subprocess.PIPE, timeout=_rc_timeout)
+                _rc_summary = _rc_json.loads((_rc_proc.stdout or '{}').strip().splitlines()[-1]) if _rc_proc.stdout.strip() else {}
+                _rc_gene_write = None
+                _rc_promotion = None
+                if (
+                    _rc_cfg.get('auto_write_gene_db', False)
+                    and _rc_summary.get('gene_candidate_path')
+                    and _rc_summary.get('gene_status') == 'candidate_ready'
+                ):
+                    try:
+                        from agent.route_chain_gene_autopromotion import (
+                            record_controlled_autonomous_promotion,
+                            write_route_chain_candidate_to_gene_db,
+                        )
+                        _rc_gene_write = write_route_chain_candidate_to_gene_db(_rc_summary['gene_candidate_path'])
+                        if _rc_cfg.get('autonomous_promotion_enabled', False):
+                            _rc_promotion = record_controlled_autonomous_promotion(_rc_gene_write)
+                    except Exception as _rc_gene_exc:
+                        _rc_gene_write = {'status': 'ERROR', 'error': type(_rc_gene_exc).__name__}
+                _rc_blocked = _rc_hard_enforce and (
+                    _rc_proc.returncode != 0
+                    or _rc_summary.get('final_decision') in {'blocked', 'partial_model_execution'}
+                    or (_rc_execute and int(_rc_summary.get('real_response_count') or 0) < int(_rc_summary.get('stage_count') or 0))
+                    or (_rc_cfg.get('emit_gene_candidate', False) and _rc_summary.get('gene_status') not in {None, 'candidate_ready'})
+                    or (_rc_cfg.get('auto_write_gene_db', False) and _rc_summary.get('gene_candidate_path') and ((_rc_gene_write or {}).get('status') != 'PASS'))
+                )
+                if _rc_cfg.get('inject_summary', True) and _rc_summary:
+                    _rc_inject = (
+                        "\n\n[量子路由+河图洛书硬门禁]\n"
+                        f"状态: {_rc_summary.get('final_decision', 'unknown')}\n"
+                        f"任务类型: {_rc_summary.get('task_class', 'unknown')}\n"
+                        f"链路: {_rc_summary.get('selected_chain', 'unknown')}\n"
+                        f"真实阶段数: {_rc_summary.get('real_response_count', 0)}/{_rc_summary.get('stage_count', 0)}\n"
+                        f"触发五段链: {_rc_execute}\n"
+                        f"硬接入: {_rc_hard_enforce}\n"
+                        f"证据: {_rc_summary.get('evidence_path', '')}\n"
+                        f"候选基因: {_rc_summary.get('gene_candidate_path') or '未生成'} / {_rc_summary.get('gene_status') or 'none'}\n"
+                        f"基因库写入: {(_rc_gene_write or {}).get('status', '未触发')}\n"
+                        f"自动晋升: {(_rc_promotion or {}).get('status', '未触发')}\n"
+                        f"硬门禁阻断: {_rc_blocked}\n"
+                        "边界: 硬接入只强制证据门禁、候选基因入库和受控晋升审计；不自动patch文件、不切换主模型、不声明AGI完成。"
+                    )
+                    if _rc_blocked:
+                        _rc_inject += "\n强制要求: 本轮只能说明门禁阻断和补救步骤，不得继续声称已完成进化/核心改造。"
+                    _ephem = getattr(agent, 'ephemeral_system_prompt', None) or ''
+                    agent.ephemeral_system_prompt = (_ephem + _rc_inject).strip()
+                logger.info(
+                    "Route-Chain gate hard-injected: task_class=%s chain=%s evidence=%s execute=%s hard=%s gene_write=%s promotion=%s blocked=%s",
+                    _rc_summary.get('task_class'), _rc_summary.get('selected_chain'),
+                    _rc_summary.get('evidence_path'), _rc_execute, _rc_hard_enforce,
+                    (_rc_gene_write or {}).get('status'), (_rc_promotion or {}).get('status'), _rc_blocked,
+                )
+            else:
+                logger.warning("Route-Chain gate script missing: %s", _rc_script)
+    except Exception as _rc_exc:
+        logger.warning("Route-Chain gate hard integration skipped: %s", _rc_exc)
+
     # ── Preflight context compression ──
     # Before entering the main loop, check if the loaded conversation
     # history already exceeds the model's context threshold.  This handles
