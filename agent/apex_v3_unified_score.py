@@ -232,11 +232,21 @@ def build_apex_v3_unified_score_report(status: Mapping[str, Any]) -> Dict[str, A
         task_retrospectives = tuple(loaded_retrospectives)
     except Exception:
         task_retrospectives = ()
+    try:
+        from agent.apex_low_risk_autonomy_candidates import generate_autonomy_candidates
+        autonomy_candidate_report = generate_autonomy_candidates({
+            "failure_samples": failure_samples,
+            "real_capability_metrics": {"status": "WATCH"},
+        })
+        autonomy_candidates = tuple(autonomy_candidate_report.get("candidates", ()))
+    except Exception:
+        autonomy_candidate_report = {"schema": "ApexLowRiskAutonomyCandidates/v1", "status": "ERROR", "candidate_count": 0, "candidates": ()}
+        autonomy_candidates = ()
     real_capability_metrics = build_real_capability_metrics_summary({
         "events": tuple(status.get("events", ())) + case_events,
         "failure_samples": tuple(status.get("failure_samples", ())) + failure_samples,
         "task_retrospectives": tuple(status.get("task_retrospectives", ())) + task_retrospectives,
-        "autonomy_candidates": status.get("autonomy_candidates", ()),
+        "autonomy_candidates": tuple(status.get("autonomy_candidates", ())) + autonomy_candidates,
         "multi_model_ledger": multi_model_evidence_ledger.get("entries", ()),
     })
 

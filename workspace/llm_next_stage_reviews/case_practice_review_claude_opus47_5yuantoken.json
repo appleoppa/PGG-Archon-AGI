@@ -1,0 +1,14 @@
+{
+  "schema": "ApexMultiModelCallEvidence/v1",
+  "provider": "claude_opus47_5yuantoken",
+  "model": "claude-opus-4-7",
+  "role": "Claude代码/架构/安全边界复核",
+  "prompt_hash": "efa584c92115cf428df304c311207c7000edd00ccedd12135a6d0577a81bb25a",
+  "raw_response_stored": false,
+  "credential_stored": false,
+  "status": "RECORDED",
+  "decision": "case_practice_low_risk_evolution_continue",
+  "evidence_hash": "baa11a2064a31de228e22b4eb10696451cd4c13bf5d69dbbfa2a15d5265bd5fe",
+  "response_excerpt_hash": "24345fdf03e09b62ae603ef734b84b5babbaa136d6c01266af7700ef35d584e3",
+  "http_status": "ok"
+}

@@ -1,0 +1,14 @@
+{
+  "schema": "ApexMultiModelCallEvidence/v1",
+  "provider": "gpt55_5yuantoken",
+  "model": "gpt-5.5",
+  "role": "GPT复杂目标/反事实复核",
+  "prompt_hash": "3363b27672d65530b7613f9203452ee018ed46cdb039e047051b5429a97996f6",
+  "raw_response_stored": false,
+  "credential_stored": false,
+  "status": "RECORDED",
+  "decision": "case_practice_low_risk_evolution_continue",
+  "evidence_hash": "7557cf331aa169053650fe47ede9bd26442543bf29d0087bf371c313c15f28f3",
+  "response_excerpt_hash": "647514d7a3092a9f53db05b704b7a80503f6ab20f81d67c30066ead392556423",
+  "http_status": "ok"
+}
