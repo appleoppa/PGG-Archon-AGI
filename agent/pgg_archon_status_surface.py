@@ -20,6 +20,7 @@ from typing import Any, Mapping, Sequence
 from agent.apex_runtimeos_autonomy import summarize_autonomy_status
 from agent.apex_promotion_claim_guard import evaluate_promotion_claim_guard
 from agent.pgg_archon_apex_agi_absorption import build_pgg_archon_apex_agi_absorption_surface
+from agent.pgg_archon_diagnostic_surface import build_pgg_archon_diagnostic_surface
 from agent.pgg_archon_evidence_loop_surface import build_pgg_archon_evidence_loop_surface
 from agent.pgg_archon_pua_standards import build_pgg_archon_pua_standard_report
 from agent.pgg_archon_p0_surface import build_pgg_archon_p0_surface
@@ -257,6 +258,47 @@ def build_pgg_archon_status_surface(
     gpo_status = _status(gpo_report.get("status"))
     quality_ev = _safe_load(load_latest_quality_evidence_bundle)
     quality_ev_valid = bool(quality_ev.get("schema"))
+
+    # Diagnostic surface: aggregate already-collected sub-surface statuses into
+    # a unified subsystem-health view. Pure read-only — no IO, no model calls.
+    def _diag_status(value: str) -> str:
+        v = (value or "").upper()
+        if v == "PASS":
+            return "healthy"
+        if v in {"BLOCK", "ERROR", "UNKNOWN"}:
+            return "critical"
+        return "degraded"
+
+    diagnostic_subsystems = [
+        {"name": "evidence_loop", "status": _diag_status(evidence_loop_status), "details": f"missing={len(evidence_loop_missing)}"},
+        {"name": "apex_agi_absorption", "status": _diag_status(apex_agi_absorption_status), "details": f"blocking={len(apex_agi_absorption_blocking)}"},
+        {"name": "pua_standards", "status": _diag_status(pua_p0_status), "details": f"violations={pua_total_violations}"},
+        {"name": "p0_surface", "status": _diag_status(p0_surface_status), "details": f"ok={p0_surfaces_ok}/{p0_surfaces_total}"},
+        {"name": "quality_gate", "status": _diag_status(quality_gate_status), "details": f"blocking={len(quality_gate_blocking)} warnings={len(quality_gate_warnings)}"},
+        {"name": "research_extraction", "status": _diag_status(research_extraction_status), "details": f"warnings={len(research_extraction_warnings)}"},
+        {"name": "case_flow_graph_replay", "status": _diag_status(graph_status), "details": f"next_node={graph.get('next_node')}"},
+        {"name": "eval_regression", "status": _diag_status(eval_status), "details": f"failed_count={eval_report.get('failed_count')}"},
+        {"name": "golden_regression", "status": _diag_status(golden_status), "details": f"failed_expectation_count={golden.get('failed_expectation_count')}"},
+        {"name": "era", "status": _diag_status(era_status), "details": ""},
+        {"name": "flow_reward", "status": _diag_status(flow_status), "details": ""},
+        {"name": "switch_cost", "status": "degraded" if switch_status == "HOLD" else _diag_status(switch_status), "details": ""},
+        {"name": "co_scientist_debate", "status": _diag_status(co_debate_status), "details": ""},
+        {"name": "co_scientist_gene", "status": "healthy" if co_gene_status in {"READY", "PASS"} else _diag_status(co_gene_status), "details": ""},
+        {"name": "gpo", "status": "healthy" if gpo_status in {"PASS", "WATCH"} else _diag_status(gpo_status), "details": ""},
+        {"name": "quality_evidence_bundle", "status": "healthy" if quality_ev_valid else "degraded", "details": f"valid={quality_ev_valid}"},
+    ]
+    try:
+        diagnostic_surface = build_pgg_archon_diagnostic_surface(diagnostic_subsystems)
+    except Exception as exc:
+        diagnostic_surface = {
+            "schema": "PGGArchonDiagnosticSurface/v1",
+            "status": "ERROR",
+            "overall_status": "ERROR",
+            "subsystems": [],
+            "warnings": [f"diagnostic_surface_unavailable:{type(exc).__name__}"],
+            "agi_completion_claim": False,
+        }
+    diagnostic_overall = _status(diagnostic_surface.get("overall_status"))
 
     # --- Aggregate signals ---
     signals = {
@@ -557,6 +599,10 @@ def build_pgg_archon_status_surface(
             "promotion_readiness_status": promotion_readiness["status"],
             "promotion_requires_human_ack": promotion_readiness["requires_human_ack"],
             "promotion_human_ack_pending": promotion_readiness["human_ack_pending"],
+            "diagnostic_overall_status": diagnostic_overall,
+            "diagnostic_critical_count": diagnostic_surface.get("critical_count", 0),
+            "diagnostic_degraded_count": diagnostic_surface.get("degraded_count", 0),
+            "diagnostic_healthy_count": diagnostic_surface.get("healthy_count", 0),
         },
         "autonomy_status": autonomy,
         "promotion_claim_guard": promotion_guard,
@@ -571,6 +617,7 @@ def build_pgg_archon_status_surface(
         "gpo_report": gpo_report,
         "quality_evidence_bundle": quality_ev,
         "promotion_readiness": promotion_readiness,
+        "diagnostic_surface": diagnostic_surface,
         "small_bottlenecks": small_bottlenecks,
         "side_effects": "read_only_status_surface",
         "agi_completion_claim": False,

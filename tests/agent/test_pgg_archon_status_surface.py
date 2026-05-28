@@ -314,3 +314,33 @@ def test_pgg_archon_status_surface_includes_new_module_fields(monkeypatch):
     assert report["summary"]["co_gene_status"] == "READY"
     assert report["summary"]["gpo_status"] == "PASS"
     assert report["summary"]["quality_evidence_valid"] is True
+
+
+def test_pgg_archon_status_surface_includes_diagnostic_surface(monkeypatch):
+    _mock_all_pass(monkeypatch)
+
+    report = build_pgg_archon_status_surface(
+        unlock_report=_unlock(),
+        graph_replay_report=_graph(),
+        eval_regression_report=_eval(),
+        golden_regression_report=_golden(),
+    )
+
+    diag = report.get("diagnostic_surface")
+    assert isinstance(diag, dict)
+    assert diag.get("schema") == "PGGArchonDiagnosticSurface/v1"
+    assert diag.get("agi_completion_claim") is False
+    # 16 subsystems from existing status_surface inputs
+    assert len(diag.get("subsystems", [])) == 16
+    assert diag.get("overall_status") in {"PASS", "WATCH", "BLOCK"}
+    summary = report["summary"]
+    assert "diagnostic_overall_status" in summary
+    assert "diagnostic_critical_count" in summary
+    assert "diagnostic_degraded_count" in summary
+    assert "diagnostic_healthy_count" in summary
+    # Counts must equal subsystem totals
+    assert (
+        summary["diagnostic_critical_count"]
+        + summary["diagnostic_degraded_count"]
+        + summary["diagnostic_healthy_count"]
+    ) == len(diag["subsystems"])
