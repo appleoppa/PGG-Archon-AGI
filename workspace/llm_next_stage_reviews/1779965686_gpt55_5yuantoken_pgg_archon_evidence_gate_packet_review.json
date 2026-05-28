@@ -1,0 +1,11 @@
+{
+  "provider": "gpt55_5yuantoken",
+  "model": "gpt-5.5",
+  "status": "HTTP_200",
+  "decision": "PASS",
+  "content_hash": "91859fc0d453d066da7ff2175392d93110ce271b03d9fc5448ad114f7a99500e",
+  "content_excerpt": "{\"decision\":\"PASS\",\"risk\":\"low\",\"reason\":\"补丁为只读、边界化的 evidence-gate packet builder，仅将 case_flow_graph_replay 的 evidence_gate bottlenecks 转为结构化包；明确不办案、不外发、不读取原始案卷、不生成案号、不写 genes、不自动晋级、不宣称 AGI 完成。测试 13 通过，现场包为 HOLD，requires_internal_report=true，allows_external_delivery=false，not_executed=true，符合低风险纪律。\"}",
+  "raw_response_stored": false,
+  "credential_stored": false,
+  "created_at": "2026-05-28T18:54:46+0800"
+}
