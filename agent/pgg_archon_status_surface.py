@@ -4,6 +4,11 @@ This read-only surface aggregates module unlock, case-flow graph replay, eval
 regression, golden regression, and promotion claim guard reports into a compact
 PGG Archon status panel. It does not execute modules, call models, write genes,
 or claim AGI completion.
+
+Expanded (2026-05-28): ERA, Flow Reward, Switch-cost, GPO, Co-Scientist, and
+Quality Evidence Bundle read-only status lookups wired into signals, bottlenecks,
+and summary fields. All lookups use load_latest_* or build_*_report functions
+that are themselves read-only and stateless.
 """
 from __future__ import annotations
 
@@ -17,6 +22,12 @@ from agent.apex_promotion_claim_guard import evaluate_promotion_claim_guard
 from agent.pgg_archon_apex_agi_absorption import build_pgg_archon_apex_agi_absorption_surface
 from agent.pgg_archon_evidence_loop_surface import build_pgg_archon_evidence_loop_surface
 from agent.pgg_archon_pua_standards import build_pgg_archon_pua_standard_report
+from agent.apex_co_scientist import load_latest_debate_report, load_latest_gene_candidate
+from agent.apex_era import load_latest_era_report
+from agent.apex_flow_reward import load_latest_flow_reward_report
+from agent.apex_switch_cost import load_latest_switch_cost_report
+from agent.apex_gpo import build_gpo_report
+from runtime.quality.evidence_bundle import load_latest_quality_evidence_bundle
 
 DEFAULT_UNLOCK_DIR = Path("/Users/appleoppa/.hermes/workspace/agi-routing/apex-module-unlocks")
 DEFAULT_GRAPH_REPLAY_DIR = Path("/Users/appleoppa/.hermes/workspace/agi-routing/case-flow-graph-replays")
@@ -138,6 +149,31 @@ def build_pgg_archon_status_surface(
     pua_p0_status = _status(pua_report.get("p0_status"))
     pua_total_violations = _as_int(pua_report.get("total_violations"))
 
+    # --- Read-only lookups for standalone APEX modules ---
+    def _safe_load(fn, empty=None):
+        try:
+            val = fn()
+            if val is not None:
+                return dict(val)
+        except Exception:
+            pass
+        return empty if empty is not None else {}
+    era_report = _safe_load(load_latest_era_report)
+    era_status = _status(era_report.get("status"))
+    flow_report = _safe_load(load_latest_flow_reward_report)
+    flow_status = _status(flow_report.get("status"))
+    switch_report = _safe_load(load_latest_switch_cost_report)
+    switch_status = _status(switch_report.get("status"))
+    co_debate = _safe_load(load_latest_debate_report)
+    co_debate_status = _status(co_debate.get("status"))
+    co_gene = _safe_load(load_latest_gene_candidate)
+    co_gene_status = _status(co_gene.get("status"))
+    gpo_report = _safe_load(build_gpo_report)
+    gpo_status = _status(gpo_report.get("status"))
+    quality_ev = _safe_load(load_latest_quality_evidence_bundle)
+    quality_ev_valid = bool(quality_ev.get("valid"))
+
+    # --- Aggregate signals ---
     signals = {
         "module_unlock_surface": _signal(unlockable_count > 0, unlock, f"unlockable_count={unlockable_count}"),
         "case_flow_graph_replay_present": _signal(bool(graph.get("schema")) and graph_status in {"PASS", "ACTION_REQUIRED", "BLOCK"}, graph, f"replay_status={graph_status}"),
@@ -147,11 +183,21 @@ def build_pgg_archon_status_surface(
         "promotion_claim_guard_present": _signal(bool(promotion_guard.get("schema")), promotion_guard, f"promotion_guard_allowed={promotion_guard_allowed}"),
         "apex_agi_absorption_surface_ready": _signal(apex_agi_absorption_status == "PASS", apex_agi_absorption, f"apex_agi_absorption_status={apex_agi_absorption_status}"),
         "pua_standards_clean": _signal(pua_p0_status == "PASS" and pua_total_violations == 0, pua_report, f"pua_p0_status={pua_p0_status} violations={pua_total_violations}"),
+        "era_report_present": _signal(era_status == "PASS", era_report, f"era_status={era_status}"),
+        "flow_reward_report_present": _signal(flow_status == "PASS", flow_report, f"flow_status={flow_status}"),
+        "switch_cost_report_present": _signal(switch_status == "PASS", switch_report, f"switch_status={switch_status}"),
+        "co_scientist_debate_present": _signal(co_debate_status == "PASS", co_debate, f"co_debate_status={co_debate_status}"),
+        "co_scientist_gene_candidate_ready": _signal(co_gene_status in {"READY", "PASS"}, co_gene, f"co_gene_status={co_gene_status}"),
+        "gpo_report_present": _signal(gpo_status in {"PASS", "WATCH"}, gpo_report, f"gpo_status={gpo_status}"),
+        "quality_evidence_bundle_valid": _signal(quality_ev_valid, quality_ev, f"evidence_valid={quality_ev_valid}"),
         "no_external_delivery_from_blocked_graph": _signal(not (graph_status == "BLOCK" and bool(graph.get("allows_external_delivery"))), graph, "blocked_graph_must_not_allow_external_delivery"),
         "no_agi_completion_claims": _signal(
             not any(
                 bool(item.get("agi_completion_claim"))
-                for item in (unlock, graph, eval_report, golden, autonomy, promotion_guard, evidence_loop, apex_agi_absorption, pua_report)
+                for item in (unlock, graph, eval_report, golden, autonomy, promotion_guard,
+                            evidence_loop, apex_agi_absorption, pua_report,
+                            era_report, flow_report, switch_report, co_debate, co_gene,
+                            gpo_report, quality_ev)
             ),
             {},
             "all_pgg_archon_status_inputs_keep_agi_completion_claim_false",
@@ -232,6 +278,55 @@ def build_pgg_archon_status_surface(
             "action": "resolve_pua_red_line_or_standard_violations_before_promotion",
             "risk": "low",
         })
+    if era_status not in {"PASS", ""}:
+        small_bottlenecks.append({
+            "code": "ERA/Warn",
+            "source": "apex_era",
+            "era_status": era_status,
+            "action": "review_era_path_search_or_bootstrap_latest_report",
+            "risk": "low",
+        })
+    if flow_status not in {"PASS", ""}:
+        small_bottlenecks.append({
+            "code": "Flow/Warn",
+            "source": "apex_flow_reward",
+            "flow_status": flow_status,
+            "action": "review_flow_reward_report_or_bootstrap_latest_report",
+            "risk": "low",
+        })
+    if switch_status not in {"PASS", ""}:
+        small_bottlenecks.append({
+            "code": "Swi/Warn",
+            "source": "apex_switch_cost",
+            "switch_status": switch_status,
+            "action": "review_switch_cost_report_or_bootstrap_latest_report",
+            "risk": "low",
+        })
+    if co_debate_status not in {"PASS", ""} or co_gene_status not in {"READY", "PASS", ""}:
+        small_bottlenecks.append({
+            "code": "CoS/Warn",
+            "source": "apex_co_scientist",
+            "debate_status": co_debate_status,
+            "gene_status": co_gene_status,
+            "action": "review_co_scientist_debate_or_gene_candidate_or_bootstrap",
+            "risk": "low",
+        })
+    if gpo_status not in {"PASS", "WATCH", ""}:
+        small_bottlenecks.append({
+            "code": "GPO/Warn",
+            "source": "apex_gpo",
+            "gpo_status": gpo_status,
+            "action": "review_gpo_report_or_rerun_static_scan",
+            "risk": "low",
+        })
+    if not quality_ev_valid:
+        small_bottlenecks.append({
+            "code": "QEv/Warn",
+            "source": "quality_evidence_bundle",
+            "valid": quality_ev_valid,
+            "action": "generate_or_update_quality_evidence_bundle",
+            "risk": "low",
+        })
 
     return {
         "schema": "PGGArchonStatusSurface/v1",
@@ -268,12 +363,26 @@ def build_pgg_archon_status_surface(
             "apex_agi_absorption_blocking_failures": apex_agi_absorption_blocking,
             "pua_p0_status": pua_p0_status,
             "pua_total_violations": pua_total_violations,
+            "era_status": era_status,
+            "flow_status": flow_status,
+            "switch_status": switch_status,
+            "co_debate_status": co_debate_status,
+            "co_gene_status": co_gene_status,
+            "gpo_status": gpo_status,
+            "quality_evidence_valid": quality_ev_valid,
         },
         "autonomy_status": autonomy,
         "promotion_claim_guard": promotion_guard,
         "evidence_loop_surface": evidence_loop,
         "apex_agi_absorption_surface": apex_agi_absorption,
         "pua_standard_report": pua_report,
+        "era_report": era_report,
+        "flow_reward_report": flow_report,
+        "switch_cost_report": switch_report,
+        "co_scientist_debate": co_debate,
+        "co_scientist_gene_candidate": co_gene,
+        "gpo_report": gpo_report,
+        "quality_evidence_bundle": quality_ev,
         "small_bottlenecks": small_bottlenecks,
         "side_effects": "read_only_status_surface",
         "agi_completion_claim": False,
@@ -283,4 +392,3 @@ def build_pgg_archon_status_surface(
 build_apex_runtime_status_surface = build_pgg_archon_status_surface
 
 __all__ = ["build_pgg_archon_status_surface", "build_apex_runtime_status_surface"]
-

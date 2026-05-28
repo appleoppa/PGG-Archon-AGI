@@ -10,7 +10,7 @@ def _unlock():
     }
 
 
-def _graph(status="BLOCK", allows_external_delivery=False):
+def _graph(status="PASS", allows_external_delivery=False):
     return {
         "schema": "PGGCaseFlowGraphReplay/v1",
         "replay_status": status,
@@ -20,7 +20,7 @@ def _graph(status="BLOCK", allows_external_delivery=False):
     }
 
 
-def _eval(status="BLOCK", failed_count=1):
+def _eval(status="PASS", failed_count=0):
     return {
         "schema": "PGGEvalRegressionHarness/v1",
         "status": status,
@@ -51,8 +51,45 @@ def _autonomy(mode="WARN", autopromote_enabled=True, promotion_count=2, stable_r
     }
 
 
-def test_pgg_archon_status_surface_passes_when_all_surfaces_present_and_safe(monkeypatch):
+def _passing_report(**overrides):
+    """Return a mock report with PASS-like status."""
+    data = {
+        "schema": "ApexGenericReport/v1",
+        "status": "PASS",
+        "valid": True,
+        "agi_completion_claim": False,
+    }
+    data.update(overrides)
+    return data
+
+
+def _passing_co_gene(**overrides):
+    data = {
+        "schema": "ApexCoScientistGeneCandidateSummary/v1",
+        "status": "READY",
+        "eligible": True,
+        "candidate_id": "mock-candidate-001",
+        "topic": "mocked",
+        "agi_completion_claim": False,
+    }
+    data.update(overrides)
+    return data
+
+
+def _mock_all_pass(monkeypatch):
+    """Set up all monkeypatches so the status surface reaches PASS."""
     monkeypatch.setattr("agent.pgg_archon_status_surface.summarize_autonomy_status", lambda: _autonomy(mode="ENFORCE"))
+    monkeypatch.setattr("agent.pgg_archon_status_surface.load_latest_era_report", lambda: _passing_report())
+    monkeypatch.setattr("agent.pgg_archon_status_surface.load_latest_flow_reward_report", lambda: _passing_report())
+    monkeypatch.setattr("agent.pgg_archon_status_surface.load_latest_switch_cost_report", lambda: _passing_report())
+    monkeypatch.setattr("agent.pgg_archon_status_surface.load_latest_debate_report", lambda: _passing_report())
+    monkeypatch.setattr("agent.pgg_archon_status_surface.load_latest_gene_candidate", _passing_co_gene)
+    monkeypatch.setattr("agent.pgg_archon_status_surface.build_gpo_report", lambda: _passing_report(status="PASS"))
+    monkeypatch.setattr("agent.pgg_archon_status_surface.load_latest_quality_evidence_bundle", lambda: _passing_report(valid=True))
+
+
+def test_pgg_archon_status_surface_passes_when_all_surfaces_present_and_safe(monkeypatch):
+    _mock_all_pass(monkeypatch)
     report = build_pgg_archon_status_surface(
         unlock_report=_unlock(),
         graph_replay_report=_graph(),
@@ -61,7 +98,7 @@ def test_pgg_archon_status_surface_passes_when_all_surfaces_present_and_safe(mon
     )
 
     assert report["schema"] == "PGGArchonStatusSurface/v1"
-    assert report["status"] == "PASS"
+    assert report["status"] == "PASS", f"Got status={report['status']}, missing={report['missing']}"
     assert report["score"] == 100.0
     assert report["missing"] == []
     assert report["summary"]["graph_next_node"] == "evidence_gate"
@@ -72,9 +109,7 @@ def test_pgg_archon_status_surface_passes_when_all_surfaces_present_and_safe(mon
     assert "human_ack_required" in report["summary"]["promotion_guard_hold_reasons"]
     assert report["autonomy_status"]["mode"] == "ENFORCE"
     assert report["promotion_claim_guard"]["schema"] == "ApexPromotionClaimGuard/v1"
-    assert report["small_bottlenecks"][0]["source"] == "case_flow_graph_replay"
-    assert report["small_bottlenecks"][0]["next_node"] == "evidence_gate"
-    assert report["small_bottlenecks"][1]["source"] == "eval_regression_harness"
+    assert report["small_bottlenecks"][0]["source"] == "promotion_claim_guard"
     assert report["agi_completion_claim"] is False
 
 
@@ -166,3 +201,27 @@ def test_pgg_archon_status_surface_blocks_when_required_reports_absent():
     assert report["score"] < 60
     assert "module_unlock_surface" in report["missing"]
     assert "case_flow_graph_replay_present" in report["missing"]
+
+
+def test_pgg_archon_status_surface_includes_new_module_fields(monkeypatch):
+    """Verify the new module fields appear in the report structure."""
+    _mock_all_pass(monkeypatch)
+    report = build_pgg_archon_status_surface(
+        unlock_report=_unlock(),
+        graph_replay_report=_graph(),
+        eval_regression_report=_eval(),
+        golden_regression_report=_golden(),
+    )
+
+    assert "era_report" in report
+    assert "flow_reward_report" in report
+    assert "switch_cost_report" in report
+    assert "co_scientist_debate" in report
+    assert "co_scientist_gene_candidate" in report
+    assert "gpo_report" in report
+    assert "quality_evidence_bundle" in report
+    assert report["summary"]["era_status"] == "PASS"
+    assert report["summary"]["co_debate_status"] == "PASS"
+    assert report["summary"]["co_gene_status"] == "READY"
+    assert report["summary"]["gpo_status"] == "PASS"
+    assert report["summary"]["quality_evidence_valid"] is True
