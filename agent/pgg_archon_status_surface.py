@@ -1,8 +1,9 @@
-"""Runtime status surface for recently unlocked APEX/PGG modules.
+"""PGG Archon status surface for recently unlocked PGG modules.
 
 This read-only surface aggregates module unlock, case-flow graph replay, eval
-regression, and golden regression reports into a compact PGG Archon status panel.
-It does not execute modules, call models, write genes, or claim AGI completion.
+regression, golden regression, and promotion claim guard reports into a compact
+PGG Archon status panel. It does not execute modules, call models, write genes,
+or claim AGI completion.
 """
 from __future__ import annotations
 
@@ -12,6 +13,7 @@ from pathlib import Path
 from typing import Any, Mapping, Sequence
 
 from agent.apex_runtimeos_autonomy import summarize_autonomy_status
+from agent.apex_promotion_claim_guard import evaluate_promotion_claim_guard
 
 DEFAULT_UNLOCK_DIR = Path("/Users/appleoppa/.hermes/workspace/agi-routing/apex-module-unlocks")
 DEFAULT_GRAPH_REPLAY_DIR = Path("/Users/appleoppa/.hermes/workspace/agi-routing/case-flow-graph-replays")
@@ -61,6 +63,7 @@ def build_pgg_archon_status_surface(
     graph_replay_report: Mapping[str, Any] | None = None,
     eval_regression_report: Mapping[str, Any] | None = None,
     golden_regression_report: Mapping[str, Any] | None = None,
+    promotion_guard_report: Mapping[str, Any] | None = None,
     unlock_dir: str | Path = DEFAULT_UNLOCK_DIR,
     graph_replay_dir: str | Path = DEFAULT_GRAPH_REPLAY_DIR,
     eval_dir: str | Path = DEFAULT_EVAL_DIR,
@@ -86,12 +89,30 @@ def build_pgg_archon_status_surface(
     stable_ready_count = _as_int(autonomy.get("stable_ready_count"))
     pending_rollbacks = _as_int(autonomy.get("pending_rollbacks"))
 
+    guard_snapshot = {
+        "schema": "PGGArchonStatusSurfaceSnapshot/v1",
+        "score": 100.0,
+        "hold_reasons": [],
+        "agi_completion_claim": False,
+        "allows_autonomous_promotion": autopromote_enabled,
+        "autonomous_promotion_policy": {
+            "gep_actual_execution_allowed": bool(autonomy.get("gep_actual_execution_allowed")),
+        },
+    }
+    try:
+        promotion_guard = dict(promotion_guard_report) if promotion_guard_report is not None else dict(evaluate_promotion_claim_guard(guard_snapshot))
+    except Exception as exc:
+        promotion_guard = {"schema": None, "allowed": False, "hold_reasons": [f"promotion_guard_unavailable:{type(exc).__name__}"]}
+    promotion_guard_allowed = bool(promotion_guard.get("allowed"))
+    promotion_guard_holds = [str(item) for item in promotion_guard.get("hold_reasons", [])[:8]] if isinstance(promotion_guard.get("hold_reasons"), list) else []
+
     signals = {
         "module_unlock_surface": _signal(unlockable_count > 0, unlock, f"unlockable_count={unlockable_count}"),
         "case_flow_graph_replay_present": _signal(bool(graph.get("schema")) and graph_status in {"PASS", "ACTION_REQUIRED", "BLOCK"}, graph, f"replay_status={graph_status}"),
         "eval_regression_present": _signal(bool(eval_report.get("schema")) and eval_status in {"PASS", "WARN", "BLOCK"}, eval_report, f"eval_status={eval_status}"),
         "golden_regression_passed": _signal(golden_status == "PASS" and _as_int(golden.get("failed_expectation_count")) == 0, golden, f"golden_status={golden_status}"),
         "autonomy_mode_ready": _signal(autonomy_mode in {"DRY_RUN", "ENFORCE"}, autonomy, f"autonomy_mode={autonomy_mode}"),
+        "promotion_claim_guard_present": _signal(bool(promotion_guard.get("schema")), promotion_guard, f"promotion_guard_allowed={promotion_guard_allowed}"),
         "no_external_delivery_from_blocked_graph": _signal(not (graph_status == "BLOCK" and bool(graph.get("allows_external_delivery"))), graph, "blocked_graph_must_not_allow_external_delivery"),
         "no_agi_completion_claims": _signal(
             not any(bool(item.get("agi_completion_claim")) for item in (unlock, graph, eval_report, golden)),
@@ -139,6 +160,14 @@ def build_pgg_archon_status_surface(
             "action": "review_autopromote_mode_and_clear_warn_state_if_intended",
             "risk": "low",
         })
+    if autopromote_enabled and not promotion_guard_allowed:
+        small_bottlenecks.append({
+            "code": "Aut/Guard",
+            "source": "promotion_claim_guard",
+            "hold_reasons": promotion_guard_holds,
+            "action": "clear_promotion_claim_guard_holds_before_autopromote",
+            "risk": "low",
+        })
 
     return {
         "schema": "PGGArchonStatusSurface/v1",
@@ -166,8 +195,11 @@ def build_pgg_archon_status_surface(
             "promotion_count": promotion_count,
             "stable_ready_count": stable_ready_count,
             "pending_rollbacks": pending_rollbacks,
+            "promotion_guard_allowed": promotion_guard_allowed,
+            "promotion_guard_hold_reasons": promotion_guard_holds,
         },
         "autonomy_status": autonomy,
+        "promotion_claim_guard": promotion_guard,
         "small_bottlenecks": small_bottlenecks,
         "side_effects": "read_only_status_surface",
         "agi_completion_claim": False,

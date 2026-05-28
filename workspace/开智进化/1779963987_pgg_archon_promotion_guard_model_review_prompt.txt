@@ -1,0 +1,1 @@
+请作为外部模型审查 PGG Archon 本轮低风险进化补丁：状态面新增 promotion_claim_guard 接入，小修复计划新增 autonomy_status 与 promotion_claim_guard 两类机器可检查修复项。请只返回 JSON：{"verdict":"PASS|WARN|FAIL","risk":"low|medium|high","must_fix":[],"reason":"..."}。边界：不得宣称 AGI 完成；不得允许无人工确认的自动晋级；不得外部交付。

@@ -38,7 +38,7 @@ def _golden(status="PASS", failed_expectation_count=0):
     }
 
 
-def _autonomy(mode="WARN", autopromote_enabled=True, promotion_count=2, stable_ready_count=1, pending_rollbacks=0):
+def _autonomy(mode="WARN", autopromote_enabled=True, promotion_count=2, stable_ready_count=1, pending_rollbacks=0, gep_actual_execution_allowed=False):
     return {
         "schema": "ApexRuntimeOSAutonomyStatus/v1",
         "mode": mode,
@@ -46,11 +46,12 @@ def _autonomy(mode="WARN", autopromote_enabled=True, promotion_count=2, stable_r
         "promotion_count": promotion_count,
         "stable_ready_count": stable_ready_count,
         "pending_rollbacks": pending_rollbacks,
+        "gep_actual_execution_allowed": gep_actual_execution_allowed,
         "agi_completion_claim": False,
     }
 
 
-def test_runtime_status_surface_passes_when_all_surfaces_present_and_safe(monkeypatch):
+def test_pgg_archon_status_surface_passes_when_all_surfaces_present_and_safe(monkeypatch):
     monkeypatch.setattr("agent.pgg_archon_status_surface.summarize_autonomy_status", lambda: _autonomy(mode="ENFORCE"))
     report = build_pgg_archon_status_surface(
         unlock_report=_unlock(),
@@ -67,14 +68,17 @@ def test_runtime_status_surface_passes_when_all_surfaces_present_and_safe(monkey
     assert report["summary"]["autonomy_mode"] == "ENFORCE"
     assert report["summary"]["autopromote_enabled"] is True
     assert report["summary"]["promotion_count"] == 2
+    assert report["summary"]["promotion_guard_allowed"] is False
+    assert "human_ack_required" in report["summary"]["promotion_guard_hold_reasons"]
     assert report["autonomy_status"]["mode"] == "ENFORCE"
+    assert report["promotion_claim_guard"]["schema"] == "ApexPromotionClaimGuard/v1"
     assert report["small_bottlenecks"][0]["source"] == "case_flow_graph_replay"
     assert report["small_bottlenecks"][0]["next_node"] == "evidence_gate"
     assert report["small_bottlenecks"][1]["source"] == "eval_regression_harness"
     assert report["agi_completion_claim"] is False
 
 
-def test_runtime_status_surface_flags_warn_autonomy_mode(monkeypatch):
+def test_pgg_archon_status_surface_flags_warn_autonomy_mode(monkeypatch):
     monkeypatch.setattr("agent.pgg_archon_status_surface.summarize_autonomy_status", lambda: _autonomy(mode="WARN"))
 
     report = build_pgg_archon_status_surface(
@@ -87,9 +91,26 @@ def test_runtime_status_surface_flags_warn_autonomy_mode(monkeypatch):
     assert report["status"] == "WATCH"
     assert report["summary"]["autonomy_mode"] == "WARN"
     assert any(item.get("code") == "Aut/Wrn" for item in report["small_bottlenecks"])
+    assert any(item.get("code") == "Aut/Guard" for item in report["small_bottlenecks"])
 
 
-def test_runtime_status_surface_blocks_illegal_external_delivery_on_blocked_graph():
+def test_pgg_archon_status_surface_accepts_explicit_promotion_guard(monkeypatch):
+    monkeypatch.setattr("agent.pgg_archon_status_surface.summarize_autonomy_status", lambda: _autonomy(mode="ENFORCE"))
+
+    report = build_pgg_archon_status_surface(
+        unlock_report=_unlock(),
+        graph_replay_report=_graph(),
+        eval_regression_report=_eval(),
+        golden_regression_report=_golden(),
+        promotion_guard_report={"schema": "ApexPromotionClaimGuard/v1", "allowed": True, "hold_reasons": []},
+    )
+
+    assert report["signals"]["promotion_claim_guard_present"]["ok"] is True
+    assert report["summary"]["promotion_guard_allowed"] is True
+    assert not any(item.get("code") == "Aut/Guard" for item in report["small_bottlenecks"])
+
+
+def test_pgg_archon_status_surface_blocks_illegal_external_delivery_on_blocked_graph():
     report = build_pgg_archon_status_surface(
         unlock_report=_unlock(),
         graph_replay_report=_graph(status="BLOCK", allows_external_delivery=True),
@@ -102,7 +123,7 @@ def test_runtime_status_surface_blocks_illegal_external_delivery_on_blocked_grap
     assert report["signals"]["no_external_delivery_from_blocked_graph"]["ok"] is False
 
 
-def test_runtime_status_surface_catches_agi_completion_claim():
+def test_pgg_archon_status_surface_catches_agi_completion_claim():
     golden = _golden()
     golden["agi_completion_claim"] = True
 
@@ -117,7 +138,7 @@ def test_runtime_status_surface_catches_agi_completion_claim():
     assert "no_agi_completion_claims" in report["missing"]
 
 
-def test_runtime_status_surface_blocks_when_required_reports_absent():
+def test_pgg_archon_status_surface_blocks_when_required_reports_absent():
     report = build_pgg_archon_status_surface(
         unlock_report={},
         graph_replay_report={},

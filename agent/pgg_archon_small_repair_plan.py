@@ -12,7 +12,7 @@ import time
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
-DEFAULT_PLAN_DIR = Path("/Users/appleoppa/.hermes/workspace/agi-routing/runtime-small-repairs")
+DEFAULT_PLAN_DIR = Path("/Users/appleoppa/.hermes/workspace/agi-routing/pgg-archon-small-repairs")
 
 
 def _sha256_obj(value: Mapping[str, Any]) -> str:
@@ -72,6 +72,33 @@ def _repair_for_bottleneck(item: Mapping[str, Any], index: int) -> dict[str, Any
             "inputs_required": ["case_id", "diff_bucket", "expected", "actual"],
             "completion_standard": "Happy case remains green and negative case remains red with isolated diff bucket.",
             "blocked_side_effects": ["no_core_patch", "no_gene_write"],
+            "not_executed": True,
+        }
+    if source == "autonomy_status":
+        return {
+            "repair_id": f"pgg_archon_small_repair_{index}_autonomy_mode",
+            "source": source,
+            "targets": code.split("/") if code else [],
+            "priority": "P1",
+            "risk": "low",
+            "action": "verify_autonomy_warn_state_and_select_dry_run_or_enforce",
+            "inputs_required": ["autonomy_mode", "autopromote_enabled", "promotion_count", "stable_ready_count", "pending_rollbacks"],
+            "completion_standard": "WARN mode is either intentionally preserved with reason, or moved to DRY_RUN/ENFORCE only after promotion guard is explicit.",
+            "blocked_side_effects": ["no_unbounded_autopromotion", "no_core_patch", "no_gene_write"],
+            "not_executed": True,
+        }
+    if source == "promotion_claim_guard":
+        return {
+            "repair_id": f"pgg_archon_small_repair_{index}_promotion_guard",
+            "source": source,
+            "targets": code.split("/") if code else [],
+            "priority": "P0",
+            "risk": "low",
+            "action": "resolve_promotion_claim_guard_holds_before_autopromote",
+            "inputs_required": ["guard_schema", "allowed", "hold_reasons", "human_ack_status", "gep_actual_execution_status"],
+            "completion_standard": "Autopromotion remains blocked until promotion claim guard is present, explicit, and all holds are resolved by the existing gates.",
+            "blocked_side_effects": ["no_autopromote", "no_agi_completion_claim", "no_core_patch"],
+            "hold_reasons": list(_as_sequence(item.get("hold_reasons")))[:8],
             "not_executed": True,
         }
     return {

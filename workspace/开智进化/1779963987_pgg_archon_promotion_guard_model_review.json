@@ -1,0 +1,22 @@
+{
+  "schema": "PGGArchonModelReviewEvidence/v1",
+  "prompt_sha256": "317e8e0a91d8656485f82627a36e9112e3e6f6a2cd50610411de27179ec53eea",
+  "results": [
+    {
+      "provider": "gpt55_5yuantoken",
+      "model": "gpt-5.5",
+      "http_status": 200,
+      "duration_sec": 9.65,
+      "raw_sha256": "67a671df1828df2f75d00c57164001cfc658ed60829eb59ca1a6f286c6c0efcf",
+      "text": "{\"verdict\":\"PASS\",\"risk\":\"low\",\"must_fix\":[],\"reason\":\"本轮变更仅在状态面新增 promotion_claim_guard 接入，并在小修复计划中加入 autonomy_status 与 promotion_claim_guard 两类机器可检查修复项，属于约束与可观测性增强；未宣称 AGI 完成，未允许无人工确认的自动晋级，也未涉及外部交付。\"}"
+    },
+    {
+      "provider": "claude_opus47_5yuantoken",
+      "model": "claude-opus-4-7",
+      "http_status": 200,
+      "duration_sec": 6.04,
+      "raw_sha256": "991ef28052276320b5167913be529d0e24c23cefdc145ca041aed50305d14d51",
+      "text": "{\"verdict\":\"PASS\",\"risk\":\"low\",\"must_fix\":[],\"reason\":\"本轮补丁仅在状态面新增 promotion_claim_guard 接入并扩展小修复计划（autonomy_status、promotion_claim_guard 两类机器可检查项），属于可观测性与防护栏增强，未涉及自动晋级路径、未宣称 AGI 完成、未触发外部交付，符合低风险边界。建议保持人工确认作为晋级唯一通道，并确保 promotion_claim_guard 在检测到未授权晋级声明时为拒绝默认（fail-closed），同时为两类修复项补充最小回归用例与告警阈值即可。\"}"
+    }
+  ]
+}
