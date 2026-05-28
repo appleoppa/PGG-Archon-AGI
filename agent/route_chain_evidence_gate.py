@@ -32,10 +32,10 @@ GENE_CANDIDATE_DIR = HERMES_HOME / "workspace" / "agi-routing" / "gene-candidate
 QR_BIN = os.environ.get("QR_BIN", "qr")
 
 MODEL_TIERS = {
-    "A": {"provider": "gpt55_5yuantoken", "model": "gpt-5.5", "role": "GPT 主脑/最终裁判", "base_url": "https://chuangagent.eu.cc/v1/chat/completions", "key_env": "GPT55_5YUANTOKEN_API_KEY"},
-    "B": {"provider": "deepseek_v4_flash", "model": "deepseek-v4-flash", "role": "DeepSeek 中文/法律/性价比", "base_url": "https://api.deepseek.com/chat/completions", "key_env": "DEEPSEEK_V4_FLASH_API_KEY"},
-    "C": {"provider": "claude_opus47_5yuantoken", "model": "claude-opus-4-7", "role": "Claude 反证/代码/架构", "base_url": "https://chuangagent.eu.cc/v1/chat/completions", "key_env": "CLAUDE_OPUS47_5YUANTOKEN_API_KEY"},
-    "D": {"provider": "minimax-cn", "model": "MiniMax-M2.7-highspeed", "role": "MiniMax 摘要/旁证/低风险", "base_url": "https://api.minimaxi.com/anthropic/v1/chat/completions", "key_env": "MINIMAX_M27_HIGHSPEED_API_KEY"},
+    "A": {"provider": "gpt55_5yuantoken", "model": "gpt-5.5", "role": "GPT 主脑/最终裁判", "base_url": "https://chuangagent.eu.cc/v1/responses", "key_env": "GPT55_5YUANTOKEN_API_KEY", "api_format": "responses"},
+    "B": {"provider": "deepseek_v4_flash", "model": "deepseek-v4-flash", "role": "DeepSeek 中文/法律/性价比", "base_url": "https://api.deepseek.com/v1/chat/completions", "key_env": "DEEPSEEK_V4_FLASH_API_KEY", "api_format": "chat"},
+    "C": {"provider": "claude_opus47_5yuantoken", "model": "claude-opus-4-7", "role": "Claude 反证/代码/架构", "base_url": "https://chuangagent.eu.cc/v1/responses", "key_env": "CLAUDE_OPUS47_5YUANTOKEN_API_KEY", "api_format": "responses"},
+    "D": {"provider": "minimax-m27_highspeed", "model": "MiniMax-M2.7-highspeed", "role": "MiniMax 摘要/旁证/低风险", "base_url": "https://api.minimaxi.com/anthropic/v1/messages", "key_env": "MINIMAX_CN_API_KEY", "api_format": "anthropic"},
 }
 CHAIN_TEMPLATES = {
     "quick": ["主脑统筹", "主脑收束"],
@@ -128,11 +128,45 @@ def _fallback_model_for(model: dict[str, Any], stage: str) -> tuple[dict[str, An
     # MiniMax endpoint/key is currently the most fragile.  Use DeepSeek for
     # compression/side evidence so the chain can produce an auditable failure or
     # fallback record instead of hanging on a known bad endpoint.
-    if provider == "minimax-cn":
+    if provider == "minimax-m27_highspeed":
         return dict(MODEL_TIERS["B"]), "minimax_unavailable_or_endpoint_failed_fallback_to_deepseek"
     if provider == "gpt55_5yuantoken" and "收束" not in stage:
         return dict(MODEL_TIERS["C"]), "gpt_unavailable_pre_final_fallback_to_claude"
     return None
+
+
+def _build_payload(effective: dict, stage_prompt: str) -> dict:
+    fmt = effective.get("api_format", "chat")
+    if fmt == "responses":
+        return {"model": effective["model"], "input": [{"role": "user", "content": stage_prompt}], "instructions": "你是严谨的多模型会审阶段执行者，只输出可验证内容。", "temperature": 0.2, "max_output_tokens": 1800}
+    if fmt == "anthropic":
+        return {"model": effective["model"], "messages": [{"role": "user", "content": stage_prompt}], "system": "你是严谨的多模型会审阶段执行者，只输出可验证内容。", "max_tokens": 1800, "temperature": 0.2}
+    # chat_completions (default)
+    return {"model": effective["model"], "messages": [{"role": "system", "content": "你是严谨的多模型会审阶段执行者，只输出可验证内容。"}, {"role": "user", "content": stage_prompt}], "temperature": 0.2, "max_tokens": 1800}
+
+
+def _extract_text(data: dict, fmt: str) -> tuple[str, str, dict | None]:
+    if fmt == "responses":
+        text = ""
+        try:
+            text = data["output"][0]["content"][0]["text"]
+        except (KeyError, IndexError, TypeError):
+            text = str(data.get("output", [{}])[0].get("content", [{}])[0].get("text", "")) if data.get("output") else ""
+        return text, str(data.get("id", "")), data.get("usage")
+    if fmt == "anthropic":
+        text = ""
+        try:
+            text = data["content"][0]["text"]
+        except (KeyError, IndexError, TypeError):
+            text = ""
+        return text, str(data.get("id", "")), data.get("usage")
+    # chat_completions (default)
+    text = ""
+    try:
+        text = data["choices"][0]["message"].get("content") or ""
+    except (KeyError, IndexError, TypeError):
+        text = ""
+    return text, str(data.get("id", "")), data.get("usage")
 
 
 def call_model(model: dict[str, Any], stage: str, task: str, prior_summary: str, max_tokens: int, request_timeout: int = 45) -> dict[str, Any]:
@@ -147,22 +181,29 @@ def call_model(model: dict[str, Any], stage: str, task: str, prior_summary: str,
         if not key:
             last_error = f"missing env {effective.get('key_env')}"
             continue
-        stage_prompt = f"""你正在参与 Hermes/PGG Archon 准AGI 的“量子路由 + 河图洛书”真实五段链。
+        fmt = effective.get("api_format", "chat")
+        stage_prompt = f"""你正在参与 Hermes/PGG Archon 准AGI 的"量子路由 + 河图洛书"真实五段链。
 阶段：{stage}
 角色：{effective.get('role')}
 任务：{task}
 前序摘要：{prior_summary[-1800:] if prior_summary else '无'}
 
-要求：中文；极短；输出本阶段的判断增量/反证增量/修复增量；不声称修改文件或接管系统；若证据不足明确写“证据不足”；最后给出 verdict: pass / fail / uncertain。"""
-        payload = {"model": effective["model"], "messages": [{"role": "system", "content": "你是严谨的多模型会审阶段执行者，只输出可验证内容。"}, {"role": "user", "content": stage_prompt}], "temperature": 0.2, "max_tokens": max_tokens}
+要求：中文；极短；输出本阶段的判断增量/反证增量/修复增量；不声称修改文件或接管系统；若证据不足明确写"证据不足"；最后给出 verdict: pass / fail / uncertain。"""
+        payload = _build_payload(effective, stage_prompt)
+        if fmt == "chat":
+            payload["max_tokens"] = max_tokens
+        elif fmt == "responses":
+            payload["max_output_tokens"] = max_tokens
+        elif fmt == "anthropic":
+            payload["max_tokens"] = max_tokens
         req = urllib.request.Request(effective["base_url"], data=json.dumps(payload).encode("utf-8"), headers={"Authorization": "Bearer " + key, "Content-Type": "application/json"})
         try:
             with urllib.request.urlopen(req, timeout=request_timeout) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
-            text = data["choices"][0]["message"].get("content") or ""
+            text, response_id, usage = _extract_text(data, fmt)
             low = text.lower()
             verdict = "pass" if "verdict: pass" in low or "verdict：pass" in low else ("fail" if "verdict: fail" in low or "verdict：fail" in low else "uncertain")
-            return {"ok": True, "stage": stage, "provider": effective.get("provider"), "model": effective.get("model"), "response_id": data.get("id"), "content": text, "content_hash": sha256_text(text), "usage": data.get("usage"), "latency_ms": now_ms() - started, "verdict": verdict, "fallback_used": fallback_used, "fallback_reason": fallback_reason}
+            return {"ok": True, "stage": stage, "provider": effective.get("provider"), "model": effective.get("model"), "response_id": response_id, "content": text, "content_hash": sha256_text(text), "usage": usage, "latency_ms": now_ms() - started, "verdict": verdict, "fallback_used": fallback_used, "fallback_reason": fallback_reason}
         except Exception as exc:  # noqa: BLE001
             last_error = repr(exc)
             continue

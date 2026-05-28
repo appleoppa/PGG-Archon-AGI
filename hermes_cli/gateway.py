@@ -2868,6 +2868,10 @@ def generate_launchd_plist() -> str:
         <string>{venv_dir}</string>
         <key>HERMES_HOME</key>
         <string>{hermes_home}</string>
+        <key>NO_PROXY</key>
+        <string>localhost,127.0.0.1,::1,open.feishu.cn,msg-frontier.feishu.cn,.feishu.cn,open.larksuite.com,.larksuite.com</string>
+        <key>no_proxy</key>
+        <string>localhost,127.0.0.1,::1,open.feishu.cn,msg-frontier.feishu.cn,.feishu.cn,open.larksuite.com,.larksuite.com</string>
     </dict>
     
     <key>RunAtLoad</key>
