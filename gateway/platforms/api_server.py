@@ -57,7 +57,7 @@ except Exception:  # pragma: no cover - endpoint reports unavailable at runtime
 try:
     from agent.apex_system_identity import USER_FACING_SYSTEM_LABEL
 except Exception:  # pragma: no cover - identity fallback keeps API server importable
-    USER_FACING_SYSTEM_LABEL = "PGG Archon AGI（原 APEX RuntimeOS）"
+    USER_FACING_SYSTEM_LABEL = "PGG Archon AGI"
 
 
 _ARCHON_API_ENDPOINTS = {
@@ -208,7 +208,7 @@ table{{width:100%;border-collapse:collapse;margin-top:10px}} th,td{{border-botto
 
 
 def _safe_apex_runtimeos_metadata(result: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-    """Return a stable, non-secret APEX RuntimeOS envelope for API clients.
+    """Return a stable, non-secret PGG Archon AGI envelope for API clients.
 
     The runtime hook writes richer internal metadata including local report paths
     and error strings. API responses should expose only the contract fields that
@@ -1314,7 +1314,7 @@ class APIServerAdapter(BasePlatformAdapter):
                 "pgg_archon_dashboard": summarize_audit is not None,
                 "pgg_archon_autonomy_status": summarize_autonomy_status is not None,
                 "pgg_archon_case_workflow_entry": plan_case_workflow_entry is not None,
-                # Compatibility feature flags for older APEX RuntimeOS clients.
+                # Compatibility feature flags for older legacy clients.
                 "apex_runtimeos_audit_summary": summarize_audit is not None,
                 "apex_runtimeos_dashboard": summarize_audit is not None,
                 "apex_runtimeos_recommendation_gate": summarize_audit is not None,
@@ -1376,7 +1376,7 @@ class APIServerAdapter(BasePlatformAdapter):
         try:
             summary = summarize_audit(limit=limit)
         except Exception:
-            logger.exception("[%s] Failed to summarize APEX RuntimeOS audit", self.name)
+            logger.exception("[%s] Failed to summarize PGG Archon AGI audit", self.name)
             return web.json_response(
                 {
                     "object": object_name,
@@ -1390,7 +1390,7 @@ class APIServerAdapter(BasePlatformAdapter):
             try:
                 summary["autonomy"] = _safe_archon_public_payload(summarize_autonomy_status(limit=limit))
             except Exception:
-                logger.exception("[%s] Failed to summarize APEX RuntimeOS autonomy", self.name)
+                logger.exception("[%s] Failed to summarize PGG Archon AGI autonomy", self.name)
                 summary["autonomy"] = {"schema": "ApexRuntimeOSAutonomyStatus/v1", "status": "error", "error_code": "apex_runtimeos_autonomy_status_error"}
         return web.json_response({
             "object": object_name,
@@ -1439,7 +1439,7 @@ class APIServerAdapter(BasePlatformAdapter):
                     else:
                         os.environ["APEX_RUNTIMEOS_CRON_LEDGER_REPAIR_ENABLED"] = previous_repair
         except Exception:
-            logger.exception("[%s] Failed to summarize APEX RuntimeOS autonomy", self.name)
+            logger.exception("[%s] Failed to summarize PGG Archon AGI autonomy", self.name)
             return web.json_response(
                 {
                     "object": object_name,
@@ -1510,7 +1510,7 @@ class APIServerAdapter(BasePlatformAdapter):
         }, status=http_status)
 
     async def _handle_apex_runtimeos_dashboard(self, request: "web.Request") -> "web.Response":
-        """GET /v1/apex-runtimeos/dashboard — HTML RuntimeOS health card."""
+        """GET /v1/pgg-archon/dashboard — HTML PGG Archon AGI health card."""
         auth_err = self._check_auth(request)
         if auth_err:
             return auth_err
@@ -1529,7 +1529,7 @@ class APIServerAdapter(BasePlatformAdapter):
         try:
             summary = summarize_audit(limit=limit)
         except Exception:
-            logger.exception("[%s] Failed to render APEX RuntimeOS dashboard", self.name)
+            logger.exception("[%s] Failed to render PGG Archon AGI dashboard", self.name)
             summary = {"records": 0, "bad_lines": 0, "blocking_records": 0, "organs": {}, "stages": {}, "audit_path_exists": False}
             html = _render_apex_runtimeos_dashboard_html(summary, status="error")
             return web.Response(text=html, status=500, content_type="text/html")
@@ -1538,7 +1538,7 @@ class APIServerAdapter(BasePlatformAdapter):
             try:
                 summary["autonomy"] = _safe_archon_public_payload(summarize_autonomy_status(limit=limit))
             except Exception:
-                logger.exception("[%s] Failed to summarize APEX RuntimeOS autonomy for dashboard", self.name)
+                logger.exception("[%s] Failed to summarize PGG Archon AGI autonomy for dashboard", self.name)
                 summary["autonomy"] = {"schema": "ApexRuntimeOSAutonomyStatus/v1", "status": "error", "error_code": "apex_runtimeos_autonomy_status_error"}
         html = _render_apex_runtimeos_dashboard_html(summary, status="ok")
         return web.Response(text=html, content_type="text/html")

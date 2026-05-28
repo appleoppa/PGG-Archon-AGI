@@ -34,7 +34,7 @@ def test_apex_runtimeos_cli_summary_outputs_chinese_aggregate(tmp_path, monkeypa
     )
     output = run_apex_runtimeos_cli(["summary", "--limit", "10"])
     assert "PGG Archon AGI" in output
-    assert "原 APEX RuntimeOS" in output
+    assert "原 APEX RuntimeOS" not in output
     assert "| 有效记录 | 1 |" in output
     assert "| 坏行 | 1 |" in output
     assert "router" in output
@@ -73,7 +73,7 @@ def test_apex_runtimeos_cli_feishu_outputs_safe_markdown(tmp_path, monkeypatch):
     )
     output = run_apex_runtimeos_cli(["feishu", "--limit", "10"])
     assert "PGG Archon AGI" in output
-    assert "原 APEX RuntimeOS" in output
+    assert "原 APEX RuntimeOS" not in output
     assert "手动只读摘要" in output
     assert "gene_selector" in output
     assert "pre_completion" in output
@@ -104,11 +104,9 @@ def test_apex_runtimeos_autonomy_candidate_execute_writes_sanitized_candidate(tm
     assert data["result"]["written"] is True
     raw = (tmp_path / "auto" / "candidates.jsonl").read_text(encoding="utf-8")
     assert "ApexRuntimeOSAutoWriteCandidate/v1" in raw
-    assert any(code in raw for code in (
-        "apex_sequence_evidence_incomplete",
-        "cmmi_quality_evidence_incomplete",
-        "gep_obfuscated_components_hold",
-    ))
+    result_codes = {item.get("code") for item in data["result"]["recommendations"]["items"]}
+    assert result_codes
+    assert any(code in raw for code in result_codes)
     assert "/Users/" not in raw
 
 

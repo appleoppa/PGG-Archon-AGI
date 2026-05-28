@@ -288,6 +288,12 @@ def persist_autowrite_candidate(
         "candidate_type": record["candidate_type"],
         "promotion_required": True,
         "applied_to_core_memory_or_skill": False,
+        "recommendations": {
+            "schema": _safe_scalar(recs.get("schema")),
+            "status": _safe_scalar(recs.get("status")),
+            "count": len(safe_items),
+            "items": safe_items,
+        },
     }
 
 

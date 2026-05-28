@@ -1592,7 +1592,7 @@ def _run_single_child(
             else:
                 _err = str(_timeout_exc)
 
-            return {
+            timeout_entry = {
                 "task_index": task_index,
                 "status": "timeout" if is_timeout else "error",
                 "summary": None,
@@ -1603,6 +1603,24 @@ def _run_single_child(
                 "_child_role": getattr(child, "_delegate_role", None),
                 "diagnostic_path": diagnostic_path,
             }
+            try:
+                from tools.hermes_agent_014_defect_tool import record_subagent_artifact
+                timeout_entry["artifact"] = record_subagent_artifact(
+                    task_index=task_index,
+                    goal=goal,
+                    status=timeout_entry["status"],
+                    summary=None,
+                    error=_err,
+                    api_calls=child_api_calls,
+                    duration_seconds=duration,
+                    model=getattr(child, "model", None) if isinstance(getattr(child, "model", None), str) else None,
+                    exit_reason=timeout_entry["exit_reason"],
+                    diagnostic_path=diagnostic_path,
+                    subagent_id=_subagent_id,
+                )
+            except Exception:
+                logger.debug("subagent legacy recovery write failed", exc_info=True)
+            return timeout_entry
         finally:
             # Shut down executor without waiting — if the child thread
             # is stuck on blocking I/O, wait=True would hang forever.
@@ -1780,6 +1798,26 @@ def _run_single_child(
 
         _output_tail = _extract_output_tail(result, max_entries=8, max_chars=600)
 
+        try:
+            from tools.hermes_agent_014_defect_tool import record_subagent_artifact
+            entry["artifact"] = record_subagent_artifact(
+                task_index=task_index,
+                goal=goal,
+                status=status,
+                summary=summary,
+                error=entry.get("error"),
+                api_calls=api_calls,
+                duration_seconds=duration,
+                model=_model if isinstance(_model, str) else None,
+                exit_reason=exit_reason,
+                files_read=_files_read,
+                files_written=_files_written,
+                output_tail=_output_tail,
+                subagent_id=_subagent_id,
+            )
+        except Exception:
+            logger.debug("subagent legacy recovery write failed", exc_info=True)
+
         complete_kwargs: Dict[str, Any] = {
             "preview": summary[:160] if summary else entry.get("error", ""),
             "status": status,
@@ -1829,7 +1867,7 @@ def _run_single_child(
                 )
             except Exception as e:
                 logger.debug("Progress callback failure relay failed: %s", e)
-        return {
+        error_entry = {
             "task_index": task_index,
             "status": "error",
             "summary": None,
@@ -1838,6 +1876,23 @@ def _run_single_child(
             "duration_seconds": duration,
             "_child_role": getattr(child, "_delegate_role", None),
         }
+        try:
+            from tools.hermes_agent_014_defect_tool import record_subagent_artifact
+            error_entry["artifact"] = record_subagent_artifact(
+                task_index=task_index,
+                goal=goal,
+                status="error",
+                summary=None,
+                error=str(exc),
+                api_calls=0,
+                duration_seconds=duration,
+                model=getattr(child, "model", None) if isinstance(getattr(child, "model", None), str) else None,
+                exit_reason="error",
+                subagent_id=_subagent_id,
+            )
+        except Exception:
+            logger.debug("subagent legacy recovery write failed", exc_info=True)
+        return error_entry
 
     finally:
         # Stop the heartbeat thread so it doesn't keep touching parent activity
