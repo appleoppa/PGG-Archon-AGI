@@ -609,6 +609,7 @@ def run_conversation(
                 _rc_summary = _rc_json.loads((_rc_proc.stdout or '{}').strip().splitlines()[-1]) if _rc_proc.stdout.strip() else {}
                 _rc_gene_write = None
                 _rc_promotion = None
+                _rc_fusion = None
                 if (
                     _rc_cfg.get('auto_write_gene_db', False)
                     and _rc_summary.get('gene_candidate_path')
@@ -624,6 +625,18 @@ def run_conversation(
                             _rc_promotion = record_controlled_autonomous_promotion(_rc_gene_write)
                     except Exception as _rc_gene_exc:
                         _rc_gene_write = {'status': 'ERROR', 'error': type(_rc_gene_exc).__name__}
+                if (
+                    _rc_cfg.get('auto_fuse_genes', False)
+                    and (_rc_gene_write or {}).get('status') == 'PASS'
+                ):
+                    try:
+                        from agent.pgg_archon_gene_fusion import build_pgg_archon_gene_fusion_surface
+                        _rc_fusion = build_pgg_archon_gene_fusion_surface(
+                            write=True,
+                            min_member_count=int(_rc_cfg.get('fuse_min_member_count', 2)),
+                        )
+                    except Exception as _rc_fusion_exc:
+                        _rc_fusion = {'status': 'ERROR', 'error': type(_rc_fusion_exc).__name__}
                 _rc_blocked = _rc_hard_enforce and (
                     _rc_proc.returncode != 0
                     or _rc_summary.get('final_decision') in {'blocked', 'partial_model_execution'}
@@ -644,6 +657,7 @@ def run_conversation(
                         f"候选基因: {_rc_summary.get('gene_candidate_path') or '未生成'} / {_rc_summary.get('gene_status') or 'none'}\n"
                         f"基因库写入: {(_rc_gene_write or {}).get('status', '未触发')}\n"
                         f"自动晋升: {(_rc_promotion or {}).get('status', '未触发')}\n"
+                        f"基因融合: {(_rc_fusion or {}).get('status', '未触发')} / 写入数={(_rc_fusion or {}).get('fusion_records_written', 0)}\n"
                         f"硬门禁阻断: {_rc_blocked}\n"
                         "边界: 硬接入只强制证据门禁、候选基因入库和受控晋升审计；不自动patch文件、不切换主模型、不声明AGI完成。"
                     )

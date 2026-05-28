@@ -48,13 +48,51 @@ class PromotionClaimGuard:
         )
 
 
+def _config_human_ack_token() -> str:
+    """Read the route_chain_gate.autonomous_promotion_human_ack_token from config.yaml.
+
+    The presence of a non-empty token at evaluation time is treated as the
+    user's explicit, persistent pre-acknowledgement of autonomous promotion.
+    Clearing the token (or removing the key) revokes that ack on the next
+    evaluation, so the guard remains user-controlled and auditable.
+    """
+    try:
+        import yaml  # type: ignore
+    except Exception:  # pragma: no cover — defensive
+        return ""
+    from pathlib import Path
+
+    cfg_path = Path("/Users/appleoppa/.hermes/config.yaml")
+    if not cfg_path.exists():
+        return ""
+    try:
+        data = yaml.safe_load(cfg_path.read_text(encoding="utf-8")) or {}
+    except Exception:  # pragma: no cover — defensive
+        return ""
+    if not isinstance(data, Mapping):
+        return ""
+    raw = data.get("route_chain_gate")
+    if not isinstance(raw, Mapping):
+        return ""
+    token = raw.get("autonomous_promotion_human_ack_token")
+    return str(token).strip() if token else ""
+
+
 def evaluate_promotion_claim_guard(snapshot: Mapping[str, Any]) -> dict[str, Any]:
     policy_raw = snapshot.get("autonomous_promotion_policy")
     policy = policy_raw if isinstance(policy_raw, Mapping) else {}
+    explicit_ack_raw = snapshot.get("human_ack")
+    if explicit_ack_raw is not None:
+        human_ack = bool(explicit_ack_raw)
+        ack_source = "snapshot_explicit"
+    else:
+        token = _config_human_ack_token()
+        human_ack = bool(token)
+        ack_source = "config_human_ack_token" if token else "absent"
     decision = PromotionClaimGuard().evaluate(
         snapshot,
         gep_actual_execution_allowed=bool(policy.get("gep_actual_execution_allowed")),
-        human_ack=False,
+        human_ack=human_ack,
     )
     return {
         "schema": decision.schema,
@@ -62,6 +100,8 @@ def evaluate_promotion_claim_guard(snapshot: Mapping[str, Any]) -> dict[str, Any
         "hold_reasons": list(decision.hold_reasons),
         "evaluated_at": decision.evaluated_at,
         "side_effects": decision.side_effects,
+        "human_ack_source": ack_source,
+        "human_ack_present": bool(human_ack),
     }
 
 

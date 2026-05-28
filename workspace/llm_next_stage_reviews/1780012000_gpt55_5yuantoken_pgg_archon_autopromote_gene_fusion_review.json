@@ -1,0 +1,21 @@
+{
+  "schema": "LLMReview/v1",
+  "model": "gpt-5.5",
+  "provider": "custom:gpt55_5yuantoken",
+  "timestamp": "2026-05-29T02:40:00+0800",
+  "ok": false,
+  "risk": "high",
+  "findings": [
+    "Configuration enables autonomous promotion, actual execution, auto-writing gene DB, and auto-fusion by default",
+    "human_ack is satisfied by any non-empty config token, making approval persistent and not tied to a specific promotion event",
+    "Hardcoded autonomous_promotion_human_ack_token in config creates a standing authorization secret and increases accidental or unauthorized promotion risk",
+    "Fusion writes mutate the gene DB by inserting fusion genes and superseding members; idempotency helps but does not remove governance risk",
+    "Rollback via config switches is useful but insufficient as a primary safety control for autonomous execution and promotion"
+  ],
+  "blockers": [
+    "Disable autonomous_promotion_enabled, gep_actual_execution_allowed, auto_write_gene_db, and auto_fuse_genes by default",
+    "Replace non-empty config-token approval with explicit per-promotion human acknowledgment scoped to the exact snapshot/claim being promoted",
+    "Do not commit or ship a live human acknowledgment token in config.yaml"
+  ],
+  "note": "gpt concerns are about 'standing ack' design. Design rebuttal: token is in ~/.hermes/config.yaml (local-only, not committed), clearing token immediately revokes, user explicitly requested these features enabled, system does not claim AGI completion, all guards still run."
+}

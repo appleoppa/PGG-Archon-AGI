@@ -87,6 +87,26 @@ def _mock_all_pass(monkeypatch):
     monkeypatch.setattr("agent.pgg_archon_status_surface.build_gpo_report", lambda: _passing_report(status="PASS"))
     monkeypatch.setattr("agent.pgg_archon_status_surface.load_latest_quality_evidence_bundle", lambda: _passing_report(valid=True))
     monkeypatch.setattr("agent.pgg_archon_status_surface.build_pgg_archon_quality_gate_surface", lambda: _passing_report(schema="PGGArchonQualityGateSurface/v1", status="PASS", blocking_failures=[], warning_failures=[]))
+    monkeypatch.setattr(
+        "agent.pgg_archon_status_surface.build_pgg_archon_evidence_loop_surface",
+        lambda: {"schema": "PGGArchonEvidenceLoopSurface/v1", "status": "PASS", "missing": [], "agi_completion_claim": False},
+    )
+    monkeypatch.setattr(
+        "agent.pgg_archon_status_surface.build_pgg_archon_apex_agi_absorption_surface",
+        lambda: {"schema": "PGGArchonApexAGIAbsorptionSurface/v1", "status": "PASS", "ready_candidate_count": 0, "blocking_failures": [], "agi_completion_claim": False},
+    )
+    monkeypatch.setattr(
+        "agent.pgg_archon_status_surface.build_pgg_archon_p0_surface",
+        lambda: {"schema": "PGGArchonP0Surface/v1", "status": "PASS", "aggregate": {"blocking_failures": [], "surfaces_ok": 3, "surfaces_total": 3}, "agi_completion_claim": False},
+    )
+    monkeypatch.setattr(
+        "agent.pgg_archon_status_surface.build_pgg_archon_research_extraction_surface",
+        lambda: {"schema": "PGGArchonResearchExtractionSurface/v1", "status": "PASS", "blocking_failures": [], "warning_failures": [], "agi_completion_claim": False},
+    )
+    monkeypatch.setattr(
+        "agent.pgg_archon_status_surface.evaluate_promotion_claim_guard",
+        lambda snap: {"schema": "ApexPromotionClaimGuard/v1", "allowed": False, "hold_reasons": ["human_ack_required"], "agi_completion_claim": False},
+    )
 
 
 def test_pgg_archon_status_surface_passes_when_all_surfaces_present_and_safe(monkeypatch):

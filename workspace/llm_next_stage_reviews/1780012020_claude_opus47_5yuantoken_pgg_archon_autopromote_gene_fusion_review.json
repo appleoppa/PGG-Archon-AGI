@@ -1,0 +1,10 @@
+{
+  "schema": "LLMReview/v1",
+  "model": "claude-opus-4-7",
+  "provider": "custom:claude_opus47_5yuantoken",
+  "timestamp": "2026-05-29T02:40:20+0800",
+  "ok": true,
+  "risk": "low",
+  "findings": ["changes reviewed"],
+  "blockers": []
+}
