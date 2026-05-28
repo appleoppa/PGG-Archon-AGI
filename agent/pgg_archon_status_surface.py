@@ -24,6 +24,7 @@ from agent.pgg_archon_evidence_loop_surface import build_pgg_archon_evidence_loo
 from agent.pgg_archon_pua_standards import build_pgg_archon_pua_standard_report
 from agent.pgg_archon_p0_surface import build_pgg_archon_p0_surface
 from agent.pgg_archon_quality_gate_surface import build_pgg_archon_quality_gate_surface
+from agent.pgg_archon_research_extraction_surface import build_pgg_archon_research_extraction_surface
 from agent.apex_co_scientist import load_latest_debate_report, load_latest_gene_candidate
 from agent.apex_era import load_latest_era_report
 from agent.apex_flow_reward import load_latest_flow_reward_report
@@ -144,6 +145,7 @@ def build_pgg_archon_status_surface(
     apex_agi_absorption_report: Mapping[str, Any] | None = None,
     p0_surface_report: Mapping[str, Any] | None = None,
     quality_gate_report: Mapping[str, Any] | None = None,
+    research_extraction_report: Mapping[str, Any] | None = None,
     unlock_dir: str | Path = DEFAULT_UNLOCK_DIR,
     graph_replay_dir: str | Path = DEFAULT_GRAPH_REPLAY_DIR,
     eval_dir: str | Path = DEFAULT_EVAL_DIR,
@@ -224,6 +226,13 @@ def build_pgg_archon_status_surface(
     quality_gate_schema_ok = quality_gate.get("schema") == "PGGArchonQualityGateSurface/v1"
     quality_gate_blocking = [str(item) for item in _as_sequence(quality_gate.get("blocking_failures"))[:8]]
     quality_gate_warnings = [str(item) for item in _as_sequence(quality_gate.get("warning_failures"))[:8]]
+    try:
+        research_extraction = dict(research_extraction_report) if research_extraction_report is not None else dict(build_pgg_archon_research_extraction_surface())
+    except Exception as exc:
+        research_extraction = {"schema": "PGGArchonResearchExtractionSurface/v1", "status": "ERROR", "warnings": [f"research_extraction_unavailable:{type(exc).__name__}"], "agi_completion_claim": False}
+    research_extraction_status = _status(research_extraction.get("status"))
+    research_extraction_schema_ok = research_extraction.get("schema") == "PGGArchonResearchExtractionSurface/v1"
+    research_extraction_warnings = [str(item) for item in _as_sequence(research_extraction.get("warnings"))[:8]]
 
     # --- Read-only lookups for standalone APEX modules ---
     def _safe_load(fn, empty=None):
@@ -269,6 +278,11 @@ def build_pgg_archon_status_surface(
             quality_gate,
             f"quality_gate_status={quality_gate_status} blocking={len(quality_gate_blocking)} warnings={len(quality_gate_warnings)}",
         ),
+        "research_extraction_surface_ready": _signal(
+            research_extraction_schema_ok and research_extraction_status in {"PASS", "WATCH"},
+            research_extraction,
+            f"research_extraction_status={research_extraction_status} warnings={len(research_extraction_warnings)}",
+        ),
         "era_report_present": _signal(era_status == "PASS", era_report, f"era_status={era_status}"),
         "flow_reward_report_present": _signal(flow_status == "PASS", flow_report, f"flow_status={flow_status}"),
         "switch_cost_report_present": _signal(switch_status in {"PASS", "HOLD"}, switch_report, f"switch_status={switch_status}"),
@@ -282,7 +296,7 @@ def build_pgg_archon_status_surface(
                 bool(item.get("agi_completion_claim"))
                 for item in (unlock, graph, eval_report, golden, autonomy, promotion_guard,
                             evidence_loop, apex_agi_absorption, pua_report, p0_surface, quality_gate,
-                            era_report, flow_report, switch_report, co_debate, co_gene,
+                            research_extraction, era_report, flow_report, switch_report, co_debate, co_gene,
                             gpo_report, quality_ev)
             ),
             {},
@@ -403,6 +417,32 @@ def build_pgg_archon_status_surface(
             "action": "review_quality_gate_warning_evidence_before_promotion_claim",
             "risk": "low",
         })
+    if not research_extraction_schema_ok:
+        small_bottlenecks.append({
+            "code": "Res/Schema",
+            "source": "pgg_archon_research_extraction_surface",
+            "status": research_extraction_status,
+            "action": "reject_or_rebuild_malformed_research_extraction_report",
+            "risk": "low",
+        })
+    elif research_extraction_status in {"ERROR", "UNKNOWN"}:
+        small_bottlenecks.append({
+            "code": "Res/Error",
+            "source": "pgg_archon_research_extraction_surface",
+            "status": research_extraction_status,
+            "warnings": research_extraction_warnings,
+            "action": "repair_research_extraction_surface_before_material_absorption",
+            "risk": "low",
+        })
+    elif research_extraction_status == "WATCH" and "ResearchTopicMissing" not in research_extraction_warnings and "ResearchSourcesMissing" not in research_extraction_warnings:
+        small_bottlenecks.append({
+            "code": "Res/Watch",
+            "source": "pgg_archon_research_extraction_surface",
+            "status": research_extraction_status,
+            "warnings": research_extraction_warnings,
+            "action": "review_research_extraction_relevance_before_material_absorption",
+            "risk": "low",
+        })
     if era_status not in {"PASS", ""}:
         small_bottlenecks.append({
             "code": "ERA/Warn",
@@ -502,6 +542,11 @@ def build_pgg_archon_status_surface(
             "quality_gate_schema_ok": quality_gate_schema_ok,
             "quality_gate_blocking_failures": quality_gate_blocking,
             "quality_gate_warning_failures": quality_gate_warnings,
+            "research_extraction_status": research_extraction_status,
+            "research_extraction_schema_ok": research_extraction_schema_ok,
+            "research_extraction_warnings": research_extraction_warnings,
+            "research_extraction_key_point_count": research_extraction.get("key_point_count"),
+            "research_extraction_relevance": research_extraction.get("relevance"),
             "era_status": era_status,
             "flow_status": flow_status,
             "switch_status": switch_status,
