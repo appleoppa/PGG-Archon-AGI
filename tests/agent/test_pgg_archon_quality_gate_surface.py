@@ -148,3 +148,24 @@ def test_status_surface_marks_quality_gate_block_bottleneck(monkeypatch):
 
     assert report["signals"]["quality_gate_surface_ready"]["ok"] is False
     assert any(item.get("code") == "QG/Block" for item in report["small_bottlenecks"])
+
+
+def test_status_surface_rejects_malformed_quality_gate_report(monkeypatch):
+    monkeypatch.setattr("agent.pgg_archon_status_surface.summarize_autonomy_status", lambda: {"mode": "ENFORCE", "autopromote_enabled": False, "promotion_count": 0, "stable_ready_count": 0, "pending_rollbacks": 0, "agi_completion_claim": False})
+    malformed_quality = {"schema": "Wrong/v1", "status": "PASS", "agi_completion_claim": False}
+    kwargs = _base_status_kwargs()
+    report = build_pgg_archon_status_surface(
+        unlock_report=kwargs["unlock_report"],
+        graph_replay_report=kwargs["graph_replay_report"],
+        eval_regression_report=kwargs["eval_regression_report"],
+        golden_regression_report=kwargs["golden_regression_report"],
+        promotion_guard_report=kwargs["promotion_guard_report"],
+        evidence_loop_report=kwargs["evidence_loop_report"],
+        apex_agi_absorption_report=kwargs["apex_agi_absorption_report"],
+        p0_surface_report=kwargs["p0_surface_report"],
+        quality_gate_report=malformed_quality,
+    )
+
+    assert report["signals"]["quality_gate_surface_ready"]["ok"] is False
+    assert report["summary"]["quality_gate_schema_ok"] is False
+    assert any(item.get("code") == "QG/Schema" for item in report["small_bottlenecks"])
