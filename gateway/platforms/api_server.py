@@ -50,6 +50,11 @@ except Exception:  # pragma: no cover - endpoint reports unavailable at runtime
     summarize_autonomy_status = None  # type: ignore[assignment]
 
 try:
+    from agent.pgg_case_workflow_entry import plan_case_workflow_entry
+except Exception:  # pragma: no cover - endpoint reports unavailable at runtime
+    plan_case_workflow_entry = None  # type: ignore[assignment]
+
+try:
     from agent.apex_system_identity import USER_FACING_SYSTEM_LABEL
 except Exception:  # pragma: no cover - identity fallback keeps API server importable
     USER_FACING_SYSTEM_LABEL = "PGG Archon AGI（原 APEX RuntimeOS）"
@@ -59,11 +64,13 @@ _ARCHON_API_ENDPOINTS = {
     "audit_summary": "/v1/pgg-archon/audit-summary",
     "dashboard": "/v1/pgg-archon/dashboard",
     "autonomy_status": "/v1/pgg-archon/autonomy-status",
+    "case_workflow_entry": "/v1/pgg-archon/case-workflow-entry",
 }
 _LEGACY_APEX_API_ENDPOINTS = {
     "audit_summary": "/v1/apex-runtimeos/audit-summary",
     "dashboard": "/v1/apex-runtimeos/dashboard",
     "autonomy_status": "/v1/apex-runtimeos/autonomy-status",
+    "case_workflow_entry": "/v1/apex-runtimeos/case-workflow-entry",
 }
 
 try:
@@ -1306,11 +1313,13 @@ class APIServerAdapter(BasePlatformAdapter):
                 "pgg_archon_audit_summary": summarize_audit is not None,
                 "pgg_archon_dashboard": summarize_audit is not None,
                 "pgg_archon_autonomy_status": summarize_autonomy_status is not None,
+                "pgg_archon_case_workflow_entry": plan_case_workflow_entry is not None,
                 # Compatibility feature flags for older APEX RuntimeOS clients.
                 "apex_runtimeos_audit_summary": summarize_audit is not None,
                 "apex_runtimeos_dashboard": summarize_audit is not None,
                 "apex_runtimeos_recommendation_gate": summarize_audit is not None,
                 "apex_runtimeos_autonomy_status": summarize_autonomy_status is not None,
+                "apex_runtimeos_case_workflow_entry": plan_case_workflow_entry is not None,
                 "tool_progress_events": True,
                 "approval_events": True,
                 "session_continuity_header": "X-Hermes-Session-Id",
@@ -1331,10 +1340,12 @@ class APIServerAdapter(BasePlatformAdapter):
                 "pgg_archon_audit_summary": {"method": "GET", "path": _ARCHON_API_ENDPOINTS["audit_summary"]},
                 "pgg_archon_dashboard": {"method": "GET", "path": _ARCHON_API_ENDPOINTS["dashboard"]},
                 "pgg_archon_autonomy_status": {"method": "GET", "path": _ARCHON_API_ENDPOINTS["autonomy_status"]},
+                "pgg_archon_case_workflow_entry": {"method": "POST", "path": _ARCHON_API_ENDPOINTS["case_workflow_entry"]},
                 "apex_runtimeos_audit_summary": {"method": "GET", "path": _LEGACY_APEX_API_ENDPOINTS["audit_summary"], "alias_of": "pgg_archon_audit_summary"},
                 "apex_runtimeos_dashboard": {"method": "GET", "path": _LEGACY_APEX_API_ENDPOINTS["dashboard"], "alias_of": "pgg_archon_dashboard"},
                 "apex_runtimeos_recommendation_gate": {"method": "GET", "path": "/v1/apex-runtimeos/recommendation-gate", "legacy_only": True},
                 "apex_runtimeos_autonomy_status": {"method": "GET", "path": _LEGACY_APEX_API_ENDPOINTS["autonomy_status"], "alias_of": "pgg_archon_autonomy_status"},
+                "apex_runtimeos_case_workflow_entry": {"method": "POST", "path": _LEGACY_APEX_API_ENDPOINTS["case_workflow_entry"], "alias_of": "pgg_archon_case_workflow_entry"},
             },
         })
 
@@ -1442,6 +1453,61 @@ class APIServerAdapter(BasePlatformAdapter):
             "status": "ok",
             "autonomy": status,
         })
+
+    async def _handle_pgg_archon_case_workflow_entry(self, request: "web.Request") -> "web.Response":
+        """POST /v1/pgg-archon/case-workflow-entry — safe legal workflow entry plan."""
+        object_name = _archon_public_object(request, "case_workflow_entry")
+        auth_err = self._check_auth(request)
+        if auth_err:
+            return auth_err
+        if plan_case_workflow_entry is None:
+            return web.json_response(
+                {
+                    "object": object_name,
+                    "status": "unavailable",
+                    "error_code": "pgg_archon_case_workflow_entry_unavailable",
+                },
+                status=503,
+            )
+        try:
+            body = await request.json()
+        except (json.JSONDecodeError, Exception):
+            return web.json_response(
+                {"error": {"message": "Invalid JSON", "type": "invalid_request_error"}},
+                status=400,
+            )
+        if not isinstance(body, dict):
+            return web.json_response(
+                {"error": {"message": "Request body must be an object", "type": "invalid_request_error"}},
+                status=400,
+            )
+        instruction = _normalize_chat_content(body.get("user_instruction") or body.get("instruction") or "")
+        case_state = body.get("case_state")
+        if case_state is None:
+            case_state = {k: v for k, v in body.items() if k not in {"user_instruction", "instruction", "case_state"}}
+        if not isinstance(case_state, dict):
+            return web.json_response(
+                {"error": {"message": "case_state must be an object", "type": "invalid_request_error"}},
+                status=400,
+            )
+        try:
+            plan = _safe_archon_public_payload(plan_case_workflow_entry(instruction, case_state))
+        except Exception:
+            logger.exception("[%s] Failed to plan PGG Archon case workflow entry", self.name)
+            return web.json_response(
+                {
+                    "object": object_name,
+                    "status": "error",
+                    "error_code": "pgg_archon_case_workflow_entry_error",
+                },
+                status=500,
+            )
+        http_status = 409 if plan.get("preflight", {}).get("status") == "BLOCK" else 200
+        return web.json_response({
+            "object": object_name,
+            "status": "ok",
+            "plan": plan,
+        }, status=http_status)
 
     async def _handle_apex_runtimeos_dashboard(self, request: "web.Request") -> "web.Response":
         """GET /v1/apex-runtimeos/dashboard — HTML RuntimeOS health card."""
@@ -3885,9 +3951,11 @@ class APIServerAdapter(BasePlatformAdapter):
             self._app.router.add_get(_ARCHON_API_ENDPOINTS["audit_summary"], self._handle_apex_runtimeos_audit_summary)
             self._app.router.add_get(_ARCHON_API_ENDPOINTS["dashboard"], self._handle_apex_runtimeos_dashboard)
             self._app.router.add_get(_ARCHON_API_ENDPOINTS["autonomy_status"], self._handle_apex_runtimeos_autonomy_status)
+            self._app.router.add_post(_ARCHON_API_ENDPOINTS["case_workflow_entry"], self._handle_pgg_archon_case_workflow_entry)
             self._app.router.add_get(_LEGACY_APEX_API_ENDPOINTS["audit_summary"], self._handle_apex_runtimeos_audit_summary)
             self._app.router.add_get(_LEGACY_APEX_API_ENDPOINTS["dashboard"], self._handle_apex_runtimeos_dashboard)
             self._app.router.add_get(_LEGACY_APEX_API_ENDPOINTS["autonomy_status"], self._handle_apex_runtimeos_autonomy_status)
+            self._app.router.add_post(_LEGACY_APEX_API_ENDPOINTS["case_workflow_entry"], self._handle_pgg_archon_case_workflow_entry)
             self._app.router.add_post("/v1/chat/completions", self._handle_chat_completions)
             self._app.router.add_post("/v1/responses", self._handle_responses)
             self._app.router.add_get("/v1/responses/{response_id}", self._handle_get_response)

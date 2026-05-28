@@ -416,9 +416,11 @@ def _create_app(adapter: APIServerAdapter) -> web.Application:
     app.router.add_get("/v1/pgg-archon/audit-summary", adapter._handle_apex_runtimeos_audit_summary)
     app.router.add_get("/v1/pgg-archon/dashboard", adapter._handle_apex_runtimeos_dashboard)
     app.router.add_get("/v1/pgg-archon/autonomy-status", adapter._handle_apex_runtimeos_autonomy_status)
+    app.router.add_post("/v1/pgg-archon/case-workflow-entry", adapter._handle_pgg_archon_case_workflow_entry)
     app.router.add_get("/v1/apex-runtimeos/audit-summary", adapter._handle_apex_runtimeos_audit_summary)
     app.router.add_get("/v1/apex-runtimeos/dashboard", adapter._handle_apex_runtimeos_dashboard)
     app.router.add_get("/v1/apex-runtimeos/autonomy-status", adapter._handle_apex_runtimeos_autonomy_status)
+    app.router.add_post("/v1/apex-runtimeos/case-workflow-entry", adapter._handle_pgg_archon_case_workflow_entry)
     app.router.add_post("/v1/chat/completions", adapter._handle_chat_completions)
     app.router.add_post("/v1/responses", adapter._handle_responses)
     app.router.add_get("/v1/responses/{response_id}", adapter._handle_get_response)
@@ -664,20 +666,25 @@ class TestCapabilitiesEndpoint:
             assert data["features"]["pgg_archon_audit_summary"] is True
             assert data["features"]["pgg_archon_dashboard"] is True
             assert data["features"]["pgg_archon_autonomy_status"] is True
+            assert data["features"]["pgg_archon_case_workflow_entry"] is True
             assert data["features"]["apex_runtimeos_audit_summary"] is True
             assert data["features"]["apex_runtimeos_dashboard"] is True
             assert data["features"]["apex_runtimeos_autonomy_status"] is True
+            assert data["features"]["apex_runtimeos_case_workflow_entry"] is True
             assert data["features"]["session_continuity_header"] == "X-Hermes-Session-Id"
             assert data["endpoints"]["run_status"]["path"] == "/v1/runs/{run_id}"
             assert data["endpoints"]["pgg_archon_audit_summary"]["path"] == "/v1/pgg-archon/audit-summary"
             assert data["endpoints"]["pgg_archon_dashboard"]["path"] == "/v1/pgg-archon/dashboard"
             assert data["endpoints"]["pgg_archon_autonomy_status"]["path"] == "/v1/pgg-archon/autonomy-status"
+            assert data["endpoints"]["pgg_archon_case_workflow_entry"]["path"] == "/v1/pgg-archon/case-workflow-entry"
             assert data["endpoints"]["apex_runtimeos_audit_summary"]["path"] == "/v1/apex-runtimeos/audit-summary"
             assert data["endpoints"]["apex_runtimeos_audit_summary"]["alias_of"] == "pgg_archon_audit_summary"
             assert data["endpoints"]["apex_runtimeos_dashboard"]["path"] == "/v1/apex-runtimeos/dashboard"
             assert data["endpoints"]["apex_runtimeos_dashboard"]["alias_of"] == "pgg_archon_dashboard"
             assert data["endpoints"]["apex_runtimeos_autonomy_status"]["path"] == "/v1/apex-runtimeos/autonomy-status"
             assert data["endpoints"]["apex_runtimeos_autonomy_status"]["alias_of"] == "pgg_archon_autonomy_status"
+            assert data["endpoints"]["apex_runtimeos_case_workflow_entry"]["path"] == "/v1/apex-runtimeos/case-workflow-entry"
+            assert data["endpoints"]["apex_runtimeos_case_workflow_entry"]["alias_of"] == "pgg_archon_case_workflow_entry"
 
     @pytest.mark.asyncio
     async def test_capabilities_requires_auth_when_key_configured(self, auth_adapter):
@@ -862,6 +869,50 @@ class TestApexRuntimeOSAuditSummaryEndpoint:
             legacy_data = await legacy_resp.json()
             assert legacy_data["object"] == "hermes.apex_runtimeos.autonomy_status"
 
+
+
+class TestPggArchonCaseWorkflowEntryEndpoint:
+    @pytest.mark.asyncio
+    async def test_case_workflow_entry_blocks_start_shortcut_and_returns_actions(self, adapter):
+        app = _create_app(adapter)
+        async with TestClient(TestServer(app)) as cli:
+            resp = await cli.post(
+                "/v1/pgg-archon/case-workflow-entry",
+                json={"user_instruction": "读取材料，启动办案程序。", "case_state": {}},
+            )
+            assert resp.status == 409
+            data = await resp.json()
+            assert data["object"] == "hermes.pgg_archon.case_workflow_entry"
+            plan = data["plan"]
+            assert plan["schema"] == "PGGCaseWorkflowEntryPlan/v1"
+            assert plan["status"] == "ACTION_REQUIRED"
+            assert plan["preflight"]["status"] == "BLOCK"
+            assert plan["allows_external_delivery"] is False
+            assert "request_case_management_numbering" in {item["action"] for item in plan["actions"]}
+
+    @pytest.mark.asyncio
+    async def test_case_workflow_entry_allows_clean_legacy_alias(self, adapter):
+        app = _create_app(adapter)
+        async with TestClient(TestServer(app)) as cli:
+            resp = await cli.post(
+                "/v1/apex-runtimeos/case-workflow-entry",
+                json={
+                    "instruction": "开始办案",
+                    "case_state": {
+                        "formal_workflow_started": True,
+                        "case_id": "PGG-FW-20260528-002",
+                        "case_id_generated_by": "案件管理中心",
+                        "evidence_gate_status": "PASS",
+                        "internal_report_generated": True,
+                        "intended_output": "内部预分析",
+                    },
+                },
+            )
+            assert resp.status == 200
+            data = await resp.json()
+            assert data["object"] == "hermes.apex_runtimeos.case_workflow_entry"
+            assert data["plan"]["preflight"]["status"] == "PASS"
+            assert data["plan"]["allows_external_delivery"] is True
 
 
 class TestChatCompletionsEndpoint:
