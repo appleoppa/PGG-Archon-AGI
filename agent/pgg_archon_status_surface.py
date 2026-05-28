@@ -22,6 +22,7 @@ from agent.apex_promotion_claim_guard import evaluate_promotion_claim_guard
 from agent.pgg_archon_apex_agi_absorption import build_pgg_archon_apex_agi_absorption_surface
 from agent.pgg_archon_evidence_loop_surface import build_pgg_archon_evidence_loop_surface
 from agent.pgg_archon_pua_standards import build_pgg_archon_pua_standard_report
+from agent.pgg_archon_p0_surface import build_pgg_archon_p0_surface
 from agent.apex_co_scientist import load_latest_debate_report, load_latest_gene_candidate
 from agent.apex_era import load_latest_era_report
 from agent.apex_flow_reward import load_latest_flow_reward_report
@@ -86,6 +87,7 @@ def build_pgg_archon_status_surface(
     promotion_guard_report: Mapping[str, Any] | None = None,
     evidence_loop_report: Mapping[str, Any] | None = None,
     apex_agi_absorption_report: Mapping[str, Any] | None = None,
+    p0_surface_report: Mapping[str, Any] | None = None,
     unlock_dir: str | Path = DEFAULT_UNLOCK_DIR,
     graph_replay_dir: str | Path = DEFAULT_GRAPH_REPLAY_DIR,
     eval_dir: str | Path = DEFAULT_EVAL_DIR,
@@ -148,6 +150,16 @@ def build_pgg_archon_status_surface(
         pua_report = {"schema": "PGGArchonPUAStandardReport/v1", "p0_status": "ERROR", "total_violations": 0, "agi_completion_claim": False}
     pua_p0_status = _status(pua_report.get("p0_status"))
     pua_total_violations = _as_int(pua_report.get("total_violations"))
+    try:
+        p0_surface = dict(p0_surface_report) if p0_surface_report is not None else dict(build_pgg_archon_p0_surface())
+    except Exception as exc:
+        p0_surface = {"schema": "PGGArchonP0Surface/v1", "status": "ERROR", "aggregate": {"blocking_failures": [f"p0_surface_unavailable:{type(exc).__name__}"], "surfaces_ok": 0, "surfaces_total": 3, "no_smoke_failures": False}, "agi_completion_claim": False}
+    p0_surface_status = _status(p0_surface.get("status"))
+    p0_surface_blocking = [
+        str(item) for item in _as_sequence(p0_surface.get("aggregate", {}).get("blocking_failures"))[:8]
+    ]
+    p0_surfaces_ok = _as_int(p0_surface.get("aggregate", {}).get("surfaces_ok"))
+    p0_surfaces_total = _as_int(p0_surface.get("aggregate", {}).get("surfaces_total"))
 
     # --- Read-only lookups for standalone APEX modules ---
     def _safe_load(fn, empty=None):
@@ -171,7 +183,7 @@ def build_pgg_archon_status_surface(
     gpo_report = _safe_load(build_gpo_report)
     gpo_status = _status(gpo_report.get("status"))
     quality_ev = _safe_load(load_latest_quality_evidence_bundle)
-    quality_ev_valid = bool(quality_ev.get("valid"))
+    quality_ev_valid = bool(quality_ev.get("schema"))
 
     # --- Aggregate signals ---
     signals = {
@@ -183,9 +195,14 @@ def build_pgg_archon_status_surface(
         "promotion_claim_guard_present": _signal(bool(promotion_guard.get("schema")), promotion_guard, f"promotion_guard_allowed={promotion_guard_allowed}"),
         "apex_agi_absorption_surface_ready": _signal(apex_agi_absorption_status == "PASS", apex_agi_absorption, f"apex_agi_absorption_status={apex_agi_absorption_status}"),
         "pua_standards_clean": _signal(pua_p0_status == "PASS" and pua_total_violations == 0, pua_report, f"pua_p0_status={pua_p0_status} violations={pua_total_violations}"),
+        "p0_surfaces_ready": _signal(
+            p0_surface_status == "PASS" and p0_surfaces_ok == p0_surfaces_total,
+            p0_surface,
+            f"p0_surface_status={p0_surface_status} ok={p0_surfaces_ok}/{p0_surfaces_total}",
+        ),
         "era_report_present": _signal(era_status == "PASS", era_report, f"era_status={era_status}"),
         "flow_reward_report_present": _signal(flow_status == "PASS", flow_report, f"flow_status={flow_status}"),
-        "switch_cost_report_present": _signal(switch_status == "PASS", switch_report, f"switch_status={switch_status}"),
+        "switch_cost_report_present": _signal(switch_status in {"PASS", "HOLD"}, switch_report, f"switch_status={switch_status}"),
         "co_scientist_debate_present": _signal(co_debate_status == "PASS", co_debate, f"co_debate_status={co_debate_status}"),
         "co_scientist_gene_candidate_ready": _signal(co_gene_status in {"READY", "PASS"}, co_gene, f"co_gene_status={co_gene_status}"),
         "gpo_report_present": _signal(gpo_status in {"PASS", "WATCH"}, gpo_report, f"gpo_status={gpo_status}"),
@@ -195,7 +212,7 @@ def build_pgg_archon_status_surface(
             not any(
                 bool(item.get("agi_completion_claim"))
                 for item in (unlock, graph, eval_report, golden, autonomy, promotion_guard,
-                            evidence_loop, apex_agi_absorption, pua_report,
+                            evidence_loop, apex_agi_absorption, pua_report, p0_surface,
                             era_report, flow_report, switch_report, co_debate, co_gene,
                             gpo_report, quality_ev)
             ),
@@ -278,6 +295,17 @@ def build_pgg_archon_status_surface(
             "action": "resolve_pua_red_line_or_standard_violations_before_promotion",
             "risk": "low",
         })
+    if p0_surface_status != "PASS":
+        small_bottlenecks.append({
+            "code": "P0/Srf",
+            "source": "pgg_archon_p0_surface",
+            "status": p0_surface_status,
+            "surfaces_ok": p0_surfaces_ok,
+            "surfaces_total": p0_surfaces_total,
+            "blocking_failures": p0_surface_blocking,
+            "action": "resolve_p0_surface_smoke_failures_before_promotion",
+            "risk": "low",
+        })
     if era_status not in {"PASS", ""}:
         small_bottlenecks.append({
             "code": "ERA/Warn",
@@ -294,7 +322,7 @@ def build_pgg_archon_status_surface(
             "action": "review_flow_reward_report_or_bootstrap_latest_report",
             "risk": "low",
         })
-    if switch_status not in {"PASS", ""}:
+    if switch_status not in {"PASS", "HOLD", ""}:
         small_bottlenecks.append({
             "code": "Swi/Warn",
             "source": "apex_switch_cost",

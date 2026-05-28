@@ -189,12 +189,30 @@ def test_pgg_archon_status_surface_catches_agi_claim_from_bound_evidence_loop(mo
     assert "no_agi_completion_claims" in report["missing"]
 
 
-def test_pgg_archon_status_surface_blocks_when_required_reports_absent():
+def test_pgg_archon_status_surface_blocks_when_required_reports_absent(monkeypatch):
+    """All required reports absent => BLOCK status."""
+    # Monkeypatch standalone loaders to return empty so they don't
+    # pick up real files that may exist from prior test runs.
+    for mod in (
+        "agent.pgg_archon_status_surface.load_latest_era_report",
+        "agent.pgg_archon_status_surface.load_latest_flow_reward_report",
+        "agent.pgg_archon_status_surface.load_latest_switch_cost_report",
+        "agent.pgg_archon_status_surface.load_latest_debate_report",
+        "agent.pgg_archon_status_surface.load_latest_gene_candidate",
+        "agent.pgg_archon_status_surface.load_latest_quality_evidence_bundle",
+    ):
+        monkeypatch.setattr(mod, lambda: None)
+    monkeypatch.setattr("agent.pgg_archon_status_surface.build_gpo_report", lambda: {})
+    monkeypatch.setattr("agent.pgg_archon_status_surface.summarize_autonomy_status", lambda: _autonomy(mode="WARN"))
     report = build_pgg_archon_status_surface(
         unlock_report={},
         graph_replay_report={},
         eval_regression_report={},
         golden_regression_report={},
+        promotion_guard_report={},
+        evidence_loop_report={},
+        apex_agi_absorption_report={},
+        p0_surface_report={},
     )
 
     assert report["status"] == "BLOCK"
