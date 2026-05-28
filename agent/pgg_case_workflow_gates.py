@@ -145,4 +145,42 @@ def evaluate_case_workflow_preflight(payload: Mapping[str, Any]) -> dict[str, An
     }
 
 
-__all__ = ["CaseWorkflowGateIssue", "evaluate_case_workflow_preflight"]
+def build_case_workflow_gate_from_runtimeos_status(status: Mapping[str, Any]) -> dict[str, Any]:
+    """Build an aggregate-only case workflow gate for PGG Archon autonomy status.
+
+    This bridges legal case practice into runtime visibility without reading raw
+    case files, mutating case archives, calling departments, or delivering any
+    legal output.
+    """
+    source = status.get("case_workflow_event")
+    if not isinstance(source, Mapping):
+        source = status.get("latest_case_workflow_event")
+    if not isinstance(source, Mapping):
+        return {
+            "schema": "PGGCaseWorkflowRuntimeGate/v1",
+            "status": "NO_EVENT",
+            "preflight": None,
+            "case_event_present": False,
+            "allows_external_delivery": False,
+            "side_effects": "read_only_report",
+            "boundary": "No legal case files are read; this gate only evaluates sanitized aggregate event fields.",
+        }
+
+    preflight = evaluate_case_workflow_preflight(source)
+    return {
+        "schema": "PGGCaseWorkflowRuntimeGate/v1",
+        "status": preflight["status"],
+        "preflight": preflight,
+        "case_event_present": True,
+        "issue_count": preflight["issue_count"],
+        "allows_external_delivery": preflight["allows_external_delivery"],
+        "side_effects": "read_only_report",
+        "boundary": "Aggregate-only legal workflow gate; not a substitute for department execution or legal-basis verification.",
+    }
+
+
+__all__ = [
+    "CaseWorkflowGateIssue",
+    "evaluate_case_workflow_preflight",
+    "build_case_workflow_gate_from_runtimeos_status",
+]

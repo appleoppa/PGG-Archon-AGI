@@ -1,6 +1,10 @@
 from __future__ import annotations
 
-from agent.pgg_case_workflow_gates import evaluate_case_workflow_preflight
+from agent.apex_runtimeos_autonomy import summarize_autonomy_status
+from agent.pgg_case_workflow_gates import (
+    build_case_workflow_gate_from_runtimeos_status,
+    evaluate_case_workflow_preflight,
+)
 
 
 def _codes(result: dict) -> set[str]:
@@ -99,3 +103,35 @@ def test_clean_case_preflight_passes_and_allows_delivery():
     assert result["status"] == "PASS"
     assert result["issue_count"] == 0
     assert result["allows_external_delivery"] is True
+
+
+def test_case_workflow_runtime_gate_uses_aggregate_event_only():
+    gate = build_case_workflow_gate_from_runtimeos_status({
+        "case_workflow_event": {
+            "user_instruction": "启动办案程序",
+            "case_id": "PGG-CIV-20260528-001",
+            "case_id_generated_by": "案件管理中心",
+            "formal_workflow_started": True,
+            "department_results": [{"department": "证据部", "status": "PASS"}],
+            "amount_versions": [100],
+            "evidence_gate_status": "PASS",
+            "intended_output": "内部复核稿",
+            "internal_report_generated": True,
+        }
+    })
+
+    assert gate["schema"] == "PGGCaseWorkflowRuntimeGate/v1"
+    assert gate["status"] == "PASS"
+    assert gate["case_event_present"] is True
+    assert gate["allows_external_delivery"] is True
+    assert gate["side_effects"] == "read_only_report"
+
+
+def test_autonomy_status_exposes_case_workflow_gate_without_case_file_reads(tmp_path, monkeypatch):
+    monkeypatch.setenv("APEX_RUNTIMEOS_AUTOWRITE_DIR", str(tmp_path / "auto"))
+    status = summarize_autonomy_status(limit=10)
+
+    assert status["case_workflow_gate"]["schema"] == "PGGCaseWorkflowRuntimeGate/v1"
+    assert status["case_workflow_gate"]["status"] == "NO_EVENT"
+    assert status["case_workflow_gate"]["case_event_present"] is False
+    assert status["case_workflow_gate"]["side_effects"] == "read_only_report"

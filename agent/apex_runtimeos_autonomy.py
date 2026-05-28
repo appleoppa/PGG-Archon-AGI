@@ -1323,6 +1323,17 @@ def summarize_autonomy_status(*, limit: int = 1000, min_occurrences: int = 2) ->
             "side_effects": "read_only_report",
         }
     try:
+        from agent.pgg_case_workflow_gates import build_case_workflow_gate_from_runtimeos_status
+
+        report["case_workflow_gate"] = build_case_workflow_gate_from_runtimeos_status(report)
+    except Exception as exc:
+        report["case_workflow_gate"] = {
+            "schema": "PGGCaseWorkflowRuntimeGate/v1",
+            "status": "ERROR",
+            "error": _safe_scalar(exc),
+            "side_effects": "read_only_report",
+        }
+    try:
         from agent.apex_v3_unified_score import build_apex_v3_unified_score_report
 
         report["apex_v3_unified_score"] = build_apex_v3_unified_score_report(report)
