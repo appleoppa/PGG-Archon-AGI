@@ -11,6 +11,8 @@ import time
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
+from agent.apex_runtimeos_autonomy import summarize_autonomy_status
+
 DEFAULT_UNLOCK_DIR = Path("/Users/appleoppa/.hermes/workspace/agi-routing/apex-module-unlocks")
 DEFAULT_GRAPH_REPLAY_DIR = Path("/Users/appleoppa/.hermes/workspace/agi-routing/case-flow-graph-replays")
 DEFAULT_EVAL_DIR = Path("/Users/appleoppa/.hermes/workspace/agi-routing/eval-regression-harness")
@@ -69,17 +71,27 @@ def build_pgg_archon_status_surface(
     graph = dict(graph_replay_report) if graph_replay_report is not None else dict(_latest_json(graph_replay_dir, "*case_flow_graph_replay.json"))
     eval_report = dict(eval_regression_report) if eval_regression_report is not None else dict(_latest_json(eval_dir, "*eval_regression_harness.json"))
     golden = dict(golden_regression_report) if golden_regression_report is not None else dict(_latest_json(golden_dir, "*golden_regression_report.json"))
+    try:
+        autonomy = dict(summarize_autonomy_status())
+    except Exception:
+        autonomy = {}
 
     unlockable_count = _as_int(unlock.get("unlockable_count") or unlock.get("module_count"))
     graph_status = _status(graph.get("replay_status"))
     eval_status = _status(eval_report.get("status"))
     golden_status = _status(golden.get("status"))
+    autonomy_mode = _status(autonomy.get("mode"))
+    autopromote_enabled = bool(autonomy.get("autopromote_enabled"))
+    promotion_count = _as_int(autonomy.get("promotion_count"))
+    stable_ready_count = _as_int(autonomy.get("stable_ready_count"))
+    pending_rollbacks = _as_int(autonomy.get("pending_rollbacks"))
 
     signals = {
         "module_unlock_surface": _signal(unlockable_count > 0, unlock, f"unlockable_count={unlockable_count}"),
         "case_flow_graph_replay_present": _signal(bool(graph.get("schema")) and graph_status in {"PASS", "ACTION_REQUIRED", "BLOCK"}, graph, f"replay_status={graph_status}"),
         "eval_regression_present": _signal(bool(eval_report.get("schema")) and eval_status in {"PASS", "WARN", "BLOCK"}, eval_report, f"eval_status={eval_status}"),
         "golden_regression_passed": _signal(golden_status == "PASS" and _as_int(golden.get("failed_expectation_count")) == 0, golden, f"golden_status={golden_status}"),
+        "autonomy_mode_ready": _signal(autonomy_mode in {"DRY_RUN", "ENFORCE"}, autonomy, f"autonomy_mode={autonomy_mode}"),
         "no_external_delivery_from_blocked_graph": _signal(not (graph_status == "BLOCK" and bool(graph.get("allows_external_delivery"))), graph, "blocked_graph_must_not_allow_external_delivery"),
         "no_agi_completion_claims": _signal(
             not any(bool(item.get("agi_completion_claim")) for item in (unlock, graph, eval_report, golden)),
@@ -116,6 +128,17 @@ def build_pgg_archon_status_surface(
             "action": "repair_golden_regression_expectation_or_diff_bucket",
             "risk": "low",
         })
+    if autonomy_mode == "WARN":
+        small_bottlenecks.append({
+            "code": "Aut/Wrn",
+            "source": "autonomy_status",
+            "mode": autonomy_mode,
+            "promotion_count": promotion_count,
+            "stable_ready_count": stable_ready_count,
+            "pending_rollbacks": pending_rollbacks,
+            "action": "review_autopromote_mode_and_clear_warn_state_if_intended",
+            "risk": "low",
+        })
 
     return {
         "schema": "PGGArchonStatusSurface/v1",
@@ -138,7 +161,13 @@ def build_pgg_archon_status_surface(
             "eval_failed_count": eval_report.get("failed_count"),
             "golden_status": golden_status,
             "golden_failed_expectation_count": golden.get("failed_expectation_count"),
+            "autonomy_mode": autonomy_mode,
+            "autopromote_enabled": autopromote_enabled,
+            "promotion_count": promotion_count,
+            "stable_ready_count": stable_ready_count,
+            "pending_rollbacks": pending_rollbacks,
         },
+        "autonomy_status": autonomy,
         "small_bottlenecks": small_bottlenecks,
         "side_effects": "read_only_status_surface",
         "agi_completion_claim": False,
