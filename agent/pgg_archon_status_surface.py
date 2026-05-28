@@ -16,6 +16,7 @@ from agent.apex_runtimeos_autonomy import summarize_autonomy_status
 from agent.apex_promotion_claim_guard import evaluate_promotion_claim_guard
 from agent.pgg_archon_apex_agi_absorption import build_pgg_archon_apex_agi_absorption_surface
 from agent.pgg_archon_evidence_loop_surface import build_pgg_archon_evidence_loop_surface
+from agent.pgg_archon_pua_standards import build_pgg_archon_pua_standard_report
 
 DEFAULT_UNLOCK_DIR = Path("/Users/appleoppa/.hermes/workspace/agi-routing/apex-module-unlocks")
 DEFAULT_GRAPH_REPLAY_DIR = Path("/Users/appleoppa/.hermes/workspace/agi-routing/case-flow-graph-replays")
@@ -130,6 +131,12 @@ def build_pgg_archon_status_surface(
         str(item.get("gate_name") if isinstance(item, Mapping) else item)
         for item in _as_sequence(apex_agi_absorption.get("blocking_failures"))[:8]
     ]
+    try:
+        pua_report = dict(build_pgg_archon_pua_standard_report())
+    except Exception as exc:
+        pua_report = {"schema": "PGGArchonPUAStandardReport/v1", "p0_status": "ERROR", "total_violations": 0, "agi_completion_claim": False}
+    pua_p0_status = _status(pua_report.get("p0_status"))
+    pua_total_violations = _as_int(pua_report.get("total_violations"))
 
     signals = {
         "module_unlock_surface": _signal(unlockable_count > 0, unlock, f"unlockable_count={unlockable_count}"),
@@ -139,11 +146,12 @@ def build_pgg_archon_status_surface(
         "autonomy_mode_ready": _signal(autonomy_mode in {"DRY_RUN", "ENFORCE"}, autonomy, f"autonomy_mode={autonomy_mode}"),
         "promotion_claim_guard_present": _signal(bool(promotion_guard.get("schema")), promotion_guard, f"promotion_guard_allowed={promotion_guard_allowed}"),
         "apex_agi_absorption_surface_ready": _signal(apex_agi_absorption_status == "PASS", apex_agi_absorption, f"apex_agi_absorption_status={apex_agi_absorption_status}"),
+        "pua_standards_clean": _signal(pua_p0_status == "PASS" and pua_total_violations == 0, pua_report, f"pua_p0_status={pua_p0_status} violations={pua_total_violations}"),
         "no_external_delivery_from_blocked_graph": _signal(not (graph_status == "BLOCK" and bool(graph.get("allows_external_delivery"))), graph, "blocked_graph_must_not_allow_external_delivery"),
         "no_agi_completion_claims": _signal(
             not any(
                 bool(item.get("agi_completion_claim"))
-                for item in (unlock, graph, eval_report, golden, autonomy, promotion_guard, evidence_loop, apex_agi_absorption)
+                for item in (unlock, graph, eval_report, golden, autonomy, promotion_guard, evidence_loop, apex_agi_absorption, pua_report)
             ),
             {},
             "all_pgg_archon_status_inputs_keep_agi_completion_claim_false",
@@ -215,6 +223,15 @@ def build_pgg_archon_status_surface(
             "action": "resolve_apex_agi_absorption_gates_before_runtime_import",
             "risk": "low",
         })
+    if pua_p0_status in {"BLOCK", "ERROR", "UNKNOWN"}:
+        small_bottlenecks.append({
+            "code": "PUA/Red",
+            "source": "pgg_archon_pua_standards",
+            "p0_status": pua_p0_status,
+            "total_violations": pua_total_violations,
+            "action": "resolve_pua_red_line_or_standard_violations_before_promotion",
+            "risk": "low",
+        })
 
     return {
         "schema": "PGGArchonStatusSurface/v1",
@@ -249,11 +266,14 @@ def build_pgg_archon_status_surface(
             "apex_agi_absorption_status": apex_agi_absorption_status,
             "apex_agi_absorption_ready_candidate_count": apex_agi_absorption.get("ready_candidate_count"),
             "apex_agi_absorption_blocking_failures": apex_agi_absorption_blocking,
+            "pua_p0_status": pua_p0_status,
+            "pua_total_violations": pua_total_violations,
         },
         "autonomy_status": autonomy,
         "promotion_claim_guard": promotion_guard,
         "evidence_loop_surface": evidence_loop,
         "apex_agi_absorption_surface": apex_agi_absorption,
+        "pua_standard_report": pua_report,
         "small_bottlenecks": small_bottlenecks,
         "side_effects": "read_only_status_surface",
         "agi_completion_claim": False,
