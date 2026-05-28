@@ -58,8 +58,9 @@ def _qr_route(task: str) -> Dict[str, Any]:
     return {}
 
 
-# 降级优先级：C(Claude) -> B(DeepSeek) -> A(GPT) -> D(astron)
-_FALLOVER_TIER_ORDER = ["C", "B", "A", "D"]
+# 降级优先级（用户偏好：备用不选 Claude）：A(GPT) -> D(MiniMax) -> B(DeepSeek)
+# Claude 仅作为主模型或显式调用使用，不作为自动降级备用。
+_FALLOVER_TIER_ORDER = ["A", "D", "B"]
 
 
 def auto_failover(
@@ -107,9 +108,14 @@ def auto_failover(
             ):
                 return (h.get("model") or "", h.get("name") or "")
 
-    # 兜底：任何在线但不是失败的
+    # 兜底：任何在线但不是失败的；显式跳过 Claude（备用模型用户偏好排除）
     for h in health:
-        if isinstance(h, dict) and h.get("status") == "ok" and h.get("name") != failed_provider:
+        if (
+            isinstance(h, dict)
+            and h.get("status") == "ok"
+            and h.get("name") != failed_provider
+            and h.get("tier") != "C"
+        ):
             return (h.get("model") or "", h.get("name") or "")
 
     return ("", "")
