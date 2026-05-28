@@ -594,7 +594,7 @@ def run_conversation(
                 or (_rc_is_agi and _rc_triggered)
                 or (_rc_is_agi and _rc_cfg.get('execute_for_agi', True) and (not _rc_requires_trigger or _rc_hard_enforce))
             )
-            _rc_script = _RcPath('/Users/appleoppa/.hermes/workspace/agi-routing/route_chain_evidence_gate.py')
+            _rc_script = _RcPath('/Users/appleoppa/.hermes/hermes-agent/agent/route_chain_evidence_gate.py')
             if _rc_script.exists():
                 _rc_cmd = [
                     'python3', str(_rc_script), user_message[:2000], '--task-class', 'auto',
