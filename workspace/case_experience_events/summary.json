@@ -1,0 +1,32 @@
+{
+  "schema": "PGGCaseExperienceBridgeSummary/v1",
+  "status": "PASS",
+  "case_count": 2,
+  "event_count": 2,
+  "failure_appended_count": 5,
+  "retrospective_appended_count": 2,
+  "events_path": "workspace/case_experience_events/case_events.jsonl",
+  "summary_path": "workspace/case_experience_events/summary.json",
+  "side_effects": "writes_sanitized_evidence_ledgers_only",
+  "cases": [
+    {
+      "case_id": "PGG-FW-20260528-002",
+      "status": "delivery_blocked",
+      "issues": [
+        "amount_closure_required"
+      ],
+      "evidence_hash": "809195adba689d4e943cc8208f289ea3fb2009a18a18a994376155cd1ed333ef"
+    },
+    {
+      "case_id": "PGG-MS-20260528-001",
+      "status": "hold",
+      "issues": [
+        "evidence_gate_hold",
+        "department_timeout_or_exception",
+        "amount_closure_required",
+        "legal_case_research_pending"
+      ],
+      "evidence_hash": "689bf1e6e586745b246b555493aaea41466163d356562996a1bf39800a6c0efc"
+    }
+  ]
+}
