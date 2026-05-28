@@ -145,7 +145,8 @@ def test_apex_runtimeos_cli_switch_cost_text_outputs_chinese_fields():
         "--target-route", json.dumps({"id": "new", "reward": 1.0, "evidence": 1.0, "confidence": 1.0}),
         "--switching-cost", "0.05",
     ])
-    assert "APEX 切换成本门禁" in output
+    assert "PGG Archon AGI 切换成本门禁" in output
+    assert "APEX 切换成本门禁" not in output
     assert "字段：decision" in output
     assert "字段：executed" in output
     assert "值：False" in output

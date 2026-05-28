@@ -822,7 +822,7 @@ def run_apex_runtimeos_cli(argv: list[str] | None = None) -> str:
         if ns.json:
             return json.dumps({"object": "hermes.apex_runtimeos.switch_cost", "result": result}, ensure_ascii=False, indent=2)
         return "\n".join([
-            "# APEX 切换成本门禁",
+            f"# {USER_FACING_SYSTEM_LABEL} 切换成本门禁",
             "",
             "字段：status",
             f"值：{report.get('status')}",
