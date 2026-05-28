@@ -91,6 +91,32 @@ def build_apex_runtime_status_surface(
     score = round(100 * ok_count / len(signals), 1)
     missing = [name for name, item in signals.items() if not item["ok"]]
     status = "PASS" if score >= 90 and not missing else ("WATCH" if score >= 60 else "BLOCK")
+    small_bottlenecks: list[dict[str, Any]] = []
+    if graph_status == "BLOCK":
+        small_bottlenecks.append({
+            "code": "Agt/Pan",
+            "source": "case_flow_graph_replay",
+            "next_node": graph.get("next_node"),
+            "action": "resolve_or_label_next_blocking_case_flow_node",
+            "risk": "low",
+        })
+    if eval_status == "BLOCK":
+        small_bottlenecks.append({
+            "code": "Err/Res",
+            "source": "eval_regression_harness",
+            "failed_count": eval_report.get("failed_count"),
+            "action": "verify_p0_alerts_or_convert_to_bounded_repair_cases",
+            "risk": "low",
+        })
+    if golden_status != "PASS":
+        small_bottlenecks.append({
+            "code": "Clw/Log",
+            "source": "golden_regression_harness",
+            "failed_expectation_count": golden.get("failed_expectation_count"),
+            "action": "repair_golden_regression_expectation_or_diff_bucket",
+            "risk": "low",
+        })
+
     return {
         "schema": "ApexRuntimeStatusSurface/v1",
         "created_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
@@ -113,6 +139,7 @@ def build_apex_runtime_status_surface(
             "golden_status": golden_status,
             "golden_failed_expectation_count": golden.get("failed_expectation_count"),
         },
+        "small_bottlenecks": small_bottlenecks,
         "side_effects": "read_only_status_surface",
         "agi_completion_claim": False,
     }

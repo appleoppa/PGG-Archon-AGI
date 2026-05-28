@@ -51,6 +51,9 @@ def test_runtime_status_surface_passes_when_all_surfaces_present_and_safe():
     assert report["score"] == 100.0
     assert report["missing"] == []
     assert report["summary"]["graph_next_node"] == "evidence_gate"
+    assert report["small_bottlenecks"][0]["source"] == "case_flow_graph_replay"
+    assert report["small_bottlenecks"][0]["next_node"] == "evidence_gate"
+    assert report["small_bottlenecks"][1]["source"] == "eval_regression_harness"
     assert report["agi_completion_claim"] is False
 
 
