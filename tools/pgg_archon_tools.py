@@ -31,8 +31,8 @@ PGG_ULTIMATE_EVOLUTION_SCHEMA: Dict[str, Any] = {
         "properties": {
             "action": {
                 "type": "string",
-                "enum": ["score", "ars_plan", "runtime_status", "promotion_status", "evidence_chain_status", "chain_integrity_status"],
-                "description": "score=compute formula report; ars_plan=report plus ARS plan; runtime_status=map existing runtime status into formula; promotion_status=read Phase5 promotion gate sidecar status; evidence_chain_status=read Phase7 report/DB/cron evidence-chain status; chain_integrity_status=read Phase8 deterministic integrity manifest gate.",
+                "enum": ["score", "ars_plan", "runtime_status", "promotion_status", "evidence_chain_status", "chain_integrity_status", "ci_drift_gate_status"],
+                "description": "score=compute formula report; ars_plan=report plus ARS plan; runtime_status=map existing runtime status into formula; promotion_status=read Phase5 promotion gate sidecar status; evidence_chain_status=read Phase7 report/DB/cron evidence-chain status; chain_integrity_status=read Phase8 deterministic integrity manifest gate; ci_drift_gate_status=read Phase9 cron/CI drift gate.",
                 "default": "score",
             },
             "omega_a": {
@@ -114,6 +114,23 @@ def _handle_pgg_ultimate_evolution(args: Dict[str, Any], **_: Any) -> str:
                 "blockers": gate.get("blockers"),
                 "side_effects": "read_only_status",
                 "capability_boundary": "Phase8 sidecar integrity manifest only; not automatic AGI/core promotion.",
+            },
+        }, ensure_ascii=False, indent=2)
+    if action == "ci_drift_gate_status":
+        from agent.pgg_archon_ultimate_evolution_ars_cycle import build_phase9_cron_ci_drift_gate
+
+        gate = build_phase9_cron_ci_drift_gate()
+        return json.dumps({
+            "ci_drift_gate": gate,
+            "report": {
+                "schema": "PGGArchonUltimateEvolutionCIDriftGateStatus/v1",
+                "status": gate.get("status"),
+                "score": gate.get("score"),
+                "decision": gate.get("decision"),
+                "gate_hash": gate.get("gate_hash"),
+                "blockers": gate.get("blockers"),
+                "side_effects": "read_only_status",
+                "capability_boundary": "Phase9 sidecar cron/CI drift gate only; not automatic AGI/core promotion.",
             },
         }, ensure_ascii=False, indent=2)
     if action == "runtime_status":

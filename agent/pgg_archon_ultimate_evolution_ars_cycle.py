@@ -675,6 +675,42 @@ def _file_sha256(path: Path) -> str | None:
     return h.hexdigest()
 
 
+def _strip_volatile_fields(value: Any) -> Any:
+    """Remove run-local timestamps from JSON artifacts before drift hashing."""
+    if isinstance(value, Mapping):
+        return {
+            str(k): _strip_volatile_fields(v)
+            for k, v in value.items()
+            if str(k) not in {"ts", "called_at", "latency_ms"}
+        }
+    if isinstance(value, list):
+        return [_strip_volatile_fields(item) for item in value]
+    return value
+
+
+def _stable_artifact_sha256(path: Path) -> str | None:
+    """Hash artifacts deterministically while ignoring volatile JSON timestamps."""
+    if not path.exists() or not path.is_file():
+        return None
+    if path.suffix.lower() == ".json":
+        data = _read_json(path)
+        if data is not None:
+            return _canonical_json_hash(_strip_volatile_fields(data))
+    return _file_sha256(path)
+
+
+def _stable_artifact_size(path: Path) -> int:
+    """Return deterministic size metadata paired with _stable_artifact_sha256."""
+    if not path.exists() or not path.is_file():
+        return 0
+    if path.suffix.lower() == ".json":
+        data = _read_json(path)
+        if data is not None:
+            encoded = json.dumps(_strip_volatile_fields(data), ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+            return len(encoded.encode("utf-8"))
+    return path.stat().st_size
+
+
 def build_phase8_chain_integrity_gate(
     *,
     workspace_dir: str | os.PathLike[str] = _DEFAULT_WORKSPACE,
@@ -705,8 +741,8 @@ def build_phase8_chain_integrity_gate(
         name: {
             "path": str(path),
             "exists": path.exists(),
-            "sha256": _file_sha256(path),
-            "size": path.stat().st_size if path.exists() and path.is_file() else 0,
+            "sha256": _stable_artifact_sha256(path),
+            "size": _stable_artifact_size(path),
         }
         for name, path in artifact_paths.items()
     }
@@ -773,7 +809,8 @@ def write_phase8_report(
     json_path = out / "phase8_chain_integrity_gate_report.json"
     md_path = out / "PGG-Archon-终极进化公式-Phase8-证据链完整性门禁报告.md"
     json_path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-    gates = data.get("gates") if isinstance(data.get("gates"), Mapping) else {}
+    gates_raw = data.get("gates")
+    gates = gates_raw if isinstance(gates_raw, Mapping) else {}
     md = [
         "# PGG Archon 终极进化公式 Phase 8 证据链完整性门禁报告",
         "",
@@ -852,6 +889,171 @@ def run_phase8_cycle(*, persist: bool = True) -> Dict[str, Any]:
     result: Dict[str, Any] = {"gate": gate, "paths": paths}
     if persist:
         result["pgg_db"] = persist_phase8_to_pgg_db(gate, paths)
+    return result
+
+
+def build_phase9_cron_ci_drift_gate(
+    *,
+    workspace_dir: str | os.PathLike[str] = _DEFAULT_WORKSPACE,
+    db_path: str | os.PathLike[str] = _DEFAULT_PGG_DB,
+    cron_script: str | os.PathLike[str] = _DEFAULT_HOME / "scripts" / "pgg_ultimate_evolution_phase3_ars_cycle.sh",
+    model_review_path: str | os.PathLike[str] | None = None,
+) -> Dict[str, Any]:
+    """Build the Phase9 cron/CI drift gate over the Phase8 manifest.
+
+    Phase9 turns the Phase8 integrity manifest into a deterministic local CI gate:
+    it reloads the stored Phase8 report, recomputes the current Phase8 manifest,
+    checks native tool visibility, verifies the cron wrapper carries Phase8/9, and
+    emits a read-only pass/fail status that cron or CI can use without mutating the
+    Hermes core loop.
+    """
+    workspace = Path(workspace_dir)
+    script_path = Path(cron_script)
+    review_path = Path(model_review_path) if model_review_path else workspace / "model_review_phase9" / "phase9_gpt_review.json"
+    stored_phase8 = _read_json(workspace / "phase8_chain_integrity_gate_report.json")
+    current_phase8 = build_phase8_chain_integrity_gate(
+        workspace_dir=workspace,
+        db_path=db_path,
+        cron_script=script_path,
+    )
+    review = _read_json(review_path)
+    script_text = script_path.read_text(encoding="utf-8") if script_path.exists() else ""
+    phase8_gene = _latest_gene_row("ultimate_evolution_formula_phase8_chain_integrity_gate", db_path=db_path)
+
+    discover_builtin_tools()
+    if registry.get_entry("pgg_ultimate_evolution") is None:
+        import tools.pgg_archon_tools  # noqa: F401
+    try:
+        native_payload = json.loads(registry.dispatch("pgg_ultimate_evolution", {"action": "chain_integrity_status"}))
+    except Exception as exc:  # pragma: no cover - defensive; tests exercise success path
+        native_payload = {"error": str(exc)}
+    native_report = native_payload.get("report") if isinstance(native_payload, Mapping) else {}
+
+    gates = {
+        "phase8_report_verified": isinstance(stored_phase8, Mapping) and stored_phase8.get("status") == "integrity_verified",
+        "phase8_manifest_matches_current": isinstance(stored_phase8, Mapping) and stored_phase8.get("manifest_hash") == current_phase8.get("manifest_hash"),
+        "native_tool_chain_integrity_visible": isinstance(native_report, Mapping) and native_report.get("status") == "integrity_verified",
+        "phase8_db_readback_ok": phase8_gene is not None,
+        "cron_wrapper_has_phase8_phase9": script_path.exists() and all(flag in script_text for flag in ("--phase8", "--phase9")),
+        "phase9_gpt_review_ok": isinstance(review, Mapping) and bool(review.get("ok")),
+    }
+    passed = all(gates.values())
+    score = float(current_phase8.get("score") or 0.0) if passed else min(float(current_phase8.get("score") or 0.0), 74.0)
+    gate_seed = {
+        "schema": "PGGArchonUltimateEvolutionPhase9CronCIDriftGate/v1",
+        "phase8_manifest_hash": current_phase8.get("manifest_hash"),
+        "stored_phase8_manifest_hash": stored_phase8.get("manifest_hash") if isinstance(stored_phase8, Mapping) else None,
+        "cron_script_sha256": _file_sha256(script_path),
+        "gates": gates,
+    }
+    return {
+        "schema": "PGGArchonUltimateEvolutionPhase9CronCIDriftGate/v1",
+        "status": "ci_drift_gate_passed" if passed else "ci_drift_gate_blocked",
+        "score": round(score, 3),
+        "decision": "allow_cron_ci_drift_gate_enforcement" if passed else "hold_until_ci_drift_gate_fixed",
+        "gate_hash": _canonical_json_hash(gate_seed),
+        "phase8_manifest_hash": current_phase8.get("manifest_hash"),
+        "stored_phase8_manifest_hash": stored_phase8.get("manifest_hash") if isinstance(stored_phase8, Mapping) else None,
+        "gates": gates,
+        "blockers": [name for name, ok in gates.items() if not ok],
+        "native_tool_report_schema": native_report.get("schema") if isinstance(native_report, Mapping) else None,
+        "phase8_db_readback": list(phase8_gene) if phase8_gene else None,
+        "side_effects": "read_only_cron_ci_drift_gate_optional_sqlite_persistence_only",
+        "boundary": "cron/CI drift gate sidecar; no run_agent.py mutation; no secret read; no deploy; no git push",
+        "ts": time.time(),
+    }
+
+
+def write_phase9_report(
+    output_dir: str | os.PathLike[str] = _DEFAULT_WORKSPACE,
+    *,
+    gate: Mapping[str, Any] | None = None,
+) -> Dict[str, str]:
+    out = Path(output_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    data = dict(gate or build_phase9_cron_ci_drift_gate(workspace_dir=out))
+    json_path = out / "phase9_cron_ci_drift_gate_report.json"
+    md_path = out / "PGG-Archon-终极进化公式-Phase9-Cron-CI漂移门禁报告.md"
+    json_path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    gates_raw = data.get("gates")
+    gates = gates_raw if isinstance(gates_raw, Mapping) else {}
+    md = [
+        "# PGG Archon 终极进化公式 Phase 9 Cron/CI 漂移门禁报告",
+        "",
+        f"- schema: `{data.get('schema')}`",
+        f"- status: `{data.get('status')}`",
+        f"- score: `{data.get('score')}`",
+        f"- decision: `{data.get('decision')}`",
+        f"- gate_hash: `{data.get('gate_hash')}`",
+        f"- phase8_manifest_hash: `{data.get('phase8_manifest_hash')}`",
+        f"- blockers: `{', '.join(data.get('blockers', [])) or 'none'}`",
+        "",
+        "## 门禁",
+    ]
+    md.extend(f"- {k}: `{v}`" for k, v in gates.items())
+    md.extend([
+        "",
+        "## 边界",
+        "- 只读比较 Phase8 manifest、原生工具状态、cron wrapper 与 DB readback。",
+        "- 用于 cron/CI 漂移拦截，不自动改核心、不部署、不 git push。",
+    ])
+    md_path.write_text("\n".join(md) + "\n", encoding="utf-8")
+    return {"json": str(json_path), "markdown": str(md_path)}
+
+
+def persist_phase9_to_pgg_db(
+    gate: Mapping[str, Any],
+    paths: Mapping[str, str],
+    *,
+    db_path: str | os.PathLike[str] = _DEFAULT_PGG_DB,
+) -> Dict[str, Any]:
+    db = Path(db_path)
+    con = sqlite3.connect(db)
+    try:
+        cur = con.cursor()
+        now = time.strftime("%Y-%m-%dT%H:%M:%S%z")
+        score = float(gate.get("score") or 0.0)
+        gene_name = "ultimate_evolution_formula_phase9_cron_ci_drift_gate"
+        existing = cur.execute("select id,name,pattern_type,quality_score from genes where name=? order by id desc limit 1", (gene_name,)).fetchone()
+        if existing:
+            return {"inserted": False, "deduped": True, "gene_id": existing[0], "readback": existing, "db_path": str(db)}
+        cur.execute(
+            "insert into experiments(name, hypothesis, result, score, created_at, tags) values (?, ?, ?, ?, ?, ?)",
+            (
+                gene_name,
+                "Phase9 materializes the Phase8 integrity manifest as a cron/CI drift gate",
+                json.dumps({"status": gate.get("status"), "decision": gate.get("decision"), "gate_hash": gate.get("gate_hash"), "paths": dict(paths)}, ensure_ascii=False),
+                score,
+                now,
+                json.dumps(["ultimate-evolution-formula", "phase9", "cron-ci", "drift-gate"], ensure_ascii=False),
+            ),
+        )
+        experiment_id = cur.lastrowid
+        cur.execute(
+            "insert into genes(name, pattern_type, source_repo, code_snippet, quality_score, extracted_at) values (?, ?, ?, ?, ?, ?)",
+            (
+                gene_name,
+                "ultimate_evolution_formula_phase9_cron_ci_drift_gate_v1",
+                "Hermes Agent / PGG Archon",
+                json.dumps({"schema": gate.get("schema"), "gate_hash": gate.get("gate_hash"), "gates": gate.get("gates"), "paths": dict(paths)}, ensure_ascii=False),
+                round(score / 100.0, 4),
+                now,
+            ),
+        )
+        gene_id = cur.lastrowid
+        con.commit()
+        readback = cur.execute("select id,name,pattern_type,quality_score from genes where id=?", (gene_id,)).fetchone()
+        return {"inserted": True, "deduped": False, "experiment_id": experiment_id, "gene_id": gene_id, "readback": readback, "db_path": str(db)}
+    finally:
+        con.close()
+
+
+def run_phase9_cycle(*, persist: bool = True) -> Dict[str, Any]:
+    gate = build_phase9_cron_ci_drift_gate()
+    paths = write_phase9_report(gate=gate)
+    result: Dict[str, Any] = {"gate": gate, "paths": paths}
+    if persist:
+        result["pgg_db"] = persist_phase9_to_pgg_db(gate, paths)
     return result
 
 
@@ -1156,6 +1358,7 @@ __all__ = [
     "build_phase6_tool_status_surface",
     "build_phase7_evidence_chain_status",
     "build_phase8_chain_integrity_gate",
+    "build_phase9_cron_ci_drift_gate",
     "call_pgg_ultimate_evolution_tool",
     "collect_phase3_native_evidence",
     "persist_phase3_to_pgg_db",
@@ -1165,16 +1368,19 @@ __all__ = [
     "persist_phase6_to_pgg_db",
     "persist_phase7_to_pgg_db",
     "persist_phase8_to_pgg_db",
+    "persist_phase9_to_pgg_db",
     "run_phase3_cycle",
     "run_phase4_cycle",
     "run_phase5_cycle",
     "run_phase6_cycle",
     "run_phase7_cycle",
     "run_phase8_cycle",
+    "run_phase9_cycle",
     "write_phase3_report",
     "write_phase4_report",
     "write_phase5_report",
     "write_phase6_report",
     "write_phase7_report",
     "write_phase8_report",
+    "write_phase9_report",
 ]

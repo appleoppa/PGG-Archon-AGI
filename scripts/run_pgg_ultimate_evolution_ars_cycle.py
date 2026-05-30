@@ -15,7 +15,7 @@ REPO = Path(__file__).resolve().parents[1]
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
-from agent.pgg_archon_ultimate_evolution_ars_cycle import run_phase3_cycle, run_phase4_cycle, run_phase5_cycle, run_phase6_cycle, run_phase7_cycle, run_phase8_cycle
+from agent.pgg_archon_ultimate_evolution_ars_cycle import run_phase3_cycle, run_phase4_cycle, run_phase5_cycle, run_phase6_cycle, run_phase7_cycle, run_phase8_cycle, run_phase9_cycle
 
 
 def main() -> int:
@@ -26,6 +26,7 @@ def main() -> int:
     parser.add_argument("--phase6", action="store_true", help="Run Phase 6 native tool status surface after Phase 5")
     parser.add_argument("--phase7", action="store_true", help="Run Phase 7 evidence-chain status after Phase 6")
     parser.add_argument("--phase8", action="store_true", help="Run Phase 8 chain integrity manifest gate after Phase 7")
+    parser.add_argument("--phase9", action="store_true", help="Run Phase 9 cron/CI drift gate after Phase 8")
     parser.add_argument("--non-idempotent", action="store_true", help="Allow duplicate Phase 3 DB inserts; disabled by default")
     parser.add_argument("--json", action="store_true", help="Print JSON result instead of compact status line")
     args = parser.parse_args()
@@ -60,6 +61,18 @@ def main() -> int:
         if "phase7" not in result:
             result["phase7"] = run_phase7_cycle(persist=args.persist)
         result["phase8"] = run_phase8_cycle(persist=args.persist)
+    if args.phase9:
+        if "phase4" not in result:
+            result["phase4"] = run_phase4_cycle(persist=args.persist)
+        if "phase5" not in result:
+            result["phase5"] = run_phase5_cycle(persist=args.persist)
+        if "phase6" not in result:
+            result["phase6"] = run_phase6_cycle(persist=args.persist)
+        if "phase7" not in result:
+            result["phase7"] = run_phase7_cycle(persist=args.persist)
+        if "phase8" not in result:
+            result["phase8"] = run_phase8_cycle(persist=args.persist)
+        result["phase9"] = run_phase9_cycle(persist=args.persist)
     payload = result["payload"]
     if args.json:
         print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
@@ -86,20 +99,28 @@ def main() -> int:
                 f"phase6_report={result['phase6']['paths']['json']} "
                 f"phase6_gene_id={result['phase6'].get('pgg_db', {}).get('gene_id')}"
             )
-        if args.phase7 or args.phase8:
+        if args.phase7 or args.phase8 or args.phase9:
             suffix += (
                 " "
                 f"phase7_status={result['phase7']['chain'].get('status')} "
                 f"phase7_report={result['phase7']['paths']['json']} "
                 f"phase7_gene_id={result['phase7'].get('pgg_db', {}).get('gene_id')}"
             )
-        if args.phase8:
+        if args.phase8 or args.phase9:
             suffix += (
                 " "
                 f"phase8_status={result['phase8']['gate'].get('status')} "
                 f"phase8_manifest_hash={result['phase8']['gate'].get('manifest_hash')} "
                 f"phase8_report={result['phase8']['paths']['json']} "
                 f"phase8_gene_id={result['phase8'].get('pgg_db', {}).get('gene_id')}"
+            )
+        if args.phase9:
+            suffix += (
+                " "
+                f"phase9_status={result['phase9']['gate'].get('status')} "
+                f"phase9_gate_hash={result['phase9']['gate'].get('gate_hash')} "
+                f"phase9_report={result['phase9']['paths']['json']} "
+                f"phase9_gene_id={result['phase9'].get('pgg_db', {}).get('gene_id')}"
             )
         print(
             "PGG ultimate evolution Phase3 ARS complete: "

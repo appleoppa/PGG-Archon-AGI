@@ -8,6 +8,7 @@ from agent.pgg_archon_ultimate_evolution_ars_cycle import (
     build_phase6_tool_status_surface,
     build_phase7_evidence_chain_status,
     build_phase8_chain_integrity_gate,
+    build_phase9_cron_ci_drift_gate,
     call_pgg_ultimate_evolution_tool,
     collect_phase3_native_evidence,
     persist_phase3_to_pgg_db,
@@ -17,12 +18,14 @@ from agent.pgg_archon_ultimate_evolution_ars_cycle import (
     persist_phase6_to_pgg_db,
     persist_phase7_to_pgg_db,
     persist_phase8_to_pgg_db,
+    persist_phase9_to_pgg_db,
     write_phase3_report,
     write_phase4_report,
     write_phase5_report,
     write_phase6_report,
     write_phase7_report,
     write_phase8_report,
+    write_phase9_report,
 )
 
 
@@ -389,4 +392,60 @@ def test_phase8_report_and_persistence_are_idempotent(tmp_path):
 
     assert result["inserted"] is True
     assert result["readback"][1] == "ultimate_evolution_formula_phase8_chain_integrity_gate"
+    assert again["deduped"] is True
+
+
+def test_phase9_cron_ci_drift_gate_compares_phase8_manifest_native_tool_cron_and_review(tmp_path):
+    workspace = tmp_path / "workspace"
+    _seed_phase8_workspace(workspace)
+    cron_script = tmp_path / "cron.sh"
+    cron_script.write_text("run --phase4 --phase5 --phase6 --phase7 --phase8 --phase9", encoding="utf-8")
+    review_dir = workspace / "model_review_phase9"
+    review_dir.mkdir(exist_ok=True)
+    (review_dir / "phase9_gpt_review.json").write_text(json.dumps({"ok": True}), encoding="utf-8")
+    db = tmp_path / "pgg.db"
+    _create_pgg_tables(db)
+    con = sqlite3.connect(db)
+    for name in [
+        "ultimate_evolution_formula_phase3_ars_cycle_gate",
+        "ultimate_evolution_formula_phase4_ars_trend_dedup_gate",
+        "ultimate_evolution_formula_phase5_promotion_gate",
+        "ultimate_evolution_formula_phase6_native_tool_status_surface",
+        "ultimate_evolution_formula_phase7_evidence_chain_status",
+        "ultimate_evolution_formula_phase8_chain_integrity_gate",
+    ]:
+        con.execute("insert into genes(name,pattern_type,source_repo,code_snippet,quality_score,extracted_at) values (?,?,?,?,?,?)", (name, "p", "s", "{}", 0.8742, "now"))
+    con.commit(); con.close()
+
+    phase8 = build_phase8_chain_integrity_gate(workspace_dir=workspace, db_path=db, cron_script=cron_script)
+    write_phase8_report(workspace, gate=phase8)
+    gate = build_phase9_cron_ci_drift_gate(workspace_dir=workspace, db_path=db, cron_script=cron_script)
+
+    assert gate["schema"] == "PGGArchonUltimateEvolutionPhase9CronCIDriftGate/v1"
+    assert gate["status"] == "ci_drift_gate_passed"
+    assert gate["blockers"] == []
+    assert gate["native_tool_report_schema"] == "PGGArchonUltimateEvolutionChainIntegrityStatus/v1"
+    assert all(gate["gates"].values())
+
+
+def test_phase9_report_and_persistence_are_idempotent(tmp_path):
+    gate = {
+        "schema": "PGGArchonUltimateEvolutionPhase9CronCIDriftGate/v1",
+        "status": "ci_drift_gate_passed",
+        "score": 87.417,
+        "decision": "allow_cron_ci_drift_gate_enforcement",
+        "gate_hash": "abc123",
+        "blockers": [],
+        "gates": {"phase8_manifest_matches_current": True},
+    }
+    paths = write_phase9_report(tmp_path / "workspace", gate=gate)
+    assert paths["json"].endswith("phase9_cron_ci_drift_gate_report.json")
+    db = tmp_path / "pgg.db"
+    _create_pgg_tables(db)
+
+    result = persist_phase9_to_pgg_db(gate, paths, db_path=db)
+    again = persist_phase9_to_pgg_db(gate, paths, db_path=db)
+
+    assert result["inserted"] is True
+    assert result["readback"][1] == "ultimate_evolution_formula_phase9_cron_ci_drift_gate"
     assert again["deduped"] is True
