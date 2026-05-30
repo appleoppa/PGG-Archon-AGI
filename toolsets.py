@@ -160,6 +160,12 @@ TOOLSETS = {
         "tools": ["mixture_of_agents"],
         "includes": []
     },
+
+    "pgg_archon": {
+        "description": "PGG Archon read-only governance/scoring tools, including the 终极进化公式 sidecar",
+        "tools": ["pgg_ultimate_evolution"],
+        "includes": []
+    },
     
     "skills": {
         "description": "Access, create, edit, and manage skill documents with specialized instructions and knowledge",
