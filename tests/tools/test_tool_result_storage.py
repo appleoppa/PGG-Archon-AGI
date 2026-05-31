@@ -6,7 +6,9 @@ from unittest.mock import MagicMock, patch
 from tools.budget_config import (
     DEFAULT_RESULT_SIZE_CHARS,
     DEFAULT_PREVIEW_SIZE_CHARS,
+    DEFAULT_TURN_BUDGET_CHARS,
     BudgetConfig,
+    load_budget_config,
 )
 from tools.tool_result_storage import (
     HEREDOC_MARKER,
@@ -21,6 +23,37 @@ from tools.tool_result_storage import (
     generate_preview,
     maybe_persist_tool_result,
 )
+
+
+# ── config loading ────────────────────────────────────────────────────
+
+class TestBudgetConfigLoading:
+    def test_missing_config_uses_defaults(self):
+        with patch("hermes_cli.config.load_config", return_value={}):
+            cfg = load_budget_config()
+        assert cfg.default_result_size == DEFAULT_RESULT_SIZE_CHARS
+        assert cfg.turn_budget == DEFAULT_TURN_BUDGET_CHARS
+        assert cfg.preview_size == DEFAULT_PREVIEW_SIZE_CHARS
+        assert cfg.tool_overrides == {}
+
+    def test_loads_tool_result_budget_section(self):
+        with patch("hermes_cli.config.load_config", return_value={
+            "tool_result_budget": {
+                "default_result_size_chars": 25_000,
+                "turn_budget_chars": 80_000,
+                "preview_size_chars": 800,
+                "tool_overrides": {
+                    "terminal": 20_000,
+                    "session_search": 12_000,
+                    "bad": 0,
+                },
+            }
+        }):
+            cfg = load_budget_config()
+        assert cfg.default_result_size == 25_000
+        assert cfg.turn_budget == 80_000
+        assert cfg.preview_size == 800
+        assert cfg.tool_overrides == {"terminal": 20_000, "session_search": 12_000}
 
 
 # ── generate_preview ──────────────────────────────────────────────────
@@ -421,6 +454,27 @@ class TestMaybePersistToolResult:
         assert PERSISTED_OUTPUT_TAG in result
 
 
+    def test_configured_budget_is_used_when_default_config_argument(self):
+        env = MagicMock()
+        env.execute.return_value = {"output": "", "returncode": 0}
+        content = "x" * 15_000
+        with patch("hermes_cli.config.load_config", return_value={
+            "tool_result_budget": {
+                "default_result_size_chars": 10_000,
+                "preview_size_chars": 500,
+            }
+        }):
+            result = maybe_persist_tool_result(
+                content=content,
+                tool_name="terminal",
+                tool_use_id="tc_cfg",
+                env=env,
+            )
+        assert PERSISTED_OUTPUT_TAG in result
+        assert "Preview (first 500 chars):" in result
+        assert len(result) < 2_000
+
+
 # ── enforce_turn_budget ───────────────────────────────────────────────
 
 class TestEnforceTurnBudget:
@@ -491,6 +545,22 @@ class TestEnforceTurnBudget:
     def test_empty_messages(self):
         result = enforce_turn_budget([], env=None, config=BudgetConfig(turn_budget=200_000))
         assert result == []
+
+    def test_configured_turn_budget_is_used_when_default_config_argument(self):
+        env = MagicMock()
+        env.execute.return_value = {"output": "", "returncode": 0}
+        msgs = [
+            {"role": "tool", "tool_call_id": "t1", "content": "a" * 20_000},
+            {"role": "tool", "tool_call_id": "t2", "content": "b" * 20_000},
+        ]
+        with patch("hermes_cli.config.load_config", return_value={
+            "tool_result_budget": {
+                "turn_budget_chars": 30_000,
+                "preview_size_chars": 400,
+            }
+        }):
+            enforce_turn_budget(msgs, env=env)
+        assert any(PERSISTED_OUTPUT_TAG in msg["content"] for msg in msgs)
 
 
 # ── Per-tool threshold integration ────────────────────────────────────

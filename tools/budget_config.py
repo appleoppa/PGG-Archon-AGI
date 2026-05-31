@@ -4,7 +4,7 @@ Per-tool resolution: pinned > config overrides > registry > default.
 """
 
 from dataclasses import dataclass, field
-from typing import Dict
+from typing import Any, Dict
 
 # Tools whose thresholds must never be overridden.
 # read_file=inf prevents infinite persist->read->persist loops.
@@ -49,3 +49,61 @@ class BudgetConfig:
 
 # Default config -- matches current hardcoded behavior exactly.
 DEFAULT_BUDGET = BudgetConfig()
+
+
+def _coerce_positive_int(value: Any, default: int) -> int:
+    """Return ``value`` as a positive int, or ``default`` on any issue."""
+    try:
+        iv = int(value)
+    except (TypeError, ValueError):
+        return default
+    return iv if iv > 0 else default
+
+
+def _coerce_tool_overrides(value: Any) -> Dict[str, int]:
+    """Return a sanitized ``{tool_name: positive_int}`` override map."""
+    if not isinstance(value, dict):
+        return {}
+    result: Dict[str, int] = {}
+    for key, raw in value.items():
+        if not isinstance(key, str) or not key:
+            continue
+        try:
+            iv = int(raw)
+        except (TypeError, ValueError):
+            continue
+        if iv > 0:
+            result[key] = iv
+    return result
+
+
+def load_budget_config() -> BudgetConfig:
+    """Load tool-result persistence budgets from ``config.yaml``.
+
+    Section name: ``tool_result_budget``.  Missing or malformed values fall
+    back to historical defaults so a bad config never breaks tool execution.
+    """
+    try:
+        from hermes_cli.config import load_config
+        cfg = load_config() or {}
+        section = cfg.get("tool_result_budget") if isinstance(cfg, dict) else None
+        if not isinstance(section, dict):
+            section = {}
+    except Exception:
+        section = {}
+
+    return BudgetConfig(
+        default_result_size=_coerce_positive_int(
+            section.get("default_result_size_chars"),
+            DEFAULT_RESULT_SIZE_CHARS,
+        ),
+        turn_budget=_coerce_positive_int(
+            section.get("turn_budget_chars"),
+            DEFAULT_TURN_BUDGET_CHARS,
+        ),
+        preview_size=_coerce_positive_int(
+            section.get("preview_size_chars"),
+            DEFAULT_PREVIEW_SIZE_CHARS,
+        ),
+        tool_overrides=_coerce_tool_overrides(section.get("tool_overrides")),
+    )

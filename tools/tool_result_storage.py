@@ -31,6 +31,7 @@ from tools.budget_config import (
     DEFAULT_PREVIEW_SIZE_CHARS,
     BudgetConfig,
     DEFAULT_BUDGET,
+    load_budget_config,
 )
 
 logger = logging.getLogger(__name__)
@@ -144,7 +145,8 @@ def maybe_persist_tool_result(
     Returns:
         Original content if small, or <persisted-output> replacement.
     """
-    effective_threshold = threshold if threshold is not None else config.resolve_threshold(tool_name)
+    active_config = load_budget_config() if config is DEFAULT_BUDGET else config
+    effective_threshold = threshold if threshold is not None else active_config.resolve_threshold(tool_name)
 
     if effective_threshold == float("inf"):
         return content
@@ -154,7 +156,7 @@ def maybe_persist_tool_result(
 
     storage_dir = _resolve_storage_dir(env)
     remote_path = f"{storage_dir}/{tool_use_id}.txt"
-    preview, has_more = generate_preview(content, max_chars=config.preview_size)
+    preview, has_more = generate_preview(content, max_chars=active_config.preview_size)
 
     if env is not None:
         try:
@@ -191,6 +193,7 @@ def enforce_turn_budget(
 
     Mutates the list in-place and returns it.
     """
+    active_config = load_budget_config() if config is DEFAULT_BUDGET else config
     candidates = []
     total_size = 0
     for i, msg in enumerate(tool_messages):
@@ -200,13 +203,13 @@ def enforce_turn_budget(
         if PERSISTED_OUTPUT_TAG not in content:
             candidates.append((i, size))
 
-    if total_size <= config.turn_budget:
+    if total_size <= active_config.turn_budget:
         return tool_messages
 
     candidates.sort(key=lambda x: x[1], reverse=True)
 
     for idx, size in candidates:
-        if total_size <= config.turn_budget:
+        if total_size <= active_config.turn_budget:
             break
         msg = tool_messages[idx]
         content = msg["content"]
@@ -217,7 +220,7 @@ def enforce_turn_budget(
             tool_name=_BUDGET_TOOL_NAME,
             tool_use_id=tool_use_id,
             env=env,
-            config=config,
+            config=active_config,
             threshold=0,
         )
         if replacement != content:
