@@ -1462,6 +1462,27 @@ class AIAgent:
         from agent.agent_runtime_helpers import repair_message_sequence
         return repair_message_sequence(self, messages)
 
+    def _session_db_reasoning_enabled(self) -> bool:
+        """Whether verbose reasoning blobs should be persisted to SessionDB.
+
+        In-memory messages keep full reasoning/codex state for provider replay.
+        This gate only affects durable SQLite transcripts, where large
+        reasoning/codex arrays can dominate future session_search/context
+        recovery without improving user-visible recall.
+        """
+        try:
+            from hermes_cli.config import load_config
+            cfg = load_config() or {}
+            section = cfg.get("session_storage") if isinstance(cfg, dict) else None
+            if not isinstance(section, dict):
+                return False
+            value = section.get("persist_reasoning", False)
+            if isinstance(value, bool):
+                return value
+            return str(value).lower() in {"1", "true", "yes", "on"}
+        except Exception:
+            return False
+
     def _flush_messages_to_session_db(self, messages: List[Dict], conversation_history: List[Dict] = None):
         """Persist any un-flushed messages to the SQLite session store.
 
@@ -1478,6 +1499,7 @@ class AIAgent:
                 self._ensure_db_session()
             start_idx = len(conversation_history) if conversation_history else 0
             flush_from = max(start_idx, self._last_flushed_db_idx)
+            persist_reasoning = self._session_db_reasoning_enabled()
             for msg in messages[flush_from:]:
                 role = msg.get("role", "unknown")
                 content = msg.get("content")
@@ -1511,11 +1533,11 @@ class AIAgent:
                     tool_calls=tool_calls_data,
                     tool_call_id=msg.get("tool_call_id"),
                     finish_reason=msg.get("finish_reason"),
-                    reasoning=msg.get("reasoning") if role == "assistant" else None,
-                    reasoning_content=msg.get("reasoning_content") if role == "assistant" else None,
-                    reasoning_details=msg.get("reasoning_details") if role == "assistant" else None,
-                    codex_reasoning_items=msg.get("codex_reasoning_items") if role == "assistant" else None,
-                    codex_message_items=msg.get("codex_message_items") if role == "assistant" else None,
+                    reasoning=msg.get("reasoning") if role == "assistant" and persist_reasoning else None,
+                    reasoning_content=msg.get("reasoning_content") if role == "assistant" and persist_reasoning else None,
+                    reasoning_details=msg.get("reasoning_details") if role == "assistant" and persist_reasoning else None,
+                    codex_reasoning_items=msg.get("codex_reasoning_items") if role == "assistant" and persist_reasoning else None,
+                    codex_message_items=msg.get("codex_message_items") if role == "assistant" and persist_reasoning else None,
                 )
             self._last_flushed_db_idx = len(messages)
         except Exception as e:

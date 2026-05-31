@@ -5591,6 +5591,63 @@ class TestPersistUserMessageOverride:
         first_db_write = agent._session_db.append_message.call_args_list[0].kwargs
         assert first_db_write["content"] == "Hello there"
 
+    def test_persist_session_drops_reasoning_blobs_by_default(self, agent):
+        agent._session_db = MagicMock()
+        agent.session_id = "session-123"
+        agent._last_flushed_db_idx = 0
+        messages = [
+            {
+                "role": "assistant",
+                "content": "visible answer",
+                "reasoning": "hidden reasoning" * 100,
+                "reasoning_content": "hidden content" * 100,
+                "reasoning_details": [{"type": "reasoning", "text": "detail"}],
+                "codex_reasoning_items": [{"type": "reasoning", "encrypted_content": "x" * 1000}],
+                "codex_message_items": [{"type": "message", "content": "y" * 1000}],
+            }
+        ]
+
+        with patch("hermes_cli.config.load_config", return_value={}):
+            agent._persist_session(messages, [])
+
+        db_write = agent._session_db.append_message.call_args.kwargs
+        assert db_write["content"] == "visible answer"
+        assert db_write["reasoning"] is None
+        assert db_write["reasoning_content"] is None
+        assert db_write["reasoning_details"] is None
+        assert db_write["codex_reasoning_items"] is None
+        assert db_write["codex_message_items"] is None
+        assert messages[0]["reasoning"]
+        assert messages[0]["codex_reasoning_items"]
+
+    def test_persist_session_can_opt_in_to_reasoning_blobs(self, agent):
+        agent._session_db = MagicMock()
+        agent.session_id = "session-123"
+        agent._last_flushed_db_idx = 0
+        messages = [
+            {
+                "role": "assistant",
+                "content": "visible answer",
+                "reasoning": "hidden reasoning",
+                "reasoning_content": "hidden content",
+                "reasoning_details": [{"type": "reasoning", "text": "detail"}],
+                "codex_reasoning_items": [{"type": "reasoning", "encrypted_content": "x"}],
+                "codex_message_items": [{"type": "message", "content": "y"}],
+            }
+        ]
+
+        with patch("hermes_cli.config.load_config", return_value={
+            "session_storage": {"persist_reasoning": True}
+        }):
+            agent._persist_session(messages, [])
+
+        db_write = agent._session_db.append_message.call_args.kwargs
+        assert db_write["reasoning"] == "hidden reasoning"
+        assert db_write["reasoning_content"] == "hidden content"
+        assert db_write["reasoning_details"] == [{"type": "reasoning", "text": "detail"}]
+        assert db_write["codex_reasoning_items"] == [{"type": "reasoning", "encrypted_content": "x"}]
+        assert db_write["codex_message_items"] == [{"type": "message", "content": "y"}]
+
 
 class TestReasoningReplayForStrictProviders:
     """Assistant replay must preserve provider-native reasoning fields."""

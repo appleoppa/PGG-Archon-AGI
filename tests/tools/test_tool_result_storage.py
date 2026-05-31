@@ -462,6 +462,7 @@ class TestMaybePersistToolResult:
             "tool_result_budget": {
                 "default_result_size_chars": 10_000,
                 "preview_size_chars": 500,
+                "tool_overrides": {"terminal": 10_000},
             }
         }):
             result = maybe_persist_tool_result(
