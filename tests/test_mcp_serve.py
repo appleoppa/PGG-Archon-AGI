@@ -934,6 +934,7 @@ class TestToolRegistration:
             "attachments_fetch", "events_poll", "events_wait",
             "messages_send", "channels_list",
             "permissions_list_open", "permissions_respond",
+            "pgg_ultimate_evolution",
         }
         assert expected == tool_names, f"Missing: {expected - tool_names}, Extra: {tool_names - expected}"
 
@@ -941,6 +942,29 @@ class TestToolRegistration:
         server, _ = mcp_server_e2e
         for tool in server._tool_manager.list_tools():
             assert tool.description, f"Tool {tool.name} has no description"
+
+    def test_pgg_ultimate_evolution_mcp_tool_is_read_only(self, mcp_server_e2e, _event_loop):
+        server, _ = mcp_server_e2e
+        result = _run_tool(server, "pgg_ultimate_evolution", {
+            "action": "ars_plan",
+            "evm_signals_json": json.dumps({"task_success": 90, "correctness": 90, "closure": 90}),
+            "delta_signals_json": json.dumps({"hallucination": 0, "security": 0}),
+        })
+
+        assert result["report"]["schema"] == "PGGArchonUltimateEvolutionFormulaReport/v1"
+        assert result["report"]["side_effects"] == "read_only_report"
+        assert result["ars_plan"]["side_effects"] == "read_only_plan"
+        assert result["ars_plan"]["primary_model"] == "gpt55_5yuantoken/gpt-5.5"
+
+    def test_pgg_ultimate_evolution_mcp_rejects_invalid_json(self, mcp_server_e2e, _event_loop):
+        server, _ = mcp_server_e2e
+        result = _run_tool(server, "pgg_ultimate_evolution", {
+            "action": "score",
+            "evm_signals_json": "not-json",
+        })
+
+        assert "error" in result
+        assert "evm_signals_json must be valid JSON object" in result["error"]
 
 
 # ---------------------------------------------------------------------------

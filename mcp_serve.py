@@ -38,7 +38,7 @@ import threading
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger("hermes.mcp_serve")
 
@@ -855,6 +855,67 @@ def create_mcp_server(event_bridge: Optional[EventBridge] = None) -> "FastMCP":
 
         result = bridge.respond_to_approval(id, decision)
         return json.dumps(result, indent=2)
+
+    # -- pgg_ultimate_evolution --------------------------------------------
+
+    @mcp.tool()
+    def pgg_ultimate_evolution(
+        action: str = "score",
+        omega_a: Optional[float] = None,
+        apex_net: Optional[float] = None,
+        baseline_net: Optional[float] = None,
+        evm_signals_json: Optional[Any] = None,
+        delta_signals_json: Optional[Any] = None,
+        runtime_status_json: Optional[Any] = None,
+    ) -> str:
+        """Read-only PGG Archon 终极进化公式 MCP surface.
+
+        Computes ``APEX_AK = Ω_A · EVM_full - ΣΔ_all`` and can return a
+        GPT-5.5-led ARS plan. This MCP tool is deliberately read-only: it does
+        not edit files, memory, skills, provider routing, credentials, or the
+        Hermes core loop.
+
+        Args:
+            action: score, ars_plan, runtime_status, promotion_status,
+                evidence_chain_status, chain_integrity_status, or
+                ci_drift_gate_status.
+            omega_a: Optional direct Ω_A value, bounded by the formula module.
+            apex_net: Optional measured APEX net score for Ω_A ratio.
+            baseline_net: Optional measured baseline net score for Ω_A ratio.
+            evm_signals_json: Optional JSON object with 0..100 EVM signals.
+            delta_signals_json: Optional JSON object with 0..1 delta signals.
+            runtime_status_json: Optional JSON object for runtime_status action.
+        """
+        from tools.pgg_archon_tools import _handle_pgg_ultimate_evolution
+
+        def _json_obj(raw: Optional[Any], field: str) -> dict:
+            if not raw:
+                return {}
+            if isinstance(raw, dict):
+                return raw
+            if not isinstance(raw, str):
+                raise ValueError(f"{field} must be a JSON object or JSON object string")
+            try:
+                parsed = json.loads(raw)
+            except json.JSONDecodeError as exc:
+                raise ValueError(f"{field} must be valid JSON object: {exc}") from exc
+            if not isinstance(parsed, dict):
+                raise ValueError(f"{field} must be a JSON object")
+            return parsed
+
+        try:
+            args = {
+                "action": action,
+                "omega_a": omega_a,
+                "apex_net": apex_net,
+                "baseline_net": baseline_net,
+                "evm_signals": _json_obj(evm_signals_json, "evm_signals_json"),
+                "delta_signals": _json_obj(delta_signals_json, "delta_signals_json"),
+                "runtime_status": _json_obj(runtime_status_json, "runtime_status_json"),
+            }
+        except ValueError as exc:
+            return json.dumps({"error": str(exc)}, ensure_ascii=False, indent=2)
+        return _handle_pgg_ultimate_evolution(args)
 
     return mcp
 
