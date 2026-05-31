@@ -9,6 +9,7 @@ from agent.pgg_archon_ultimate_evolution_ars_cycle import (
     build_phase7_evidence_chain_status,
     build_phase8_chain_integrity_gate,
     build_phase9_cron_ci_drift_gate,
+    build_phase11_lifecycle_gate,
     call_pgg_ultimate_evolution_tool,
     collect_phase3_native_evidence,
     persist_phase3_to_pgg_db,
@@ -19,6 +20,7 @@ from agent.pgg_archon_ultimate_evolution_ars_cycle import (
     persist_phase7_to_pgg_db,
     persist_phase8_to_pgg_db,
     persist_phase9_to_pgg_db,
+    persist_phase11_to_pgg_db,
     write_phase3_report,
     write_phase4_report,
     write_phase5_report,
@@ -449,3 +451,46 @@ def test_phase9_report_and_persistence_are_idempotent(tmp_path):
     assert result["inserted"] is True
     assert result["readback"][1] == "ultimate_evolution_formula_phase9_cron_ci_drift_gate"
     assert again["deduped"] is True
+
+def test_phase11_lifecycle_gate_blocks_orphan_phase_genes():
+    gate = build_phase11_lifecycle_gate({
+        "schema": "PGGArchonUltimateEvolutionPhase11GeneLifecycle/v1",
+        "state_counts": {"candidate": 1},
+        "orphan_genes": [{"id": 9, "name": "ultimate_evolution_formula_phase9_cron_ci_drift_gate", "quality_score": 1.0}],
+        "chain_events_total": 0,
+    })
+
+    assert gate["decision"] == "block_orphan_genes_not_enrolled"
+    assert gate["gate_checks"]["no_orphan_critical"] is False
+
+
+def test_phase11_persistence_writes_idempotent_gene_and_lifecycle(tmp_path):
+    db = tmp_path / "pgg.db"
+    _create_pgg_tables(db)
+    con = sqlite3.connect(db)
+    con.execute(
+        "insert into genes(name, pattern_type, source_repo, code_snippet, quality_score, extracted_at) values (?, ?, ?, ?, ?, ?)",
+        ("ultimate_evolution_formula_phase5_promotion_gate", "p5", "test", "{}", 1.0, "now"),
+    )
+    con.commit(); con.close()
+    lifecycle = {
+        "schema": "PGGArchonUltimateEvolutionPhase11GeneLifecycle/v1",
+        "state_counts": {},
+        "orphan_genes": [{"id": 1, "name": "ultimate_evolution_formula_phase5_promotion_gate", "quality_score": 1.0}],
+        "chain_events_total": 0,
+    }
+
+    result = persist_phase11_to_pgg_db(lifecycle, {"phase11_report": "x"}, db_path=db)
+    again = persist_phase11_to_pgg_db(lifecycle, {"phase11_report": "x"}, db_path=db)
+
+    assert result["inserted"] is True
+    assert result["gene_id"] == 2
+    assert result["readback"][1] == "ultimate_evolution_formula_phase11_gene_lifecycle_chain"
+    assert again["deduped"] is True
+    con = sqlite3.connect(db)
+    states = dict(con.execute("select state, count(*) from gene_lifecycle group by state").fetchall())
+    chain_total = con.execute("select count(*) from promotion_chain").fetchone()[0]
+    con.close()
+    assert states["active"] == 1
+    assert states["candidate"] == 1
+    assert chain_total == 1

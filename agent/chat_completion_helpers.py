@@ -1048,6 +1048,40 @@ def try_activate_fallback(agent, reason: "FailoverReason | None" = None) -> bool
     if not fb_provider or not fb_model:
         return agent._try_activate_fallback()  # skip invalid, try next
 
+    # User cost guardrail: Claude is expensive and must never be selected by
+    # automatic fallback. It remains usable only as the explicit primary model
+    # or by an explicit user /model switch. Match both provider and model names
+    # so OpenRouter-style anthropic/claude slugs are blocked too.
+    _fb_identity = f"{fb_provider} {fb_model}".lower()
+    if "claude" in _fb_identity or "anthropic" in _fb_identity:
+        logger.warning(
+            "Fallback skip: Claude/Anthropic automatic fallback is disabled by user policy (%s/%s)",
+            fb_provider,
+            fb_model,
+        )
+        return agent._try_activate_fallback()
+
+    # Resolve named custom-provider metadata early. This lets dedup compare the
+    # real endpoint even when fallback_providers only names custom:gpt55_... and
+    # omits base_url, and lets the fallback path honor configured api_mode
+    # instead of guessing chat_completions.
+    custom_fb_entry = None
+    try:
+        from hermes_cli.runtime_provider import _get_named_custom_provider
+
+        custom_fb_entry = _get_named_custom_provider(fb_provider)
+    except Exception:
+        custom_fb_entry = None
+
+    fb_api_mode_hint = (
+        fb.get("api_mode")
+        or fb.get("transport")
+        or (custom_fb_entry or {}).get("api_mode")
+        or (custom_fb_entry or {}).get("transport")
+        or ""
+    )
+    fb_api_mode_hint = str(fb_api_mode_hint).strip()
+
     # Skip entries that resolve to the current (provider, model) — falling
     # back to the same backend that just failed loops the failure. Compare
     # base_url too so two distinct custom_providers entries pointing at the
@@ -1055,7 +1089,11 @@ def try_activate_fallback(agent, reason: "FailoverReason | None" = None) -> bool
     current_provider = (getattr(agent, "provider", "") or "").strip().lower()
     current_model = (getattr(agent, "model", "") or "").strip()
     current_base_url = str(getattr(agent, "base_url", "") or "").rstrip("/").lower()
-    fb_base_url_for_dedup = (fb.get("base_url") or "").strip().rstrip("/").lower()
+    fb_base_url_for_dedup = (
+        fb.get("base_url")
+        or (custom_fb_entry or {}).get("base_url")
+        or ""
+    ).strip().rstrip("/").lower()
     if fb_provider == current_provider and fb_model == current_model:
         logger.warning(
             "Fallback skip: chain entry %s/%s matches current provider/model",
@@ -1083,11 +1121,21 @@ def try_activate_fallback(agent, reason: "FailoverReason | None" = None) -> bool
         # endpoints (e.g. Ollama Cloud) resolve correctly instead of
         # falling through to OpenRouter defaults.
         fb_base_url_hint = (fb.get("base_url") or "").strip() or None
+        if not fb_base_url_hint and custom_fb_entry:
+            fb_base_url_hint = (custom_fb_entry.get("base_url") or "").strip() or None
         fb_api_key_hint = (fb.get("api_key") or "").strip() or None
+        if not fb_api_key_hint and custom_fb_entry:
+            fb_api_key_hint = (custom_fb_entry.get("api_key") or "").strip() or None
         if not fb_api_key_hint:
             # key_env and api_key_env are both documented aliases (see
             # _normalize_custom_provider_entry in hermes_cli/config.py).
-            fb_key_env = (fb.get("key_env") or fb.get("api_key_env") or "").strip()
+            fb_key_env = (
+                fb.get("key_env")
+                or fb.get("api_key_env")
+                or (custom_fb_entry or {}).get("key_env")
+                or (custom_fb_entry or {}).get("api_key_env")
+                or ""
+            ).strip()
             if fb_key_env:
                 fb_api_key_hint = os.getenv(fb_key_env, "").strip() or None
         # For Ollama Cloud endpoints, pull OLLAMA_API_KEY from env
@@ -1097,8 +1145,9 @@ def try_activate_fallback(agent, reason: "FailoverReason | None" = None) -> bool
             fb_api_key_hint = os.getenv("OLLAMA_API_KEY") or None
         fb_client, _resolved_fb_model = resolve_provider_client(
             fb_provider, model=fb_model, raw_codex=True,
-            explicit_base_url=fb_base_url_hint,
-            explicit_api_key=fb_api_key_hint)
+            explicit_base_url=fb_base_url_hint or "",
+            explicit_api_key=fb_api_key_hint or "",
+            api_mode=fb_api_mode_hint)
         if fb_client is None:
             logger.warning(
                 "Fallback to %s failed: provider not configured",
@@ -1114,12 +1163,21 @@ def try_activate_fallback(agent, reason: "FailoverReason | None" = None) -> bool
                 fb_model, fb_provider, _norm_err,
             )
 
-        # Determine api_mode from provider / base URL / model
-        fb_api_mode = "chat_completions"
+        # Determine api_mode from explicit fallback entry / named custom provider
+        # first. The previous implementation guessed from provider/base_url/model
+        # and silently downgraded named custom providers such as
+        # custom:claude_opus47_5yuantoken from codex_responses to
+        # chat_completions, causing expensive /v1/chat/completions calls.
+        fb_api_mode = fb_api_mode_hint or "chat_completions"
         fb_base_url = str(fb_client.base_url)
         _fb_is_azure = agent._is_azure_openai_url(fb_base_url)
         if fb_provider == "openai-codex":
             fb_api_mode = "codex_responses"
+        elif fb_api_mode_hint:
+            # Explicit config wins. In particular, custom GPT/Claude providers
+            # may be served by a Responses-compatible shim under a /v1 base URL.
+            # Do not overwrite that with chat_completions heuristics.
+            pass
         elif fb_provider == "anthropic" or fb_base_url.rstrip("/").lower().endswith("/anthropic"):
             fb_api_mode = "anthropic_messages"
         elif _fb_is_azure:

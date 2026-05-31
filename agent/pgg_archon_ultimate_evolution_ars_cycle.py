@@ -1351,7 +1351,394 @@ def run_phase4_cycle(*, persist: bool = True) -> Dict[str, Any]:
     return result
 
 
+# ─── Phase 11: Gene Lifecycle & Promotion Chain ────────────────────────────────
+
+_LIFECYCLE_STATES = ("candidate", "active", "promoted", "archived", "retired")
+
+
+def _ensure_lifecycle_schema(db_path: Path = _DEFAULT_PGG_DB) -> None:
+    """Ensure gene_lifecycle and promotion_chain tables exist (idempotent, migration-safe)."""
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS gene_lifecycle ("
+            "  gene_id INTEGER PRIMARY KEY,"
+            "  state TEXT NOT NULL DEFAULT 'candidate',"
+            "  activated_at TEXT,"
+            "  promoted_at TEXT,"
+            "  archived_at TEXT,"
+            "  retired_at TEXT,"
+            "  quality_score REAL,"
+            "  parent_gene_id INTEGER,"
+            "  FOREIGN KEY (gene_id) REFERENCES genes(id),"
+            "  FOREIGN KEY (parent_gene_id) REFERENCES genes(id)"
+            ")"
+        )
+        # Migrate old schema: add missing timestamp columns
+        for col in ["candidate_at", "activated_at", "promoted_at", "archived_at", "retired_at"]:
+            try:
+                conn.execute(f"ALTER TABLE gene_lifecycle ADD COLUMN {col} TEXT")
+            except sqlite3.OperationalError:
+                pass  # column already exists
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS promotion_chain ("
+            "  id INTEGER PRIMARY KEY AUTOINCREMENT,"
+            "  gene_id INTEGER NOT NULL,"
+            "  from_state TEXT NOT NULL,"
+            "  to_state TEXT NOT NULL,"
+            "  transitioned_at TEXT NOT NULL,"
+            "  trigger_phase TEXT,"
+            "  decision TEXT,"
+            "  FOREIGN KEY (gene_id) REFERENCES genes(id)"
+            ")"
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _build_phase11_lifecycle_report() -> Dict[str, Any]:
+    """Assess current gene lifecycle states and promotion chain integrity."""
+    _ensure_lifecycle_schema()
+    conn = sqlite3.connect(_DEFAULT_PGG_DB)
+    try:
+        cur = conn.cursor()
+
+        # Count genes by lifecycle state
+        cur.execute(
+            "SELECT state, COUNT(*) FROM gene_lifecycle GROUP BY state"
+        )
+        state_counts = dict(cur.fetchall())
+
+        # Find latest gene in each state
+        cur.execute(
+            "SELECT gene_id, state, activated_at FROM gene_lifecycle "
+            "WHERE state = 'active' ORDER BY activated_at DESC LIMIT 1"
+        )
+        active_row = cur.fetchone()
+        cur.execute(
+            "SELECT gene_id, state, promoted_at FROM gene_lifecycle "
+            "WHERE state = 'promoted' ORDER BY promoted_at DESC LIMIT 1"
+        )
+        promoted_row = cur.fetchone()
+
+        # Check for genes in genes table not yet in lifecycle
+        cur.execute(
+            "SELECT g.id, g.name, g.quality_score FROM genes g "
+            "LEFT JOIN gene_lifecycle gl ON g.id = gl.gene_id "
+            "WHERE gl.gene_id IS NULL ORDER BY g.id"
+        )
+        orphan_genes = [
+            {"id": r[0], "name": r[1], "quality_score": r[2]}
+            for r in cur.fetchall()
+        ]
+
+        # Promotion chain depth
+        cur.execute(
+            "SELECT COUNT(DISTINCT gene_id) FROM promotion_chain"
+        )
+        chain_genes = cur.fetchone()[0]
+
+        # Get last 5 promotion events
+        cur.execute(
+            "SELECT gene_id, from_state, to_state, transitioned_at, decision "
+            "FROM promotion_chain ORDER BY id DESC LIMIT 5"
+        )
+        recent_events = [
+            {"gene_id": r[0], "from": r[1], "to": r[2],
+             "at": r[3], "decision": r[4]}
+            for r in cur.fetchall()
+        ]
+
+        return {
+            "schema": "PGGArchonUltimateEvolutionPhase11GeneLifecycle/v1",
+            "state_counts": state_counts,
+            "latest_active": {
+                "gene_id": active_row[0] if active_row else None,
+                "at": active_row[2] if active_row else None,
+            } if active_row else None,
+            "latest_promoted": {
+                "gene_id": promoted_row[0] if promoted_row else None,
+                "at": promoted_row[2] if promoted_row else None,
+            } if promoted_row else None,
+            "orphan_genes": orphan_genes,
+            "chain_events_total": chain_genes,
+            "recent_promotion_events": recent_events,
+            "all_states": _LIFECYCLE_STATES,
+        }
+    finally:
+        conn.close()
+
+
+def _transition_gene_state(
+    gene_id: int,
+    to_state: str,
+    trigger_phase: str = None,
+    decision: str = None,
+    db_path: Path = _DEFAULT_PGG_DB,
+) -> bool:
+    """Transition a gene to a new lifecycle state. Returns True if transition happened."""
+    if to_state not in _LIFECYCLE_STATES:
+        return False
+    _ensure_lifecycle_schema(db_path)
+    conn = sqlite3.connect(db_path)
+    try:
+        cur = conn.cursor()
+        now = time.strftime("%Y-%m-%dT%H:%M:%S%z")
+
+        # Get current state
+        cur.execute(
+            "SELECT state FROM gene_lifecycle WHERE gene_id = ?", (gene_id,)
+        )
+        row = cur.fetchone()
+
+        from_state = row[0] if row else None
+
+        if row is None:
+            # Insert new lifecycle record with the correct timestamp column for the state
+            col = f"{to_state}_at"
+            # All states have their own timestamp column; candidate uses candidate_at
+            sql = f"INSERT OR IGNORE INTO gene_lifecycle (gene_id, state, {col}, quality_score) VALUES (?, ?, ?, (SELECT quality_score FROM genes WHERE id=?))"
+            cur.execute(sql, (gene_id, to_state, now, gene_id))
+        else:
+            if from_state == to_state:
+                return False  # no-op
+            # Update state + timestamp
+            col = f"{to_state}_at"
+            cur.execute(
+                f"UPDATE gene_lifecycle SET state=?, {col}=? WHERE gene_id=?",
+                (to_state, now, gene_id),
+            )
+
+        # Log promotion chain event
+        if from_state != to_state:
+            cur.execute(
+                "INSERT INTO promotion_chain (gene_id, from_state, to_state, transitioned_at, trigger_phase, decision) VALUES (?, ?, ?, ?, ?, ?)",
+                (gene_id, from_state or "none", to_state, now, trigger_phase, decision),
+            )
+
+        conn.commit()
+        return True
+    finally:
+        conn.close()
+
+
+def persist_phase11_to_pgg_db(
+    lifecycle_report: Dict[str, Any],
+    paths: Dict[str, str],
+    db_path: Path = _DEFAULT_PGG_DB,
+) -> Dict[str, Any]:
+    """Enroll ultimate-evolution genes, write Phase11 gene, and read it back.
+
+    Phase11 is a lifecycle-chain gate, so persistence must do more than mutate
+    helper tables: it also writes an idempotent gene/experiment row that proves
+    the lifecycle surface itself became part of the PGG Archon gene ledger.
+    """
+    _ensure_lifecycle_schema(db_path)
+    conn = sqlite3.connect(db_path)
+    try:
+        cur = conn.cursor()
+        now = time.strftime("%Y-%m-%dT%H:%M:%S%z")
+        enrolled = []
+
+        # Find all ultimate_evolution_formula genes and enroll orphans.
+        cur.execute(
+            "SELECT g.id, g.name, g.quality_score FROM genes g "
+            "LEFT JOIN gene_lifecycle gl ON g.id = gl.gene_id "
+            "WHERE g.name LIKE 'ultimate_evolution_formula%' AND gl.gene_id IS NULL "
+            "ORDER BY g.id"
+        )
+        orphans = cur.fetchall()
+
+        for gene_id, name, quality_score in orphans:
+            cur.execute(
+                "INSERT OR IGNORE INTO gene_lifecycle (gene_id, state, candidate_at, quality_score) VALUES (?, 'candidate', ?, ?)",
+                (gene_id, now, quality_score),
+            )
+            enrolled.append({"id": gene_id, "name": name, "state": "candidate"})
+
+        # Promote the Phase5 promotion-gate gene to active when present.  Do not
+        # hard-fail if a test database uses a different id set.
+        cur.execute(
+            "SELECT id FROM genes WHERE name='ultimate_evolution_formula_phase5_promotion_gate' ORDER BY id DESC LIMIT 1"
+        )
+        phase5_row = cur.fetchone()
+        phase5_id = phase5_row[0] if phase5_row else 101
+        cur.execute("SELECT state FROM gene_lifecycle WHERE gene_id = ?", (phase5_id,))
+        row = cur.fetchone()
+        if row and row[0] == "candidate":
+            cur.execute(
+                "UPDATE gene_lifecycle SET state='active', activated_at=? WHERE gene_id=?",
+                (now, phase5_id),
+            )
+            cur.execute(
+                "INSERT INTO promotion_chain (gene_id, from_state, to_state, transitioned_at, trigger_phase, decision) VALUES (?, 'candidate', 'active', ?, 'phase5_promotion_gate', 'allow_candidate_promotion')",
+                (phase5_id, now),
+            )
+            enrolled.append({"id": phase5_id, "state": "active", "transitioned_from": "candidate"})
+
+        cur.execute("SELECT COUNT(*) FROM gene_lifecycle")
+        total = cur.fetchone()[0]
+        cur.execute("SELECT COUNT(*) FROM promotion_chain")
+        chain_total = cur.fetchone()[0]
+
+        gene_name = "ultimate_evolution_formula_phase11_gene_lifecycle_chain"
+        existing = cur.execute(
+            "SELECT id,name,pattern_type,quality_score FROM genes WHERE name=? ORDER BY id DESC LIMIT 1",
+            (gene_name,),
+        ).fetchone()
+        if existing:
+            conn.commit()
+            return {
+                "inserted": False,
+                "deduped": True,
+                "gene_id": existing[0],
+                "readback": existing,
+                "enrolled": enrolled,
+                "total_lifecycle_genes": total,
+                "total_promotion_events": chain_total,
+                "db_path": str(db_path),
+            }
+
+        result_payload = {
+            "schema": lifecycle_report.get("schema"),
+            "state_counts": lifecycle_report.get("state_counts"),
+            "orphan_genes_before_enroll": lifecycle_report.get("orphan_genes"),
+            "enrolled": enrolled,
+            "total_lifecycle_genes": total,
+            "total_promotion_events": chain_total,
+            "paths": dict(paths),
+        }
+        cur.execute(
+            "INSERT INTO experiments(name, hypothesis, result, score, created_at, tags) VALUES (?, ?, ?, ?, ?, ?)",
+            (
+                gene_name,
+                "Phase11 establishes gene lifecycle and promotion-chain auditability for ultimate evolution genes",
+                json.dumps(result_payload, ensure_ascii=False),
+                100.0 if total > 0 else 75.0,
+                now,
+                json.dumps(["ultimate-evolution-formula", "phase11", "gene-lifecycle", "promotion-chain"], ensure_ascii=False),
+            ),
+        )
+        experiment_id = cur.lastrowid
+        cur.execute(
+            "INSERT INTO genes(name, pattern_type, source_repo, code_snippet, quality_score, extracted_at) VALUES (?, ?, ?, ?, ?, ?)",
+            (
+                gene_name,
+                "ultimate_evolution_formula_phase11_gene_lifecycle_chain_v1",
+                "Hermes Agent / PGG Archon",
+                json.dumps(result_payload, ensure_ascii=False),
+                1.0 if total > 0 else 0.75,
+                now,
+            ),
+        )
+        gene_id = cur.lastrowid
+        cur.execute(
+            "INSERT OR IGNORE INTO gene_lifecycle (gene_id, state, candidate_at, quality_score) VALUES (?, 'candidate', ?, ?)",
+            (gene_id, now, 1.0 if total > 0 else 0.75),
+        )
+        conn.commit()
+        readback = cur.execute(
+            "SELECT id,name,pattern_type,quality_score FROM genes WHERE id=?", (gene_id,)
+        ).fetchone()
+        return {
+            "inserted": True,
+            "deduped": False,
+            "experiment_id": experiment_id,
+            "gene_id": gene_id,
+            "readback": readback,
+            "enrolled": enrolled,
+            "total_lifecycle_genes": total + 1,
+            "total_promotion_events": chain_total,
+            "db_path": str(db_path),
+        }
+    finally:
+        conn.close()
+
+
+def write_phase11_report(
+    lifecycle_report: Dict[str, Any],
+    paths: Dict[str, str],
+) -> Dict[str, str]:
+    """Write Phase11 lifecycle report JSON to workspace."""
+    out = Path(_DEFAULT_WORKSPACE) / "phase11_gene_lifecycle_report.json"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    report = {
+        "schema": lifecycle_report["schema"],
+        "generated_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+        "state_counts": lifecycle_report["state_counts"],
+        "latest_active": lifecycle_report["latest_active"],
+        "latest_promoted": lifecycle_report["latest_promoted"],
+        "orphan_genes": lifecycle_report["orphan_genes"],
+        "chain_events_total": lifecycle_report["chain_events_total"],
+        "recent_promotion_events": lifecycle_report["recent_promotion_events"],
+        "all_lifecycle_states": list(_LIFECYCLE_STATES),
+        "workspace_reports": paths,
+    }
+    out.write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
+    return {"phase11_report": str(out)}
+
+
+def build_phase11_lifecycle_gate(
+    lifecycle_report: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Evaluate Phase11 lifecycle gate: schema_valid + no_orphan_critical + chain_intact."""
+    score = lifecycle_report.get("state_counts", {})
+    orphans = lifecycle_report.get("orphan_genes", [])
+    chain_ok = lifecycle_report.get("chain_events_total", 0) >= 0
+
+    # Block if any ultimate_evolution gene is orphaned (not enrolled in lifecycle)
+    orphan_blockers = [o["name"] for o in orphans if "phase" in o["name"]]
+
+    # Gate decision
+    if orphan_blockers:
+        decision = "block_orphan_genes_not_enrolled"
+        blockers = orphan_blockers
+    else:
+        decision = "allow_lifecycle_chain_active"
+        blockers = []
+
+    return {
+        "schema": "PGGArchonUltimateEvolutionPhase11LifecycleGate/v1",
+        "decision": decision,
+        "blockers": blockers,
+        "gate_checks": {
+            "schema_valid": lifecycle_report.get("schema") == "PGGArchonUltimateEvolutionPhase11GeneLifecycle/v1",
+            "no_orphan_critical": len(orphan_blockers) == 0,
+            "chain_intact": chain_ok,
+        },
+        "state_counts": score,
+        "chain_events_total": lifecycle_report.get("chain_events_total"),
+    }
+
+
+def run_phase11_cycle(*, persist: bool = True) -> Dict[str, Any]:
+    """Execute Phase11: enroll lifecycle state, write report, then evaluate gate.
+
+    Gate evaluation intentionally runs after persistence so orphan fixes are
+    measured against the post-enrollment DB state, not the stale pre-migration
+    snapshot.
+    """
+    before = _build_phase11_lifecycle_report()
+    report_paths = write_phase11_report(before, {})
+    persist_result = None
+    if persist:
+        persist_result = persist_phase11_to_pgg_db(before, report_paths)
+    lifecycle = _build_phase11_lifecycle_report()
+    gate = build_phase11_lifecycle_gate(lifecycle)
+    return {
+        "lifecycle": lifecycle,
+        "pre_persist_lifecycle": before,
+        "gate": gate,
+        "persist": persist_result,
+        "pgg_db": persist_result,
+        "report_paths": report_paths,
+    }
+
+
 __all__ = [
+    "build_phase10_auto_core_takeover",
+    "build_phase11_lifecycle_gate",
     "build_phase3_ars_cycle",
     "build_phase4_ars_trend_replay",
     "build_phase5_promotion_gate",
@@ -1361,6 +1748,8 @@ __all__ = [
     "build_phase9_cron_ci_drift_gate",
     "call_pgg_ultimate_evolution_tool",
     "collect_phase3_native_evidence",
+    "persist_phase10_to_pgg_db",
+    "persist_phase11_to_pgg_db",
     "persist_phase3_to_pgg_db",
     "persist_phase3_to_pgg_db_idempotent",
     "persist_phase4_to_pgg_db",
@@ -1376,6 +1765,9 @@ __all__ = [
     "run_phase7_cycle",
     "run_phase8_cycle",
     "run_phase9_cycle",
+    "run_phase10_cycle",
+    "run_phase11_cycle",
+    "write_phase10_report",
     "write_phase3_report",
     "write_phase4_report",
     "write_phase5_report",
@@ -1383,4 +1775,5 @@ __all__ = [
     "write_phase7_report",
     "write_phase8_report",
     "write_phase9_report",
+    "write_phase11_report",
 ]

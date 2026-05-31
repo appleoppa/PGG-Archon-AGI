@@ -182,6 +182,67 @@ class TestFallbackChainAdvancement:
             assert agent._try_activate_fallback() is True
             assert mock_rpc.call_args.kwargs["explicit_api_key"] == "env-secret"
 
+    def test_fallback_honors_named_custom_provider_api_mode(self):
+        """Named custom fallback providers must keep configured api_mode.
+
+        Regression: fallback activation guessed api_mode from provider/base_url
+        and downgraded custom:claude_opus47_... from codex_responses to
+        chat_completions, causing /v1/chat/completions calls.
+        """
+        fbs = [{"provider": "custom:gpt55_5yuantoken", "model": "gpt-5.5"}]
+        agent = _make_agent(fallback_model=fbs)
+        agent.provider = "custom:primary"
+        agent.model = "primary-model"
+        agent.base_url = "https://primary.example/v1"
+
+        with (
+            patch(
+                "hermes_cli.runtime_provider._get_named_custom_provider",
+                return_value={
+                    "name": "gpt55_5yuantoken",
+                    "base_url": "https://chuangagent.eu.cc/v1",
+                    "api_key": "key",
+                    "model": "gpt-5.5",
+                    "api_mode": "codex_responses",
+                },
+            ),
+            patch(
+                "agent.auxiliary_client.resolve_provider_client",
+                return_value=(
+                    _mock_client(base_url="https://chuangagent.eu.cc/v1", api_key="key"),
+                    "gpt-5.5",
+                ),
+            ) as mock_rpc,
+            patch("hermes_cli.model_normalize.normalize_model_for_provider", side_effect=lambda m, p: m),
+        ):
+            assert agent._try_activate_fallback() is True
+
+        assert mock_rpc.call_args.kwargs["api_mode"] == "codex_responses"
+        assert agent.api_mode == "codex_responses"
+
+    def test_blocks_claude_automatic_fallback_even_if_configured(self):
+        """Claude/Anthropic are expensive and must not be automatic fallback."""
+        fbs = [
+            {"provider": "custom:claude_opus47_5yuantoken", "model": "claude-opus-4-7"},
+            {"provider": "custom:minimax_m27_highspeed", "model": "MiniMax-M2.7-highspeed"},
+        ]
+        agent = _make_agent(fallback_model=fbs)
+
+        called = []
+
+        def _resolve(provider, model=None, raw_codex=False, **kwargs):
+            called.append((provider, model))
+            return _mock_client(base_url="https://api.minimaxi.com/anthropic"), model
+
+        with (
+            patch("agent.auxiliary_client.resolve_provider_client", side_effect=_resolve),
+            patch("hermes_cli.model_normalize.normalize_model_for_provider", side_effect=lambda m, p: m),
+        ):
+            assert agent._try_activate_fallback() is True
+
+        assert called == [("custom:minimax_m27_highspeed", "MiniMax-M2.7-highspeed")]
+        assert agent.model == "MiniMax-M2.7-highspeed"
+
 
 # ── Pool-rotation vs fallback gating (#11314) ────────────────────────────
 
@@ -266,14 +327,14 @@ class TestFallbackChainDedup:
         with the same model should dedup even if their provider names differ."""
         fbs = [
             # Different provider name but same shim URL + model — same backend.
-            {"provider": "claude-cli-alt", "model": "claude-opus-4.7",
+            {"provider": "local-alt", "model": "local-model",
              "base_url": "http://127.0.0.1:7891/v1"},
             # Real different fallback.
-            {"provider": "openrouter", "model": "anthropic/claude-opus-4.7"},
+            {"provider": "openrouter", "model": "meta-llama/llama-3.3-70b"},
         ]
         agent = _make_agent(fallback_model=fbs)
-        agent.provider = "claude-cli"
-        agent.model = "claude-opus-4.7"
+        agent.provider = "local-primary"
+        agent.model = "local-model"
         agent.base_url = "http://127.0.0.1:7891/v1"
 
         called = []
@@ -286,7 +347,7 @@ class TestFallbackChainDedup:
 
         assert ok is True
         # Same shim/base_url+model entry skipped, second one used.
-        assert called == [("openrouter", "anthropic/claude-opus-4.7")], (
+        assert called == [("openrouter", "meta-llama/llama-3.3-70b")], (
             f"expected base_url-aware dedup, got call order: {called}"
         )
 

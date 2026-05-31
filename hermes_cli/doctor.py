@@ -132,12 +132,58 @@ def _doctor_tool_availability_detail(toolset: str) -> str:
     return ""
 
 
+def _doctor_disabled_toolsets_from_config() -> set[str]:
+    """Return toolsets the user intentionally disabled in config.yaml.
+
+    `hermes tools disable` removes toolsets from platform allow-lists, while
+    `agent.disabled_toolsets` is a global deny-list. Doctor is a health check
+    for the configured installation, so intentionally disabled optional
+    toolsets should not be reported as missing API keys/system dependencies.
+    """
+    try:
+        from hermes_cli.config import load_config
+
+        cfg = load_config() or {}
+    except Exception:
+        return set()
+
+    disabled: set[str] = set()
+    agent_cfg = cfg.get("agent") or {}
+    raw_disabled = agent_cfg.get("disabled_toolsets") or []
+    if isinstance(raw_disabled, list):
+        disabled.update(str(item).strip() for item in raw_disabled if str(item).strip())
+
+    platform_toolsets = cfg.get("platform_toolsets") or {}
+    if isinstance(platform_toolsets, dict):
+        # A few platform-specific integrations show up in doctor under their
+        # registry names even when the corresponding platform has been emptied
+        # in platform_toolsets. Treat an explicit empty list as an intentional
+        # disable for that platform's toolset family.
+        platform_aliases = {
+            "discord": {"discord", "discord_admin"},
+            "homeassistant": {"homeassistant"},
+            "yuanbao": {"yuanbao", "hermes-yuanbao"},
+        }
+        for platform, aliases in platform_aliases.items():
+            if platform in platform_toolsets and platform_toolsets.get(platform) == []:
+                disabled.update(aliases)
+
+    if "yuanbao" in disabled:
+        disabled.add("hermes-yuanbao")
+    if "hermes-yuanbao" in disabled:
+        disabled.add("yuanbao")
+    return disabled
+
+
 def _apply_doctor_tool_availability_overrides(available: list[str], unavailable: list[dict]) -> tuple[list[str], list[dict]]:
-    """Adjust runtime-gated tool availability for doctor diagnostics."""
-    updated_available = list(available)
+    """Adjust runtime-gated and intentionally-disabled tool availability."""
+    disabled_toolsets = _doctor_disabled_toolsets_from_config()
+    updated_available = [name for name in available if name not in disabled_toolsets]
     updated_unavailable = []
     for item in unavailable:
         name = item.get("name")
+        if name in disabled_toolsets:
+            continue
         if _is_kanban_worker_env_gate(item):
             if "kanban" not in updated_available:
                 updated_available.append("kanban")

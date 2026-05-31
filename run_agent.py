@@ -4368,7 +4368,10 @@ class AIAgent:
     ) -> Dict[str, Any]:
         """Forwarder — see ``agent.conversation_loop.run_conversation``."""
         from agent.conversation_loop import run_conversation
-        return run_conversation(self, user_message, system_message, conversation_history, task_id, stream_callback, persist_user_message)
+        from agent.pgg_archon_auto_core_takeover import apply_auto_core_takeover_context
+
+        core_system_message = apply_auto_core_takeover_context(system_message)
+        return run_conversation(self, user_message, core_system_message, conversation_history, task_id, stream_callback, persist_user_message)
 
     def chat(self, message: str, stream_callback: Optional[callable] = None) -> str:
         """
