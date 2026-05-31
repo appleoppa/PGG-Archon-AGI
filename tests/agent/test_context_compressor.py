@@ -187,6 +187,22 @@ class TestCompress:
         # original content is present in either case.
         assert msgs[-2]["content"] in result[-2]["content"]
 
+    def test_summary_serialization_global_cap_keeps_recent_turns(self, compressor):
+        """Compression prompt input must stay bounded on tool-heavy sessions."""
+        old_blob = "old-output " * 4000
+        new_blob = "new-output " * 4000
+        turns = []
+        for i in range(40):
+            turns.append({"role": "tool", "tool_call_id": f"old_{i}", "content": old_blob})
+        turns.append({"role": "tool", "tool_call_id": "newest", "content": new_blob})
+
+        serialized = compressor._serialize_for_summary(turns)
+
+        assert len(serialized) <= 82_000
+        assert "older compacted turn(s) were omitted" in serialized
+        assert "newest" in serialized
+        assert "new-output" in serialized
+
 
 class TestGenerateSummaryNoneContent:
     """Regression: content=None (from tool-call-only assistant messages) must not crash."""

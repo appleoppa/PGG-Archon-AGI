@@ -111,6 +111,14 @@ _SUMMARY_FAILURE_COOLDOWN_SECONDS = 600
 _FALLBACK_SUMMARY_MAX_CHARS = 8_000
 _FALLBACK_TURN_MAX_CHARS = 700
 
+# Hard ceiling for the text sent to the auxiliary summarizer.  Per-message
+# truncation is not enough on tool-heavy sessions: 100+ old tool results at
+# 6K chars each can still create 150K+ token *compression requests*, causing
+# the compressor itself to burn the user's daily quota before it can shrink
+# the main conversation.  Keep the most recent compacted turns preferentially;
+# older detail is already lower value than the protected live tail.
+_SUMMARY_INPUT_MAX_CHARS = 80_000
+
 
 _PATH_MENTION_RE = re.compile(r"(?:/|~/?|[A-Za-z]:\\)[^\s`'\")\]}<>]+")
 
@@ -953,9 +961,32 @@ class ContextCompressor(ContextEngine):
         All content is redacted before serialization to prevent secrets
         (API keys, tokens, passwords) from leaking into the summary that
         gets sent to the auxiliary model and persisted across compactions.
+
+        The returned text is also globally capped.  Tool-heavy sessions can
+        contain hundreds of individually-truncated messages; without a global
+        cap, the *compression request* can become larger than the normal chat
+        request and burn quota while trying to save quota.  We preferentially
+        retain the newest compacted turns because the protected live tail plus
+        current filesystem state are the authoritative sources for continuation.
         """
-        parts = []
-        for msg in turns:
+        rendered_parts: list[str] = []
+        omitted_older = 0
+        used_chars = 0
+
+        def _append_part(part: str) -> None:
+            nonlocal used_chars, omitted_older
+            part_len = len(part)
+            sep_len = 2 if rendered_parts else 0
+            if used_chars + sep_len + part_len > _SUMMARY_INPUT_MAX_CHARS:
+                omitted_older += 1
+                return
+            rendered_parts.append(part)
+            used_chars += sep_len + part_len
+
+        # Build from newest to oldest so the global cap preserves the most
+        # recent compacted evidence.  Reverse back before returning so the
+        # summarizer still sees chronological order for the retained turns.
+        for msg in reversed(turns):
             role = msg.get("role", "unknown")
             content = redact_sensitive_text(msg.get("content") or "")
 
@@ -964,7 +995,7 @@ class ContextCompressor(ContextEngine):
                 tool_id = msg.get("tool_call_id", "")
                 if len(content) > self._CONTENT_MAX:
                     content = content[:self._CONTENT_HEAD] + "\n...[truncated]...\n" + content[-self._CONTENT_TAIL:]
-                parts.append(f"[TOOL RESULT {tool_id}]: {content}")
+                _append_part(f"[TOOL RESULT {tool_id}]: {content}")
                 continue
 
             # Assistant messages: include tool call names AND arguments
@@ -988,15 +1019,23 @@ class ContextCompressor(ContextEngine):
                             name = getattr(fn, "name", "?") if fn else "?"
                             tc_parts.append(f"  {name}(...)")
                     content += "\n[Tool calls:\n" + "\n".join(tc_parts) + "\n]"
-                parts.append(f"[ASSISTANT]: {content}")
+                _append_part(f"[ASSISTANT]: {content}")
                 continue
 
             # User and other roles
             if len(content) > self._CONTENT_MAX:
                 content = content[:self._CONTENT_HEAD] + "\n...[truncated]...\n" + content[-self._CONTENT_TAIL:]
-            parts.append(f"[{role.upper()}]: {content}")
+            _append_part(f"[{role.upper()}]: {content}")
 
-        return "\n\n".join(parts)
+        rendered_parts.reverse()
+        if omitted_older:
+            rendered_parts.insert(
+                0,
+                f"[SYSTEM NOTE]: {omitted_older} older compacted turn(s) were omitted "
+                "from the summarizer input to keep the compression request within "
+                "the local token budget. Verify current files/state for exact old details.",
+            )
+        return "\n\n".join(rendered_parts)
 
     def _build_static_fallback_summary(
         self,
