@@ -3,7 +3,11 @@
 import pytest
 from unittest.mock import patch, MagicMock
 
-from agent.context_compressor import ContextCompressor, SUMMARY_PREFIX
+from agent.context_compressor import (
+    ContextCompressor,
+    MINIMUM_CONTEXT_LENGTH,
+    SUMMARY_PREFIX,
+)
 
 
 @pytest.fixture()
@@ -21,6 +25,48 @@ def compressor():
 
 
 class TestShouldCompress:
+    def test_hybrid_absolute_threshold_large_model(self):
+        with patch("agent.context_compressor.get_model_context_length", return_value=1_000_000):
+            c = ContextCompressor(
+                model="test-large",
+                threshold_percent=0.15,
+                absolute_threshold_tokens=150_000,
+                threshold_safety_percent=0.70,
+                quiet_mode=True,
+            )
+        assert c.threshold_tokens == 150_000
+
+    def test_hybrid_absolute_threshold_minimax_sized_model(self):
+        with patch("agent.context_compressor.get_model_context_length", return_value=256_000):
+            c = ContextCompressor(
+                model="test-minimax",
+                threshold_percent=0.15,
+                absolute_threshold_tokens=150_000,
+                threshold_safety_percent=0.70,
+                quiet_mode=True,
+            )
+        assert c.threshold_tokens == 150_000
+
+    def test_hybrid_absolute_threshold_caps_small_model_by_safety_fraction(self):
+        with patch("agent.context_compressor.get_model_context_length", return_value=128_000):
+            c = ContextCompressor(
+                model="test-small",
+                threshold_percent=0.15,
+                absolute_threshold_tokens=150_000,
+                threshold_safety_percent=0.70,
+                quiet_mode=True,
+            )
+        assert c.threshold_tokens == 89_600
+
+    def test_percentage_threshold_preserved_without_absolute_threshold(self):
+        with patch("agent.context_compressor.get_model_context_length", return_value=256_000):
+            c = ContextCompressor(
+                model="test-percent",
+                threshold_percent=0.15,
+                quiet_mode=True,
+            )
+        assert c.threshold_tokens == max(int(256_000 * 0.15), MINIMUM_CONTEXT_LENGTH)
+
     def test_below_threshold(self, compressor):
         compressor.last_prompt_tokens = 50000
         assert compressor.should_compress() is False

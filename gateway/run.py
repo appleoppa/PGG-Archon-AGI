@@ -8632,6 +8632,7 @@ class GatewayRunner:
                 estimate_messages_tokens_rough,
                 get_model_context_length,
             )
+            from agent.context_compressor import MINIMUM_CONTEXT_LENGTH
 
             # Read model + compression config from config.yaml.
             # NOTE: hygiene threshold is intentionally HIGHER than the agent's
@@ -8643,6 +8644,8 @@ class GatewayRunner:
             # compression on every turn in long gateway sessions.
             _hyg_model = "anthropic/claude-sonnet-4.6"
             _hyg_threshold_pct = 0.85
+            _hyg_absolute_threshold_tokens = None
+            _hyg_threshold_safety_pct = 0.70
             _hyg_compression_enabled = True
             _hyg_hard_msg_limit = 400
             _hyg_config_context_length = None
@@ -8689,6 +8692,21 @@ class GatewayRunner:
                                 _parsed_threshold = float(_raw_threshold)
                                 if 0.01 <= _parsed_threshold <= 0.95:
                                     _hyg_threshold_pct = _parsed_threshold
+                            except (TypeError, ValueError):
+                                pass
+                        _raw_abs_threshold = _comp_cfg.get("absolute_threshold_tokens")
+                        if _raw_abs_threshold is not None:
+                            try:
+                                _parsed_abs = int(_raw_abs_threshold)
+                                if _parsed_abs > 0:
+                                    _hyg_absolute_threshold_tokens = _parsed_abs
+                            except (TypeError, ValueError):
+                                pass
+                        _raw_safety_pct = _comp_cfg.get("threshold_safety_percent")
+                        if _raw_safety_pct is not None:
+                            try:
+                                _parsed_safety = float(_raw_safety_pct)
+                                _hyg_threshold_safety_pct = max(0.10, min(_parsed_safety, 0.95))
                             except (TypeError, ValueError):
                                 pass
                         _raw_hard_limit = _comp_cfg.get("hygiene_hard_message_limit")
@@ -8750,9 +8768,25 @@ class GatewayRunner:
                     config_context_length=_hyg_config_context_length,
                     provider=_hyg_provider or "",
                 )
-                _compress_token_threshold = int(
-                    _hyg_context_length * _hyg_threshold_pct
-                )
+                if _hyg_absolute_threshold_tokens and _hyg_absolute_threshold_tokens > 0:
+                    _safety_cap = int(_hyg_context_length * _hyg_threshold_safety_pct)
+                    _compress_token_threshold = max(
+                        min(int(_hyg_absolute_threshold_tokens), _safety_cap),
+                        MINIMUM_CONTEXT_LENGTH,
+                    )
+                    _threshold_desc = (
+                        f"absolute {int(_hyg_absolute_threshold_tokens):,} capped by "
+                        f"{int(_hyg_threshold_safety_pct * 100)}% of "
+                        f"{_hyg_context_length:,} = {_compress_token_threshold:,} tokens"
+                    )
+                else:
+                    _compress_token_threshold = int(
+                        _hyg_context_length * _hyg_threshold_pct
+                    )
+                    _threshold_desc = (
+                        f"{int(_hyg_threshold_pct * 100)}% of "
+                        f"{_hyg_context_length:,} = {_compress_token_threshold:,} tokens"
+                    )
                 _warn_token_threshold = int(_hyg_context_length * 0.95)
 
                 _msg_count = len(history)
@@ -8792,11 +8826,9 @@ class GatewayRunner:
                 if _needs_compress:
                     logger.info(
                         "Session hygiene: %s messages, ~%s tokens (%s) — auto-compressing "
-                        "(threshold: %s%% of %s = %s tokens)",
+                        "(threshold: %s)",
                         _msg_count, f"{_approx_tokens:,}", _token_source,
-                        int(_hyg_threshold_pct * 100),
-                        f"{_hyg_context_length:,}",
-                        f"{_compress_token_threshold:,}",
+                        _threshold_desc,
                     )
 
                     _hyg_meta = self._thread_metadata_for_source(source, self._reply_anchor_for_event(event))

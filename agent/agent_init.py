@@ -1227,6 +1227,19 @@ def init_agent(
     if not isinstance(_compression_cfg, dict):
         _compression_cfg = {}
     compression_threshold = float(_compression_cfg.get("threshold", 0.50))
+    compression_absolute_threshold = _compression_cfg.get("absolute_threshold_tokens", None)
+    if compression_absolute_threshold is not None:
+        try:
+            compression_absolute_threshold = int(compression_absolute_threshold)
+            if compression_absolute_threshold <= 0:
+                compression_absolute_threshold = None
+        except (TypeError, ValueError):
+            compression_absolute_threshold = None
+    compression_threshold_safety = _compression_cfg.get("threshold_safety_percent", 0.70)
+    try:
+        compression_threshold_safety = float(compression_threshold_safety)
+    except (TypeError, ValueError):
+        compression_threshold_safety = 0.70
     try:
         from agent.auxiliary_client import _compression_threshold_for_model as _cthresh_fn
         _model_cthresh = _cthresh_fn(agent.model)
@@ -1458,6 +1471,8 @@ def init_agent(
             protect_first_n=compression_protect_first,
             protect_last_n=compression_protect_last,
             summary_target_ratio=compression_target_ratio,
+            absolute_threshold_tokens=compression_absolute_threshold,
+            threshold_safety_percent=compression_threshold_safety,
             summary_model_override=None,
             quiet_mode=agent.quiet_mode,
             base_url=agent.base_url,

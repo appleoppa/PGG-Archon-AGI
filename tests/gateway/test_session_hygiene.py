@@ -18,6 +18,7 @@ from unittest.mock import MagicMock, AsyncMock
 import pytest
 
 from agent.model_metadata import estimate_messages_tokens_rough
+from agent.context_compressor import MINIMUM_CONTEXT_LENGTH
 from gateway.config import GatewayConfig, Platform, PlatformConfig
 from gateway.platforms.base import BasePlatformAdapter, MessageEvent, SendResult
 from gateway.session import SessionEntry, SessionSource
@@ -87,6 +88,36 @@ class TestSessionHygieneThresholds:
     Thresholds are derived from model context length × compression threshold,
     matching what the agent's ContextCompressor uses.
     """
+
+    @staticmethod
+    def _hybrid_threshold(context_length, threshold_pct=0.15, absolute=None, safety=0.70):
+        if absolute and absolute > 0:
+            return max(min(int(absolute), int(context_length * safety)), MINIMUM_CONTEXT_LENGTH)
+        return int(context_length * threshold_pct)
+
+    def test_absolute_threshold_prevents_premature_minimax_hygiene(self):
+        context_length = 256_000
+        approx_tokens = 50_560
+        percentage_threshold = int(context_length * 0.15)
+        hybrid_threshold = self._hybrid_threshold(
+            context_length,
+            threshold_pct=0.15,
+            absolute=150_000,
+            safety=0.70,
+        )
+
+        assert approx_tokens >= percentage_threshold
+        assert hybrid_threshold == 150_000
+        assert approx_tokens < hybrid_threshold
+
+    def test_absolute_threshold_caps_small_gateway_context_by_safety_fraction(self):
+        threshold = self._hybrid_threshold(
+            128_000,
+            threshold_pct=0.15,
+            absolute=150_000,
+            safety=0.70,
+        )
+        assert threshold == 89_600
 
     def test_small_session_below_thresholds(self):
         """A 10-message session should not trigger compression."""
