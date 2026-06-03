@@ -104,4 +104,30 @@ mod tests {
         assert_eq!(v["status"], "PASS");
         assert_eq!(v["total_penalty"], 0.0);
     }
+
+    #[test]
+    fn evaluate_score_is_bounded_for_malformed_and_extreme_inputs() {
+        let corpus = [
+            "",
+            "null",
+            "[]",
+            r#"{"hallucination":-999.0}"#,
+            r#"{"hallucination":999.0,"security":999.0,"unverified_completion":999.0,"missing_evidence":999.0,"cost_or_latency":999.0,"governance_debt":999.0}"#,
+            r#"{"hallucination":"high","security":true,"missing_evidence":{}}"#,
+        ];
+        for sample in corpus {
+            let out = evaluate(sample).expect("ecc json");
+            let v: Value = serde_json::from_str(&out).expect("valid json");
+            let score = v["score"].as_f64().expect("numeric score");
+            let penalty = v["total_penalty"].as_f64().expect("numeric penalty");
+            assert!(
+                (0.0..=100.0).contains(&score),
+                "score out of range for {sample}"
+            );
+            assert!(
+                (0.0..=100.0).contains(&penalty),
+                "penalty out of range for {sample}"
+            );
+        }
+    }
 }

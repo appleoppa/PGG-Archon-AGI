@@ -65,4 +65,14 @@ mod tests {
         assert_eq!(v["status"], "WATCH");
         assert_eq!(v["failed_count"], 2);
     }
+
+    #[test]
+    fn summarize_saturates_failed_count_when_ok_exceeds_checked() {
+        let out = summarize(99, 4).expect("summary json");
+        let v: Value = serde_json::from_str(&out).expect("valid json");
+        assert_eq!(v["status"], "PASS");
+        assert_eq!(v["failed_count"], 0);
+        assert_eq!(v["ok_count"], 99);
+        assert_eq!(v["checked_count"], 4);
+    }
 }

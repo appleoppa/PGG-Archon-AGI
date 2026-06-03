@@ -81,4 +81,18 @@ mod tests {
         assert_eq!(v["item_count"], 0);
         assert_eq!(v["status"], "WATCH");
     }
+
+    #[test]
+    fn summarize_inventory_handles_missing_or_weird_summary_shapes() {
+        for sample in [
+            "{}",
+            r#"{"summary":null}"#,
+            r#"{"summary":{"items":"many","dirs":true}}"#,
+        ] {
+            let out = summarize_inventory(sample).expect("overlay json");
+            let v: Value = serde_json::from_str(&out).expect("valid json");
+            assert_eq!(v["schema"], "HermesPGGOverlayRust/v1");
+            assert_eq!(v["status"], "WATCH");
+        }
+    }
 }
