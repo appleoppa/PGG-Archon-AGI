@@ -61,6 +61,7 @@ fn hermes_pgg_overlay(_py: Python, m: &PyModule) -> PyResult<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use proptest::prelude::*;
     use serde_json::Value;
 
     #[test]
@@ -93,6 +94,29 @@ mod tests {
             let v: Value = serde_json::from_str(&out).expect("valid json");
             assert_eq!(v["schema"], "HermesPGGOverlayRust/v1");
             assert_eq!(v["status"], "WATCH");
+        }
+    }
+
+    proptest! {
+        #[test]
+        fn summarize_inventory_property_counts_are_extracted_or_zero(
+            items in 0u64..10_000,
+            importable_files in 0u64..10_000,
+            dirs in 0u64..10_000,
+        ) {
+            let input = serde_json::json!({
+                "summary": {
+                    "items": items,
+                    "importable_files": importable_files,
+                    "dirs": dirs,
+                }
+            }).to_string();
+            let out = summarize_inventory(&input).expect("overlay json");
+            let v: Value = serde_json::from_str(&out).expect("valid json");
+            prop_assert_eq!(v["item_count"].as_u64(), Some(items));
+            prop_assert_eq!(v["importable_files"].as_u64(), Some(importable_files));
+            prop_assert_eq!(v["dirs"].as_u64(), Some(dirs));
+            prop_assert_eq!(v["status"].as_str(), Some("WATCH"));
         }
     }
 }

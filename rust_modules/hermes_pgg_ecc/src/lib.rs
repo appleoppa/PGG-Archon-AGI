@@ -77,6 +77,7 @@ fn hermes_pgg_ecc(_py: Python, m: &PyModule) -> PyResult<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use proptest::prelude::*;
     use serde_json::Value;
 
     #[test]
@@ -128,6 +129,34 @@ mod tests {
                 (0.0..=100.0).contains(&penalty),
                 "penalty out of range for {sample}"
             );
+        }
+    }
+
+    proptest! {
+        #[test]
+        fn evaluate_property_score_and_penalty_are_bounded(
+            hallucination in -10.0f64..10.0,
+            security in -10.0f64..10.0,
+            unverified_completion in -10.0f64..10.0,
+            missing_evidence in -10.0f64..10.0,
+            cost_or_latency in -10.0f64..10.0,
+            governance_debt in -10.0f64..10.0,
+        ) {
+            let input = serde_json::json!({
+                "hallucination": hallucination,
+                "security": security,
+                "unverified_completion": unverified_completion,
+                "missing_evidence": missing_evidence,
+                "cost_or_latency": cost_or_latency,
+                "governance_debt": governance_debt,
+            }).to_string();
+            let out = evaluate(&input).expect("ecc json");
+            let v: Value = serde_json::from_str(&out).expect("valid json");
+            let score = v["score"].as_f64().expect("numeric score");
+            let penalty = v["total_penalty"].as_f64().expect("numeric penalty");
+            prop_assert!((0.0..=100.0).contains(&score));
+            prop_assert!((0.0..=100.0).contains(&penalty));
+            prop_assert!(["PASS", "WATCH", "BLOCKED"].contains(&v["status"].as_str().unwrap_or("")));
         }
     }
 }

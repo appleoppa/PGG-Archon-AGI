@@ -46,6 +46,7 @@ fn hermes_pgg_status(_py: Python, m: &PyModule) -> PyResult<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use proptest::prelude::*;
     use serde_json::Value;
 
     #[test]
@@ -74,5 +75,23 @@ mod tests {
         assert_eq!(v["failed_count"], 0);
         assert_eq!(v["ok_count"], 99);
         assert_eq!(v["checked_count"], 4);
+    }
+
+    proptest! {
+        #[test]
+        fn summarize_property_failed_count_is_saturating(
+            ok_count in 0usize..10_000,
+            checked_count in 0usize..10_000,
+        ) {
+            let out = summarize(ok_count, checked_count).expect("summary json");
+            let v: Value = serde_json::from_str(&out).expect("valid json");
+            let failed_count = v["failed_count"].as_u64().expect("failed_count") as usize;
+            prop_assert_eq!(failed_count, checked_count.saturating_sub(ok_count));
+            if checked_count > 0 && failed_count == 0 {
+                prop_assert_eq!(v["status"].as_str(), Some("PASS"));
+            } else {
+                prop_assert_eq!(v["status"].as_str(), Some("WATCH"));
+            }
+        }
     }
 }
