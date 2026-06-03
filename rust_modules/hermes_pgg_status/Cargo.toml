@@ -1,0 +1,13 @@
+[package]
+name = "hermes-pgg-status"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "hermes_pgg_status"
+crate-type = ["cdylib"]
+
+[dependencies]
+pyo3 = { version = "0.20", features = ["extension-module", "abi3-py311"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
