@@ -48,10 +48,13 @@ PATCHES: list[tuple[str, str, str, str | None]] = [
     ("16.5", "ACTIVE", "evomap_toolchain_v1", "Evolution core driver evomap-toolchain super-evolution 16.5; 4/4 surface gates resolved"),
     ("17", "ACTIVE", "fusion_v1", "Fusion super-evolution 17; 4/4 surface gates resolved (deepseek-reasonix + apex-skill)"),
     ("18", "ACTIVE", "cmmi_industrial_v1", "CMMI industrial standard super-evolution 18; 4/4 surface gates resolved (managed/defined/quantitatively_managed)"),
+    ("19", "ACTIVE", "link_integration_v1", "Link integration 33-card-19; 4/4 surface gates resolved"),
+    ("20", "ACTIVE", "background_baseline_v1", "Background forced grounding baseline 33-card-20; 4/4 surface gates resolved"),
     ("21", "ACTIVE", "core_cognition_v1", "Core cognition prompt enforcement super-evolution 21; 4/4 surface gates resolved"),
     ("22", "PARTIAL", "background_grounding_v1", "Background forced grounding super-evolution 22; 3/4 surface gates resolved (background manifest missing)"),
     ("22-doc", "ACTIVE", "apex_doc_standard_v1", "APEX doc standard super-evolution 22-doc; 4/4 surface gates resolved (92 pgg_archon modules)"),
     ("25", "ACTIVE", "multi_llm_constraint_v1", "Multi-LLM mutual constraint super-evolution 25; 4/4 surface gates resolved"),
+    ("26", "ACTIVE", "legal_agi_direction_v1", "Top legal AGI evolution direction 33-card-26; 4/4 surface gates resolved"),
     ("27", "ACTIVE", "closed_loop_formula_v1", "Closed loop formula super-evolution 27; 4/4 surface gates resolved"),
     ("28", "ACTIVE", "top_legal_agi_v1", "Top legal AGI super-evolution 28; 4/4 surface gates resolved"),
 ]
