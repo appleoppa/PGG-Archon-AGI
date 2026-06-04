@@ -53,7 +53,7 @@ def probe_evomaster() -> EvoMasterProbe:
     evo_state = Path.home() / ".hermes" / "data" / "evomaster_state.jsonl"
     audit = Path.home() / ".hermes" / "data" / "pgg_archon_audit.jsonl"
     deps = {
-        "module_evomaster": _probe_module("agent.pgg_archon_evomaster"),
+        "module_evomaster": _probe_module("agent.pgg_archon_evomaster_core"),
         "evomaster_state_present": "present" if evo_state.exists() else "missing",
         "env_PGG_ARCHON_EVOMASTER_VERSION": _probe_env("PGG_ARCHON_EVOMASTER_VERSION"),
         "audit_trail_present": "present" if audit.exists() else "missing",
