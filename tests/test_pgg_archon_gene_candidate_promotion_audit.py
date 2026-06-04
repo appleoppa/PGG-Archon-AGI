@@ -56,6 +56,19 @@ def test_all_candidate_audit_classifies_ready_duplicate_low_score_and_core_takeo
     assert "candidate_contains_unresolved_safety_hold" in by_id[5]["blockers"]
 
 
+def test_human_authorization_unblocks_core_takeover_auth_only(tmp_path: Path) -> None:
+    result = evaluate_all_gene_candidates_promotion_gate(
+        db_path=_db(tmp_path),
+        llm_quorum_path=_quorum(tmp_path),
+        human_authorization_token="appleoppa-authorized-gene112-20260604",
+    )
+    by_id = {row["gene_id"]: row for row in result.candidate_reviews}
+    assert result.human_authorization_token_present is True
+    assert "core_takeover_requires_explicit_human_authorization" not in by_id[5]["blockers"]
+    assert "candidate_contains_unresolved_safety_hold" in by_id[5]["blockers"]
+    assert by_id[5]["decision"] == "BLOCKED"
+
+
 def test_main_all_candidates_writes_result(tmp_path: Path, capsys) -> None:
     assert main([
         "--db", str(_db(tmp_path)),

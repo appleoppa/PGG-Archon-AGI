@@ -126,6 +126,7 @@ class GenePromotionCandidateAuditResult:
     candidate_count: int
     review_ready_count: int
     llm_quorum_status: str
+    human_authorization_token_present: bool
     required_checks: dict[str, bool]
     candidate_reviews: list[dict[str, Any]]
     blockers: list[str]
@@ -170,6 +171,7 @@ def evaluate_all_gene_candidates_promotion_gate(
     db_path: str | Path,
     llm_quorum_path: str | Path | None = None,
     quality_threshold: float = 0.80,
+    human_authorization_token: str | None = None,
 ) -> GenePromotionCandidateAuditResult:
     """Review every GeneDB lifecycle candidate without mutating GeneDB.
 
@@ -199,6 +201,7 @@ def evaluate_all_gene_candidates_promotion_gate(
     llm = _load_llm_quorum_summary(llm_quorum_path)
     llm_status = str(llm.get("status") or "UNKNOWN")
     llm_passed = llm_status in {"PASS_QUORUM", "PROCEED_PROMOTION_TRANSACTION"}
+    human_authorized = bool(human_authorization_token and human_authorization_token.strip())
 
     reviews: list[GeneCandidateReview] = []
     for row in rows:
@@ -215,7 +218,10 @@ def evaluate_all_gene_candidates_promotion_gate(
         duplicate_size = duplicate_keys.get(row_keys[gene_id], 1)
         if duplicate_size > 1:
             blockers.append("duplicate_candidate_group")
-        blockers.extend(_text_risk_blockers(row["name"], row["pattern_type"], row["code_snippet"]))
+        risk_blockers = _text_risk_blockers(row["name"], row["pattern_type"], row["code_snippet"])
+        if human_authorized:
+            risk_blockers = [b for b in risk_blockers if b != "core_takeover_requires_explicit_human_authorization"]
+        blockers.extend(risk_blockers)
         if not llm_passed:
             blockers.append("llm_quorum_not_passed")
         decision = "PROMOTION_REVIEW_READY" if not blockers else "BLOCKED"
@@ -248,6 +254,7 @@ def evaluate_all_gene_candidates_promotion_gate(
         candidate_count=len(rows),
         review_ready_count=ready_count,
         llm_quorum_status=llm_status,
+        human_authorization_token_present=human_authorized,
         required_checks=checks,
         candidate_reviews=[item.to_json_dict() for item in reviews],
         blockers=blockers,
@@ -262,6 +269,7 @@ def write_all_gene_candidates_promotion_gate_result(
     output_dir: str | Path,
     llm_quorum_path: str | Path | None = None,
     quality_threshold: float = 0.80,
+    human_authorization_token: str | None = None,
 ) -> dict[str, Any]:
     out = Path(output_dir).expanduser()
     out.mkdir(parents=True, exist_ok=True)
@@ -269,6 +277,7 @@ def write_all_gene_candidates_promotion_gate_result(
         db_path=db_path,
         llm_quorum_path=llm_quorum_path,
         quality_threshold=quality_threshold,
+        human_authorization_token=human_authorization_token,
     )
     path = out / "gene_candidate_promotion_audit_result.json"
     path.write_text(json.dumps(result.to_json_dict(), ensure_ascii=False, indent=2), encoding="utf-8")
@@ -320,6 +329,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--all-candidates", action="store_true")
     parser.add_argument("--llm-quorum")
     parser.add_argument("--quality-threshold", type=float, default=0.80)
+    parser.add_argument("--human-authorization-token")
     args = parser.parse_args(list(argv) if argv is not None else None)
     if args.all_candidates:
         result = write_all_gene_candidates_promotion_gate_result(
@@ -327,6 +337,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             output_dir=args.output_dir,
             llm_quorum_path=args.llm_quorum,
             quality_threshold=args.quality_threshold,
+            human_authorization_token=args.human_authorization_token,
         )
     else:
         if args.gene_id is None:
