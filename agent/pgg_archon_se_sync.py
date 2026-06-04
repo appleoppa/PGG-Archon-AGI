@@ -25,18 +25,24 @@ _SOURCE = _HOME / ".hermes" / "workspace" / "audit" / "super_evolution_cards_202
 
 # (file_id, status, mapped_skill, key_thesis_override)
 PATCHES: list[tuple[str, str, str, str | None]] = [
-    ("0.5", "PARTIAL", "apex_master_formula_v1", "APEX master formula super-evolution 0.5; 3/4 surface gates resolved (state card log missing)"),
+    ("0.5", "ACTIVE", "apex_master_formula_v1", "APEX master formula super-evolution 0.5; 4/4 surface gates resolved"),
     ("1", "PARTIAL", "quantum_channel_router_v1", "Quantum channel router super-evolution 1; 2/4 surface gates resolved (cache empty, health log missing)"),
-    ("4", "PARTIAL", "context_learning_new_framework_v1", "Context learning new framework; 3/4 surface gates resolved (memory_file_count=0)"),
-    ("5", "PARTIAL", "memory_system_v1", "Memory system; 2/4 surface gates resolved (memory.db missing, retrieval module missing)"),
+    ("2", "PARTIAL", "llm_coordination_v1", "LLM coordination super-evolution 2; 3/4 surface gates resolved (coordination log missing)"),
+    ("2.5", "PARTIAL", "multi_agent_collaboration_v1", "Multi-agent collaboration super-evolution 2.5; 2/4 surface gates resolved (log + orchestrator modules missing)"),
+    ("3", "PARTIAL", "deep_self_evolution_v1", "Deep self-evolution super-evolution 3; 3/4 surface gates resolved (deep log missing)"),
+    ("4", "ACTIVE", "context_learning_new_framework_v1", "Context learning new framework; 4/4 surface gates resolved"),
+    ("5", "ACTIVE", "memory_system_v1", "Memory system; 4/4 surface gates resolved"),
     ("5.5", "ACTIVE", "full_toolcall_integration_v1", "Full toolcall integration; 4/4 surface gates resolved"),
     ("6", "ACTIVE", "token_hygiene_v1", "Token hygiene super-evolution 6; 4/4 surface gates resolved"),
-    ("9", "PARTIAL", "evomaster_v1", "EvoMaster native evolution core super-evolution 9; 2/4 surface gates resolved (state log missing, audit trail missing)"),
+    ("7", "PARTIAL", "research_engine_v1", "Research unified engine super-evolution 7; 2/4 surface gates resolved (research log + arxiv missing)"),
+    ("9", "ACTIVE", "evomaster_v1", "EvoMaster native evolution core super-evolution 9; 4/4 surface gates resolved"),
+    ("10", "PARTIAL", "super_routing_v1", "Super routing super-evolution 10; 3/4 surface gates resolved (routing log missing)"),
     ("11", "ACTIVE", "tiangong_four_core_v1", "Tiangong 4-core: 3/4 ACTIVE in env default (evolver / openhands / superpowers); autoresearch PARTIAL (ARXIV key missing)"),
     ("13", "ACTIVE", "apex_skill_v0.1.1", "APEX-SKILL v0.1.1 release layer; 4/4 surface gates resolved (61 modules, 112 skills)"),
-    ("16.5", "PARTIAL", "evomap_toolchain_v1", "Evolution core driver evomap-toolchain super-evolution 16.5; 3/4 surface gates resolved (toolchain log missing)"),
-    ("21", "PARTIAL", "core_cognition_v1", "Core cognition prompt enforcement super-evolution 21; 3/4 surface gates resolved (log missing)"),
-    ("27", "PARTIAL", "closed_loop_formula_v1", "Closed loop formula super-evolution 27; 3/4 surface gates resolved (audit log missing)"),
+    ("16.5", "ACTIVE", "evomap_toolchain_v1", "Evolution core driver evomap-toolchain super-evolution 16.5; 4/4 surface gates resolved"),
+    ("21", "ACTIVE", "core_cognition_v1", "Core cognition prompt enforcement super-evolution 21; 4/4 surface gates resolved"),
+    ("22", "PARTIAL", "background_grounding_v1", "Background forced grounding super-evolution 22; 3/4 surface gates resolved (background manifest missing)"),
+    ("27", "ACTIVE", "closed_loop_formula_v1", "Closed loop formula super-evolution 27; 4/4 surface gates resolved"),
 ]
 
 
