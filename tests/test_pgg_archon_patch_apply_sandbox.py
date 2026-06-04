@@ -19,6 +19,11 @@ def _repo(tmp_path: Path) -> Path:
     _run(["git", "config", "user.name", "Test"], root)
     (root / "agent").mkdir()
     (root / "tests").mkdir()
+    (root / "tests" / "fixtures").mkdir()
+    (root / "tests" / "fixtures" / "pgg_archon_regressions.jsonl").write_text(
+        json.dumps({"task_id": "regression-existing", "domain": "demo", "prompt": "old", "expected": "old"}) + "\n",
+        encoding="utf-8",
+    )
     (root / "agent" / "agi_task_benchmark.py").write_text("VALUE = 1\n", encoding="utf-8")
     (root / "agent" / "pgg_archon_regression_generator.py").write_text("VALUE = 1\n", encoding="utf-8")
     (root / "tests" / "test_agi_task_benchmark.py").write_text("def test_ok():\n    assert True\n", encoding="utf-8")
@@ -58,7 +63,13 @@ def test_write_patch_apply_sandbox_result_uses_temp_worktree(tmp_path: Path) -> 
     payload = json.loads(Path(result["result"]).read_text(encoding="utf-8"))
     assert payload["changed_files"] == ["tests/fixtures/pgg_archon_regressions.jsonl"]
     assert Path(payload["diff_path"]).read_text(encoding="utf-8").strip()
-    assert not (repo / "tests" / "fixtures" / "pgg_archon_regressions.jsonl").exists()
+    repo_fixture = repo / "tests" / "fixtures" / "pgg_archon_regressions.jsonl"
+    assert "regression-existing" in repo_fixture.read_text(encoding="utf-8")
+    assert "regression-demo" not in repo_fixture.read_text(encoding="utf-8")
+    worktree_fixture = Path(payload["worktree_path"]) / "tests" / "fixtures" / "pgg_archon_regressions.jsonl"
+    fixture_text = worktree_fixture.read_text(encoding="utf-8")
+    assert "regression-existing" in fixture_text
+    assert "regression-demo" in fixture_text
     _run(["git", "worktree", "remove", "--force", payload["worktree_path"]], repo)
 
 

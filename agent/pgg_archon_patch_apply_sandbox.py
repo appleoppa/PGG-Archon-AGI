@@ -80,10 +80,36 @@ def _remove_worktree(repo_root: Path, worktree_path: Path) -> dict[str, Any]:
 def _install_regression_fixture(worktree_path: Path, regression_tasks_jsonl: Path) -> list[str]:
     target = worktree_path / "tests" / "fixtures" / "pgg_archon_regressions.jsonl"
     target.parent.mkdir(parents=True, exist_ok=True)
-    content = regression_tasks_jsonl.read_text(encoding="utf-8")
-    target.write_text(content, encoding="utf-8")
-    # Intent-to-add makes the new file visible in `git diff` without staging
-    # content or committing anything in the sandbox worktree.
+    existing_by_task_id: dict[str, dict[str, Any]] = {}
+    existing_order: list[str] = []
+    if target.exists():
+        for line in target.read_text(encoding="utf-8").splitlines():
+            if not line.strip():
+                continue
+            item = json.loads(line)
+            task_id = str(item.get("task_id") or "")
+            if not task_id:
+                continue
+            if task_id not in existing_by_task_id:
+                existing_order.append(task_id)
+            existing_by_task_id[task_id] = item
+
+    for line in regression_tasks_jsonl.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        item = json.loads(line)
+        task_id = str(item.get("task_id") or "")
+        if not task_id:
+            raise ValueError("regression task missing task_id")
+        if task_id not in existing_by_task_id:
+            existing_order.append(task_id)
+        existing_by_task_id[task_id] = item
+
+    merged = "\n".join(json.dumps(existing_by_task_id[task_id], ensure_ascii=False) for task_id in existing_order) + "\n"
+    target.write_text(merged, encoding="utf-8")
+    # Intent-to-add makes a brand-new file visible in `git diff` without staging
+    # content or committing anything in the sandbox worktree. Existing tracked
+    # files simply remain modified in the worktree.
     _run(["git", "add", "-N", str(target.relative_to(worktree_path))], cwd=worktree_path, timeout=30)
     return [str(target.relative_to(worktree_path))]
 
