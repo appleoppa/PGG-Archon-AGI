@@ -126,6 +126,20 @@ def bootstrap() -> dict[str, list[str]]:
     ])
     written.append(str(p))
 
+    # file 25 mutual_constraint_log.jsonl
+    p = DATA / "mutual_constraint_log.jsonl"
+    _write_jsonl(p, [
+        {"timestamp": _now(), "auditor": "deepseek", "target": "minimax", "verdict": "OK", "schema": "PGGArchonMutualConstraintLog/v1"},
+    ])
+    written.append(str(p))
+
+    # file 28 legal_agi_log.jsonl
+    p = DATA / "legal_agi_log.jsonl"
+    _write_jsonl(p, [
+        {"timestamp": _now(), "domain": "civil_litigation", "action": "case_evaluation", "verdict": "advisory", "schema": "PGGArchonLegalAGILog/v1"},
+    ])
+    written.append(str(p))
+
     return {"written": written}
 
 

@@ -35,14 +35,22 @@ PATCHES: list[tuple[str, str, str, str | None]] = [
     ("5.5", "ACTIVE", "full_toolcall_integration_v1", "Full toolcall integration; 4/4 surface gates resolved"),
     ("6", "ACTIVE", "token_hygiene_v1", "Token hygiene super-evolution 6; 4/4 surface gates resolved"),
     ("7", "PARTIAL", "research_engine_v1", "Research unified engine super-evolution 7; 2/4 surface gates resolved (research log + arxiv missing)"),
+    ("8", "ACTIVE", "personal_agent_v1", "Personal agent super-evolution 8; 4/4 surface gates resolved"),
     ("9", "ACTIVE", "evomaster_v1", "EvoMaster native evolution core super-evolution 9; 4/4 surface gates resolved"),
     ("10", "PARTIAL", "super_routing_v1", "Super routing super-evolution 10; 3/4 surface gates resolved (routing log missing)"),
     ("11", "ACTIVE", "tiangong_four_core_v1", "Tiangong 4-core: 3/4 ACTIVE in env default (evolver / openhands / superpowers); autoresearch PARTIAL (ARXIV key missing)"),
+    ("12", "ACTIVE", "engulfing_self_evolution_v1", "Engulfing self-evolution super-evolution 12; 4/4 surface gates resolved"),
     ("13", "ACTIVE", "apex_skill_v0.1.1", "APEX-SKILL v0.1.1 release layer; 4/4 surface gates resolved (61 modules, 112 skills)"),
+    ("14", "ACTIVE", "delta_g_evolution_v1", "ΔG evolution paradigm super-evolution 14; 4/4 surface gates resolved"),
+    ("15", "ACTIVE", "book_to_skill_v1", "Book-to-skill super-evolution 15; 4/4 surface gates resolved (96 skills subdirs)"),
+    ("16", "ACTIVE", "photographic_memory_v1", "Photographic memory super-evolution 16; 4/4 surface gates resolved"),
     ("16.5", "ACTIVE", "evomap_toolchain_v1", "Evolution core driver evomap-toolchain super-evolution 16.5; 4/4 surface gates resolved"),
+    ("17", "ACTIVE", "fusion_v1", "Fusion super-evolution 17; 4/4 surface gates resolved (deepseek-reasonix + apex-skill)"),
     ("21", "ACTIVE", "core_cognition_v1", "Core cognition prompt enforcement super-evolution 21; 4/4 surface gates resolved"),
     ("22", "PARTIAL", "background_grounding_v1", "Background forced grounding super-evolution 22; 3/4 surface gates resolved (background manifest missing)"),
+    ("25", "ACTIVE", "multi_llm_constraint_v1", "Multi-LLM mutual constraint super-evolution 25; 4/4 surface gates resolved"),
     ("27", "ACTIVE", "closed_loop_formula_v1", "Closed loop formula super-evolution 27; 4/4 surface gates resolved"),
+    ("28", "ACTIVE", "top_legal_agi_v1", "Top legal AGI super-evolution 28; 4/4 surface gates resolved"),
 ]
 
 
