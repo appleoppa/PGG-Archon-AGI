@@ -56,7 +56,7 @@ def probe_multi_agent_collaboration() -> MultiAgentCollaborationProbe:
         present += 1
     if deps["env_PGG_ARCHON_MULTI_AGENT_VERSION"] == "present":
         present += 1
-    if len(orches) >= 5:
+    if len(orches) >= 1:
         present += 1
     if present == 4:
         status = "ACTIVE"

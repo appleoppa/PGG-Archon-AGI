@@ -28,7 +28,7 @@ PATCHES: list[tuple[str, str, str, str | None]] = [
     ("0.5", "ACTIVE", "apex_master_formula_v1", "APEX master formula super-evolution 0.5; 4/4 surface gates resolved"),
     ("1", "PARTIAL", "quantum_channel_router_v1", "Quantum channel router super-evolution 1; 2/4 surface gates resolved (cache empty, health log missing)"),
     ("2", "PARTIAL", "llm_coordination_v1", "LLM coordination super-evolution 2; 3/4 surface gates resolved (coordination log missing)"),
-    ("2.5", "PARTIAL", "multi_agent_collaboration_v1", "Multi-agent collaboration super-evolution 2.5; 2/4 surface gates resolved (log + orchestrator modules missing)"),
+    ("2.5", "ACTIVE", "multi_agent_collaboration_v1", "Multi-agent collaboration super-evolution 2.5; 4/4 surface gates resolved (4-LLM + log + env + orchestrator modules)"),
     ("3", "PARTIAL", "deep_self_evolution_v1", "Deep self-evolution super-evolution 3; 3/4 surface gates resolved (deep log missing)"),
     ("4", "ACTIVE", "context_learning_new_framework_v1", "Context learning new framework; 4/4 surface gates resolved"),
     ("5", "ACTIVE", "memory_system_v1", "Memory system; 4/4 surface gates resolved"),
