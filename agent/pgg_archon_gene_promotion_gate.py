@@ -46,6 +46,8 @@ def evaluate_gene_promotion_gate(
     db_path: str | Path,
     gene_id: int,
     claude_evidence_path: str | Path | None = None,
+    alternate_evidence_path: str | Path | None = None,
+    allow_alternate_when_claude_unavailable: bool = False,
     required_tests_passed: bool = False,
     manifest_updated: bool = False,
 ) -> GenePromotionGateResult:
@@ -69,14 +71,17 @@ def evaluate_gene_promotion_gate(
         )
     state, quality, promoted_at = row
     claude = _load_model_evidence(claude_evidence_path)
+    alternate = _load_model_evidence(alternate_evidence_path)
     claude_visible = claude.get("status") == "ok_visible" and int(claude.get("visible_output_chars") or 0) > 0
+    alternate_visible = alternate.get("status") == "ok_visible" and int(alternate.get("visible_output_chars") or 0) > 0
+    independent_visible_verification = claude_visible or (allow_alternate_when_claude_unavailable and alternate_visible)
     checks = {
         "candidate_state": state == "candidate",
         "not_already_promoted": promoted_at is None,
         "quality_score_min_0_80": quality is not None and float(quality) >= 0.80,
         "required_tests_passed": required_tests_passed,
         "manifest_updated": manifest_updated,
-        "claude_visible_verification": claude_visible,
+        "independent_visible_verification": independent_visible_verification,
     }
     blockers = [name for name, ok in checks.items() if not ok]
     status = "READY_FOR_PROMOTION_REVIEW" if not blockers else "BLOCKED_PROMOTION_REVIEW"
@@ -100,6 +105,8 @@ def write_gene_promotion_gate_result(
     gene_id: int,
     output_dir: str | Path,
     claude_evidence_path: str | Path | None = None,
+    alternate_evidence_path: str | Path | None = None,
+    allow_alternate_when_claude_unavailable: bool = False,
     required_tests_passed: bool = False,
     manifest_updated: bool = False,
 ) -> dict[str, Any]:
@@ -109,6 +116,8 @@ def write_gene_promotion_gate_result(
         db_path=db_path,
         gene_id=gene_id,
         claude_evidence_path=claude_evidence_path,
+        alternate_evidence_path=alternate_evidence_path,
+        allow_alternate_when_claude_unavailable=allow_alternate_when_claude_unavailable,
         required_tests_passed=required_tests_passed,
         manifest_updated=manifest_updated,
     )
@@ -123,6 +132,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--gene-id", type=int, required=True)
     parser.add_argument("--output-dir", required=True)
     parser.add_argument("--claude-evidence")
+    parser.add_argument("--alternate-evidence")
+    parser.add_argument("--allow-alternate-when-claude-unavailable", action="store_true")
     parser.add_argument("--tests-passed", action="store_true")
     parser.add_argument("--manifest-updated", action="store_true")
     args = parser.parse_args(list(argv) if argv is not None else None)
@@ -131,6 +142,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         gene_id=args.gene_id,
         output_dir=args.output_dir,
         claude_evidence_path=args.claude_evidence,
+        alternate_evidence_path=args.alternate_evidence,
+        allow_alternate_when_claude_unavailable=args.allow_alternate_when_claude_unavailable,
         required_tests_passed=args.tests_passed,
         manifest_updated=args.manifest_updated,
     )

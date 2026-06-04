@@ -28,7 +28,7 @@ def test_promotion_gate_blocks_when_claude_not_visible(tmp_path: Path) -> None:
     )
     data = result.to_json_dict()
     assert data["status"] == "BLOCKED_PROMOTION_REVIEW"
-    assert "claude_visible_verification" in data["blockers"]
+    assert "independent_visible_verification" in data["blockers"]
     assert data["lifecycle_state"] == "candidate"
 
 
@@ -44,6 +44,25 @@ def test_promotion_gate_ready_when_all_checks_pass(tmp_path: Path) -> None:
     )
     assert result.status == "READY_FOR_PROMOTION_REVIEW"
     assert result.blockers == []
+
+
+def test_promotion_gate_allows_alternate_visible_review_when_explicitly_enabled(tmp_path: Path) -> None:
+    claude = tmp_path / "claude.json"
+    alt = tmp_path / "minimax.json"
+    claude.write_text(json.dumps({"status": "http_error", "http_status": 403}), encoding="utf-8")
+    alt.write_text(json.dumps({"status": "ok_visible", "visible_output_chars": 5310}), encoding="utf-8")
+    result = evaluate_gene_promotion_gate(
+        db_path=_db(tmp_path),
+        gene_id=347,
+        claude_evidence_path=claude,
+        alternate_evidence_path=alt,
+        allow_alternate_when_claude_unavailable=True,
+        required_tests_passed=True,
+        manifest_updated=True,
+    )
+    assert result.status == "READY_FOR_PROMOTION_REVIEW"
+    assert result.blockers == []
+    assert "no promotion" in result.boundary.lower()
 
 
 def test_main_writes_gate_result(tmp_path: Path, capsys) -> None:
