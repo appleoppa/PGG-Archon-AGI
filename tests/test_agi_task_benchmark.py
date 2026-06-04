@@ -24,11 +24,16 @@ def test_score_prediction_exact_contains_and_json() -> None:
 
     contains = BenchmarkTask("t2", "boundary", "", "not full agi", scorer="contains_normalized")
     assert score_prediction(contains, "This system is not full AGI.").passed
+    assert score_prediction(
+        contains,
+        "<think>reasoning tokens</think>\nThis system is not full AGI.",
+    ).passed
 
     json_task = BenchmarkTask("t3", "json", "", '{"status":"ok"}', scorer="json_key_value")
     assert score_prediction(json_task, '{"status":"ok"}').passed
     assert score_prediction(json_task, '```json\n{"status": "ok"}\n```').passed
     assert score_prediction(json_task, 'Here is the JSON: {"status": "ok"}').passed
+    assert score_prediction(json_task, '<think>x</think>\n{"status":"ok"}').passed
     assert not score_prediction(json_task, "not-json").passed
 
 

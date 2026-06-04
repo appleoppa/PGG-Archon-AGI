@@ -134,7 +134,11 @@ def build_provider_health_gate_report(multi_provider_result: Mapping[str, Any]) 
     ordered = sorted(decisions, key=lambda d: (d.health == "HEALTHY", d.weighted_score, -d.transport_failures), reverse=True)
 
     primary = next((d.provider_id for d in ordered if d.health == "HEALTHY"), None)
-    fallbacks = [d.provider_id for d in ordered if d.health in {"DEGRADED_CAPABILITY", "UNSTABLE_TRANSPORT"}]
+    fallbacks = [
+        d.provider_id
+        for d in ordered
+        if d.provider_id != primary and d.health in {"HEALTHY", "DEGRADED_CAPABILITY", "UNSTABLE_TRANSPORT"}
+    ]
     blocked = [d.provider_id for d in ordered if d.health in {"DOWN", "LOW_SCORE"}]
 
     status = "PASS" if primary else "WATCH" if fallbacks else "BLOCKED"

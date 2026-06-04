@@ -63,15 +63,17 @@ def test_build_provider_health_gate_report_ranks_and_routes() -> None:
                 _provider_result("gpt", 0.0, 0, 3, transport_failures=3),
                 _provider_result("claude", 0.666667, 2, 3),
                 _provider_result("deepseek", 1.0, 3, 3),
+                _provider_result("minimax", 1.0, 3, 3),
             ]
         }
     )
     assert report.schema == "PGGArchonProviderHealthGate/v1"
     assert report.status == "PASS"
     assert report.primary_provider == "deepseek"
-    assert report.fallback_providers == ["claude"]
+    assert report.fallback_providers == ["minimax", "claude"]
     assert report.blocked_providers == ["gpt"]
     assert report.decisions[0]["provider_id"] == "deepseek"
+    assert report.decisions[1]["provider_id"] == "minimax"
 
 
 def test_write_and_load_provider_health_gate_report(tmp_path: Path) -> None:

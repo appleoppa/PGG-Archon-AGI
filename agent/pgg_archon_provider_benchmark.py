@@ -84,11 +84,12 @@ class MultiProviderBenchmarkResult:
 
 
 def default_pgg_model_providers() -> list[ModelProvider]:
-    """Return the configured GPT/Claude/DeepSeek provider descriptors."""
+    """Return the configured GPT/Claude/DeepSeek/MiniMax provider descriptors."""
     return [
         ModelProvider("gpt55_5yuantoken", "gpt-5.5", "responses", "https://chuangagent.eu.cc/v1/responses", "GPT55_5YUANTOKEN_API_KEY"),
         ModelProvider("claude_opus46_5yuantoken", "claude-opus-4-6", "responses", "https://chuangagent.eu.cc/v1/responses", "CLAUDE_OPUS47_5YUANTOKEN_API_KEY"),
         ModelProvider("deepseek_v4_flash", "deepseek-v4-flash", "chat_completions", "https://api.deepseek.com/chat/completions", "DEEPSEEK_V4_FLASH_API_KEY"),
+        ModelProvider("minimax_m3", "MiniMax-M3", "chat_completions", "https://api.minimax.chat/v1", "MINIMAX_API_KEY", max_tokens=512),
     ]
 
 
@@ -141,11 +142,15 @@ def call_provider_outcome(provider: ModelProvider, task: BenchmarkTask, *, timeo
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
     prompt = _provider_prompt(task)
     if provider.api_mode == "responses":
+        request_url = provider.url
         attempts: list[dict[str, Any]] = [
             {"model": provider.model, "input": prompt, "max_completion_tokens": provider.max_tokens},
             {"model": provider.model, "input": prompt, "max_tokens": provider.max_tokens},
         ]
     elif provider.api_mode == "chat_completions":
+        request_url = provider.url.rstrip("/")
+        if not request_url.endswith("/chat/completions"):
+            request_url = request_url + "/chat/completions"
         payload: dict[str, Any] = {
             "model": provider.model,
             "messages": [{"role": "user", "content": prompt}],
@@ -163,7 +168,7 @@ def call_provider_outcome(provider: ModelProvider, task: BenchmarkTask, *, timeo
     last_error: str | None = None
     for attempt_index, payload in enumerate(attempts, start=1):
         try:
-            response = requests.post(provider.url, headers=headers, json=payload, timeout=timeout)
+            response = requests.post(request_url, headers=headers, json=payload, timeout=timeout)
             last_status = response.status_code
             last_preview = response.text[:1000]
             if response.status_code >= 400:

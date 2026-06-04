@@ -61,8 +61,13 @@ class BenchmarkRun:
         return data
 
 
+def _strip_think_blocks(text: str) -> str:
+    """Remove model reasoning wrappers from text used for deterministic scoring."""
+    return re.sub(r"<think>.*?</think>", "", str(text), flags=re.IGNORECASE | re.DOTALL).strip()
+
+
 def _normalize(text: Any) -> str:
-    return " ".join(str(text).strip().lower().split())
+    return " ".join(_strip_think_blocks(str(text)).strip().lower().split())
 
 
 def _extract_json_candidate(text: Any) -> str:
@@ -72,7 +77,7 @@ def _extract_json_candidate(text: Any) -> str:
     Markdown fences such as ```json ... ``` that models often emit despite
     concise prompts.
     """
-    raw = str(text).strip()
+    raw = _strip_think_blocks(str(text)).strip()
     fenced = re.search(r"```(?:json)?\s*(.*?)\s*```", raw, flags=re.IGNORECASE | re.DOTALL)
     if fenced:
         return fenced.group(1).strip()

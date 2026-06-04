@@ -7,6 +7,8 @@ from agent.agi_task_benchmark import BenchmarkTask, sample_tasks
 from agent.pgg_archon_provider_benchmark import (
     ModelProvider,
     _extract_responses_text,
+    call_provider_outcome,
+    default_pgg_model_providers,
     run_multi_provider_benchmark,
     run_provider_benchmark,
     write_multi_provider_result,
@@ -32,6 +34,45 @@ def test_extract_responses_text_handles_output_items() -> None:
     }
     assert _extract_responses_text(data) == "hello"
     assert _extract_responses_text({"output_text": "fallback"}) == "fallback"
+
+
+def test_default_pgg_model_providers_include_minimax_m3() -> None:
+    providers = {provider.provider_id: provider for provider in default_pgg_model_providers()}
+    assert "minimax_m3" in providers
+    assert providers["minimax_m3"].model == "MiniMax-M3"
+    assert providers["minimax_m3"].api_mode == "chat_completions"
+    assert providers["minimax_m3"].api_key_env == "MINIMAX_API_KEY"
+
+
+def test_chat_completions_base_url_is_completed(monkeypatch) -> None:
+    captured = {}
+
+    class FakeResponse:
+        status_code = 200
+        text = '{"choices":[{"message":{"content":"42"},"finish_reason":"stop"}],"usage":{"total_tokens":1}}'
+
+        def json(self):
+            return json.loads(self.text)
+
+    def fake_post(url, headers, json, timeout):  # noqa: A002 - fake requests.post signature
+        captured["url"] = url
+        captured["payload"] = json
+        return FakeResponse()
+
+    monkeypatch.setenv("MINIMAX_API_KEY", "test-key")
+    monkeypatch.setattr("agent.pgg_archon_provider_benchmark.requests.post", fake_post)
+    provider = ModelProvider(
+        "minimax_m3",
+        "MiniMax-M3",
+        "chat_completions",
+        "https://api.minimax.chat/v1",
+        "MINIMAX_API_KEY",
+    )
+    outcome = call_provider_outcome(provider, BenchmarkTask("math-add-001", "math", "Compute 19+23", "42"))
+    assert outcome.ok
+    assert outcome.prediction == "42"
+    assert captured["url"] == "https://api.minimax.chat/v1/chat/completions"
+    assert captured["payload"]["model"] == "MiniMax-M3"
 
 
 def test_run_provider_benchmark_uses_injected_provider_call(tmp_path: Path) -> None:
