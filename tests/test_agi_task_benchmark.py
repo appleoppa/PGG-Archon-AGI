@@ -109,6 +109,15 @@ def test_load_tasks_jsonl(tmp_path: Path) -> None:
     assert tasks[0].tags == ("smoke",)
 
 
+def test_checked_in_pgg_regression_fixtures_are_loadable() -> None:
+    path = Path(__file__).parent / "fixtures" / "pgg_archon_regressions.jsonl"
+    tasks = load_tasks_jsonl(path)
+    assert tasks
+    task = next(item for item in tasks if item.task_id.startswith("regression-apply-chain-legal-boundary"))
+    assert not score_prediction(task, "This is a full AGI system.").passed
+    assert score_prediction(task, "This system is not full AGI.").passed
+
+
 def test_invalid_inputs_are_rejected() -> None:
     with pytest.raises(ValueError):
         evaluate_predictions([], {})
