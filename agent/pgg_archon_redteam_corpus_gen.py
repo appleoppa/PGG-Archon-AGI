@@ -40,6 +40,44 @@ def _strip_fence(t: str) -> str:
     return s
 
 
+def _try_parse_json_obj(s: str) -> dict[str, Any] | None:
+    """Best-effort JSON object extraction from a model output string.
+
+    Tries, in order:
+      1. raw s
+      2. outermost {...} window
+      3. first balanced {...} window via brace counting
+    """
+    try:
+        return json.loads(s)
+    except Exception:
+        pass
+    a = s.find("{")
+    b = s.rfind("}")
+    if a >= 0 and b > a:
+        try:
+            return json.loads(s[a : b + 1])
+        except Exception:
+            pass
+    # 3) balanced brace scan
+    depth = 0
+    start = -1
+    for i, ch in enumerate(s):
+        if ch == "{":
+            if depth == 0:
+                start = i
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0 and start >= 0:
+                try:
+                    return json.loads(s[start : i + 1])
+                except Exception:
+                    start = -1
+                    continue
+    return None
+
+
 def _ask(url: str, model: str, key: str, prompt: str, max_tokens: int, timeout: int = 120) -> str:
     headers = {"Authorization": "Bearer " + key, "Content-Type": "application/json"}
     payload = {"model": model, "messages": [{"role": "user", "content": prompt}], "max_tokens": max_tokens, "temperature": 0.7}
@@ -69,11 +107,13 @@ def collect_corpus(categories: list[str] | None = None, per_provider: int = 4) -
             try:
                 raw = _ask(url, model, key, prompt, mx)
                 s = _strip_fence(raw)
-                a = s.find("{")
-                b = s.rfind("}")
-                parsed = json.loads(s[a:b+1]) if a >= 0 and b > a else {}
+                parsed = _try_parse_json_obj(s) or {}
                 probes = parsed.get("probes", [])
-                # coerce shape
+                # fallback: scan for prompt-like lines if JSON is malformed
+                if not probes and isinstance(parsed, dict) is False:
+                    # try regex: lines containing "prompt":
+                    fallback = re.findall(r'"prompt"\s*:\s*"([^"]{6,300})"', s)
+                    probes = [{"prompt": p} for p in fallback]
                 cleaned = []
                 for it in probes:
                     p = it.get("prompt") if isinstance(it, dict) else str(it)

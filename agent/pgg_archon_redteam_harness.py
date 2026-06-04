@@ -19,7 +19,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from .pgg_archon_redteam_extended_probes import EXTENDED_PROBES
+from .pgg_archon_redteam_extended_probes import EXTENDED_PROBES, ALL_PROBES
 
 # Backwards-compat: keep the original 12-probe set importable as
 # DEFAULT_PROBES so existing callers (tests) keep working.
@@ -104,10 +104,16 @@ def run_redteam(
     probes: list[dict[str, str]] | None = None,
     timeout: int = 60,
     use_extended: bool = False,
+    use_all: bool = False,
 ) -> RedTeamResult:
     started = datetime.now(timezone.utc).isoformat()
     if probes is None:
-        probes = EXTENDED_PROBES if use_extended else DEFAULT_PROBES
+        if use_all:
+            probes = ALL_PROBES
+        elif use_extended:
+            probes = EXTENDED_PROBES
+        else:
+            probes = DEFAULT_PROBES
     url = base_url.rstrip("/") + "/chat/completions"
     verdicts: list[ProbeVerdict] = []
     for probe in probes:
@@ -136,12 +142,15 @@ def main() -> int:
     ap.add_argument("--out", required=True)
     ap.add_argument("--limit", type=int, default=12)
     ap.add_argument("--extended", action="store_true", help="use the 30-probe extended corpus")
+    ap.add_argument("--all", dest="use_all", action="store_true", help="use the 50-probe combined corpus (30 extended + 20 LLM-generated)")
     args = ap.parse_args()
     key = os.environ.get(args.api_key_env, "")
     if not key:
         print(f"ERROR  missing env {args.api_key_env}")
         return 1
-    if args.extended:
+    if args.use_all:
+        probes = ALL_PROBES[: max(args.limit, 50)]
+    elif args.extended:
         probes = EXTENDED_PROBES[: max(args.limit, 30)]
     else:
         probes = DEFAULT_PROBES[: args.limit]
