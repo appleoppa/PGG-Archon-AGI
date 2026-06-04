@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import re
 import requests
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any
 from datetime import datetime, timezone
@@ -64,6 +65,14 @@ _PROVIDERS = [
 ]
 
 
+def _read_env(env: str) -> str:
+    p = Path.home() / ".hermes/.env"
+    for line in p.read_text(errors="replace").splitlines():
+        if line.startswith(env + "="):
+            return line.split("=", 1)[1].strip().strip('"').strip("'")
+    return ""
+
+
 def _ask(prompt: str, url: str, key: str, model: str, mx: int) -> str:
     h = {"Authorization": "Bearer " + key, "Content-Type": "application/json"}
     pl = {"model": model, "messages": [{"role": "user", "content": prompt}], "max_tokens": mx, "temperature": 0}
@@ -73,12 +82,39 @@ def _ask(prompt: str, url: str, key: str, model: str, mx: int) -> str:
     return str((j.get("choices") or [{}])[0].get("message", {}).get("content") or "")
 
 
+def _ask_one_provider(args) -> tuple[str, dict[str, Any]]:
+    label, model, url, env, mode, mx, prompt = args
+    key = _read_env(env)
+    if not key:
+        return label, {"status": "missing_api_key"}
+    try:
+        txt = _ask(prompt, url, key, model, mx)
+        parsed = _try_parse_json_obj(txt) or {}
+        if not _has_required(parsed):
+            return label, {"status": "parse_failed", "visible_chars": len(txt), "preview": txt[:300]}
+        return label, {"status": "ok", "card": parsed, "visible_chars": len(txt)}
+    except Exception as e:
+        return label, {"status": "error", "error": repr(e)[:200]}
+
+
+def _vote_status(per_prov: dict[str, Any]) -> str:
+    """Aggregate provider status views: majority vote among ok cards."""
+    from collections import Counter
+    votes = [str(rec.get("card", {}).get("status", "")).upper() for rec in per_prov.values() if rec.get("status") == "ok"]
+    if not votes:
+        return "ABSENT"
+    c = Counter(votes)
+    top, count = c.most_common(1)[0]
+    return top if count >= 2 else votes[0]
+
+
 def collect_card(
     file_path: Path,
     file_id: str,
     title: str,
     known_key_thesis: str,
     providers: list[tuple[str, str, str, str, str, int]] | None = None,
+    parallel: bool = True,
 ) -> dict[str, Any]:
     provs = providers or _PROVIDERS
     prompt = (
@@ -88,34 +124,25 @@ def collect_card(
         "status 取值: ABSENT | SKELETON | PARTIAL | ACTIVE\n"
         f"file_id: {file_id}\ntitle: {title}\nknown_key_thesis: {known_key_thesis}\n"
     )
+    args_list = [(label, model, url, env, mode, mx, prompt) for (label, model, url, env, mode, mx) in provs]
     per_prov: dict[str, Any] = {}
-    seen_status: list[str] = []
-    for label, model, url, env, mode, mx in provs:
-        key = (Path.home() / ".hermes/.env").read_text(errors="replace")
-        v = ""
-        for line in key.splitlines():
-            if line.startswith(env + "="):
-                v = line.split("=", 1)[1].strip().strip('"').strip("'")
-                break
-        if not v:
-            per_prov[label] = {"status": "missing_api_key"}
-            continue
-        try:
-            txt = _ask(prompt, url, v, model, mx)
-            parsed = _try_parse_json_obj(txt) or {}
-            if not _has_required(parsed):
-                per_prov[label] = {"status": "parse_failed", "visible_chars": len(txt), "preview": txt[:300]}
-                continue
-            per_prov[label] = {"status": "ok", "card": parsed, "visible_chars": len(txt)}
-            seen_status.append(str(parsed.get("status") or "?"))
-        except Exception as e:
-            per_prov[label] = {"status": "error", "error": repr(e)[:200]}
+    if parallel:
+        with ThreadPoolExecutor(max_workers=min(5, len(provs))) as ex:
+            futures = [ex.submit(_ask_one_provider, a) for a in args_list]
+            for fut in as_completed(futures):
+                label, rec = fut.result()
+                per_prov[label] = rec
+    else:
+        for a in args_list:
+            label, rec = _ask_one_provider(a)
+            per_prov[label] = rec
 
-    # aggregate: take the first parseable card or fall back to local knowledge
     cards = [rec["card"] for rec in per_prov.values() if rec.get("status") == "ok"]
     if cards:
         agg = dict(cards[0])
         agg["providers_seen"] = sorted([label for label, rec in per_prov.items() if rec.get("status") == "ok"])
+        agg["status"] = _vote_status(per_prov)
+        agg["vote_count"] = len(cards)
     else:
         agg = {
             "id": file_id,
@@ -124,6 +151,7 @@ def collect_card(
             "mapped_skill": "absent",
             "status": "ABSENT",
             "providers_seen": [],
+            "vote_count": 0,
         }
     return {
         "schema": "PGGArchonSuperEvolutionCard/v1",
@@ -135,16 +163,24 @@ def collect_card(
     }
 
 
-def collect_many(specs: list[dict[str, str]], out_path: Path) -> dict[str, Any]:
-    results = []
-    for spec in specs:
-        rec = collect_card(Path(spec["file"]), spec["file_id"], spec["title"], spec["known_key_thesis"])
-        results.append(rec)
+def collect_many(specs: list[dict[str, str]], out_path: Path, parallel_files: bool = True) -> dict[str, Any]:
+    if parallel_files:
+        cards: list[dict[str, Any]] = []
+        with ThreadPoolExecutor(max_workers=3) as ex:
+            futures = [
+                ex.submit(collect_card, Path(s["file"]), s["file_id"], s["title"], s["known_key_thesis"])
+                for s in specs
+            ]
+            for fut in as_completed(futures):
+                cards.append(fut.result())
+        cards.sort(key=lambda c: c["file_id"])
+    else:
+        cards = [collect_card(Path(s["file"]), s["file_id"], s["title"], s["known_key_thesis"]) for s in specs]
     summary = {
         "schema": "PGGArchonSuperEvolutionBatch/v1",
         "generated_at": datetime.now(timezone.utc).isoformat(),
-        "count": len(results),
-        "results": results,
+        "count": len(cards),
+        "results": cards,
     }
     out_path.write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
     return summary
