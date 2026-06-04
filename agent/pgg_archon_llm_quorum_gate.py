@@ -37,13 +37,45 @@ def _load_json(path: str | Path) -> dict[str, Any]:
     return data
 
 
+def _extract_json_object(text: str) -> dict[str, Any] | None:
+    """Best-effort extraction of the top-level model verdict JSON.
+
+    Model outputs may wrap JSON in markdown fences or include candidate-level
+    BLOCKED decisions. Promotion quorum must classify the model-level verdict,
+    not any nested candidate decision.
+    """
+    stripped = text.strip()
+    if stripped.startswith("```"):
+        stripped = re.sub(r"^```(?:json)?\s*", "", stripped, flags=re.IGNORECASE)
+        stripped = re.sub(r"\s*```$", "", stripped)
+    candidates = [stripped]
+    start = stripped.find("{")
+    end = stripped.rfind("}")
+    if start >= 0 and end > start:
+        candidates.append(stripped[start : end + 1])
+    for candidate in candidates:
+        try:
+            data = json.loads(candidate)
+        except Exception:  # noqa: BLE001 - best effort classifier
+            continue
+        if isinstance(data, dict):
+            return data
+    return None
+
+
 def _classify_from_text(text: str) -> str:
-    low = text.lower()
-    if re.search(r'"?model_verdict"?\s*[:=]\s*"?pass"?', low) or re.search(r'"?feasibility_ok"?\s*[:=]\s*true', low):
-        if re.search(r'"?model_verdict"?\s*[:=]\s*"?(blocked|fail)', low):
+    data = _extract_json_object(text)
+    if data is not None:
+        verdict = str(data.get("model_verdict") or "").strip().upper()
+        feasibility = data.get("feasibility_ok")
+        if verdict in {"BLOCKED", "FAIL", "FAILED"} or feasibility is False:
             return "BLOCKED"
+        if verdict == "PASS" and feasibility is True:
+            return "PASS"
+    low = text.lower()
+    if re.search(r'"?model_verdict"?\s*[:=]\s*"?pass"?', low) and re.search(r'"?feasibility_ok"?\s*[:=]\s*true', low):
         return "PASS"
-    if any(token in low for token in ["blocked", "not feasible", "do not proceed", "must not proceed"]):
+    if re.search(r'"?model_verdict"?\s*[:=]\s*"?(blocked|fail)', low) or any(token in low for token in ["not feasible", "do not proceed", "must not proceed"]):
         return "BLOCKED"
     return "UNKNOWN"
 
@@ -54,9 +86,11 @@ def _normalize_evidence(path: str | Path) -> dict[str, Any]:
     label = data.get("label") or data.get("provider") or p.stem
     status = str(data.get("status") or "")
     visible_chars = int(data.get("visible_output_chars") or 0)
-    verdict = data.get("classified_verdict")
+    text = str(data.get("text_preview") or data.get("output") or "")
+    reparsed_verdict = _classify_from_text(text) if text else "UNKNOWN"
+    verdict = reparsed_verdict if reparsed_verdict != "UNKNOWN" else data.get("classified_verdict")
     if not verdict:
-        verdict = _classify_from_text(str(data.get("text_preview") or data.get("output") or ""))
+        verdict = "UNKNOWN"
     return {
         "label": label,
         "provider": data.get("provider"),

@@ -36,12 +36,17 @@ def test_extract_responses_text_handles_output_items() -> None:
     assert _extract_responses_text({"output_text": "fallback"}) == "fallback"
 
 
-def test_default_pgg_model_providers_include_minimax_m3() -> None:
+def test_default_pgg_model_providers_include_minimax_m3_mimo_agnes_and_reasoning_budgets() -> None:
     providers = {provider.provider_id: provider for provider in default_pgg_model_providers()}
     assert "minimax_m3" in providers
     assert providers["minimax_m3"].model == "MiniMax-M3"
     assert providers["minimax_m3"].api_mode == "chat_completions"
     assert providers["minimax_m3"].api_key_env == "MINIMAX_API_KEY"
+    assert providers["deepseek_v4_flash"].max_tokens >= 4096
+    assert providers["mimo_v25_pro_auditor"].url == "https://token-plan-cn.xiaomimimo.com/v1"
+    assert providers["mimo_v25_pro_auditor"].max_tokens >= 4096
+    assert providers["agnes_ai"].url == "https://apihub.agnes-ai.com/v1"
+    assert providers["agnes_ai"].model == "agnes-2.0-flash"
 
 
 def test_chat_completions_base_url_is_completed(monkeypatch) -> None:
