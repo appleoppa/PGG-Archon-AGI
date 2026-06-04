@@ -152,6 +152,46 @@ def transition_gene_lifecycle(
             (gene_id, from_state, to_state, now, trigger_phase, decision),
         )
         chain_id = cur.lastrowid
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS evolution_genes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                gene_id INTEGER NOT NULL,
+                parent_gene_id INTEGER,
+                state TEXT NOT NULL,
+                generation INTEGER DEFAULT 0,
+                mutation_vector TEXT,
+                fitness_before REAL,
+                fitness_after REAL,
+                promoted_at TEXT,
+                retired_at TEXT,
+                evidence_ref TEXT,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (gene_id) REFERENCES genes(id)
+            )
+            """
+        )
+        cur.execute(
+            """
+            insert into evolution_genes(
+                gene_id,parent_gene_id,state,generation,mutation_vector,fitness_before,fitness_after,
+                promoted_at,retired_at,evidence_ref,created_at
+            ) values (?,?,?,?,?,?,?,?,?,?,?)
+            """,
+            (
+                gene_id,
+                before_row[7],
+                to_state,
+                0,
+                f"lifecycle_{from_state}_to_{to_state}",
+                before_row[6],
+                before_row[6],
+                before_row[3] if to_state != "promoted" else now,
+                now if to_state == "retired" else before_row[5],
+                decision,
+                now,
+            ),
+        )
         after_row = cur.execute(
             "select gene_id,state,activated_at,promoted_at,archived_at,retired_at,quality_score,parent_gene_id,candidate_at "
             "from gene_lifecycle where gene_id=?",
