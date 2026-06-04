@@ -9,6 +9,7 @@ benchmark result, not proof of AGI, and not proof of legal correctness.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from dataclasses import asdict, dataclass, field
@@ -34,11 +35,14 @@ class BenchmarkTask:
 class TaskScore:
     task_id: str
     domain: str
-    score: float
-    passed: bool
+    prompt: str
     expected: str
     prediction: str
     scorer: str
+    weight: float
+    tags: tuple[str, ...]
+    score: float
+    passed: bool
     reason: str
 
 
@@ -119,11 +123,14 @@ def score_prediction(task: BenchmarkTask, prediction: Any) -> TaskScore:
     return TaskScore(
         task_id=task.task_id,
         domain=task.domain,
-        score=score,
-        passed=passed,
+        prompt=task.prompt,
         expected=expected,
         prediction=pred,
         scorer=scorer,
+        weight=task.weight,
+        tags=task.tags,
+        score=score,
+        passed=passed,
         reason=reason,
     )
 
@@ -173,6 +180,53 @@ def evaluate_predictions(
     )
 
 
+def build_evolution_queue_item(run: BenchmarkRun, score: TaskScore) -> dict[str, Any]:
+    """Build one actionable failed-example queue item.
+
+    The queue item is intentionally append-only and self-contained enough for a
+    later evolution worker to prioritize, replay, or promote into a verified
+    patch/skill/gene. It does not auto-fix or mutate policy by itself.
+    """
+    payload_for_hash = {
+        "run_id": run.run_id,
+        "task_id": score.task_id,
+        "domain": score.domain,
+        "prompt": score.prompt,
+        "scorer": score.scorer,
+        "weight": score.weight,
+        "tags": list(score.tags),
+        "expected": score.expected,
+        "prediction": score.prediction,
+    }
+    input_hash = hashlib.sha256(
+        json.dumps(payload_for_hash, ensure_ascii=False, sort_keys=True).encode("utf-8")
+    ).hexdigest()
+    score_delta = round(1.0 - float(score.score), 6)
+    priority = "P0" if score_delta >= 1.0 else "P1" if score_delta >= 0.5 else "P2"
+    return {
+        "schema": "PGGArchonEvolutionQueueItem/v2",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "run_id": run.run_id,
+        "task_id": score.task_id,
+        "domain": score.domain,
+        "prompt": score.prompt,
+        "scorer": score.scorer,
+        "weight": score.weight,
+        "tags": list(score.tags),
+        "score": score.score,
+        "score_delta": score_delta,
+        "priority": priority,
+        "input_hash": input_hash,
+        "attempt_type": "deterministic_benchmark_failure",
+        "failure_reason": score.reason,
+        "expected": score.expected,
+        "prediction": score.prediction,
+        "next_action": "analyze_failure_and_add_capability_or_prompt_fix",
+        "promotion_gate": "verified_patch_or_skill_required_before_gene_promotion",
+        "boundary": "queue item only; not auto-fixed until a verified patch lands",
+    }
+
+
 def write_benchmark_outputs(
     run: BenchmarkRun,
     *,
@@ -192,18 +246,38 @@ def write_benchmark_outputs(
     with queue_path.open("w", encoding="utf-8") as f:
         for score in run.task_scores:
             if not score.passed:
-                f.write(json.dumps({
-                    "schema": "PGGArchonEvolutionQueueItem/v1",
-                    "run_id": run.run_id,
-                    "task_id": score.task_id,
-                    "domain": score.domain,
-                    "failure_reason": score.reason,
-                    "expected": score.expected,
-                    "prediction": score.prediction,
-                    "next_action": "analyze_failure_and_add_capability_or_prompt_fix",
-                    "boundary": "queue item only; not auto-fixed until a verified patch lands",
-                }, ensure_ascii=False) + "\n")
+                f.write(json.dumps(build_evolution_queue_item(run, score), ensure_ascii=False) + "\n")
     return {"run": str(run_path), "scores": str(scores_path), "evolution_queue": str(queue_path)}
+
+
+def load_evolution_queue(path: str | Path, *, limit: int | None = None) -> list[dict[str, Any]]:
+    """Load and prioritize failed-example evolution queue records.
+
+    This is read-only consumption support for later evolution workers. It never
+    applies patches, promotes genes, or mutates policy by itself.
+    """
+    queue_path = Path(path).expanduser()
+    items: list[dict[str, Any]] = []
+    if not queue_path.exists():
+        return items
+    priority_rank = {"P0": 0, "P1": 1, "P2": 2}
+    with queue_path.open(encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            item = json.loads(line)
+            if not isinstance(item, dict):
+                continue
+            items.append(item)
+    items.sort(
+        key=lambda item: (
+            priority_rank.get(str(item.get("priority", "P2")), 99),
+            -float(item.get("score_delta", 0.0) or 0.0),
+            str(item.get("created_at", "")),
+        )
+    )
+    return items[:limit] if limit is not None else items
 
 
 def load_tasks_jsonl(path: str | Path) -> list[BenchmarkTask]:

@@ -8,6 +8,7 @@ import pytest
 from agent.agi_task_benchmark import (
     BenchmarkTask,
     evaluate_predictions,
+    load_evolution_queue,
     load_tasks_jsonl,
     run_sample,
     sample_predictions,
@@ -52,7 +53,16 @@ def test_evaluate_predictions_creates_watch_and_failed_queue(tmp_path: Path) -> 
     queue_lines = Path(paths["evolution_queue"]).read_text(encoding="utf-8").splitlines()
     assert len(queue_lines) == 1
     queue_item = json.loads(queue_lines[0])
+    assert queue_item["schema"] == "PGGArchonEvolutionQueueItem/v2"
     assert queue_item["task_id"] == "legal-boundary-001"
+    assert queue_item["score_delta"] == 1.0
+    assert queue_item["priority"] == "P0"
+    assert queue_item["attempt_type"] == "deterministic_benchmark_failure"
+    assert queue_item["prompt"] == "State the truthful boundary: this system is not full AGI."
+    assert queue_item["weight"] == 1.0
+    assert queue_item["tags"] == []
+    assert len(queue_item["input_hash"]) == 64
+    assert queue_item["promotion_gate"] == "verified_patch_or_skill_required_before_gene_promotion"
     assert queue_item["next_action"] == "analyze_failure_and_add_capability_or_prompt_fix"
 
 
@@ -63,6 +73,21 @@ def test_evaluate_predictions_perfect_pass(tmp_path: Path) -> None:
     queue_path = Path(result["paths"]["evolution_queue"])
     assert queue_path.is_file()
     assert queue_path.read_text(encoding="utf-8") == ""
+
+
+def test_load_evolution_queue_prioritizes_and_limits(tmp_path: Path) -> None:
+    path = tmp_path / "queue.jsonl"
+    path.write_text(
+        "\n".join([
+            json.dumps({"task_id": "low", "priority": "P2", "score_delta": 0.2, "created_at": "2026-01-01T00:00:00Z"}),
+            json.dumps({"task_id": "high", "priority": "P0", "score_delta": 1.0, "created_at": "2026-01-01T00:00:01Z"}),
+            json.dumps({"task_id": "medium", "priority": "P1", "score_delta": 0.8, "created_at": "2026-01-01T00:00:02Z"}),
+        ]) + "\n",
+        encoding="utf-8",
+    )
+    assert [item["task_id"] for item in load_evolution_queue(path)] == ["high", "medium", "low"]
+    assert [item["task_id"] for item in load_evolution_queue(path, limit=2)] == ["high", "medium"]
+    assert load_evolution_queue(tmp_path / "missing.jsonl") == []
 
 
 def test_load_tasks_jsonl(tmp_path: Path) -> None:
