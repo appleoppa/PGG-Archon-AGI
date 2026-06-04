@@ -65,17 +65,23 @@ PATCHES: list[tuple[str, str, str, str | None]] = [
 def sync() -> dict[str, Any]:
     data = json.loads(_SOURCE.read_text(encoding="utf-8"))
     patched = 0
+    patch_map = {str(fid): (status, mapped, thesis) for fid, status, mapped, thesis in PATCHES}
     for r in data["results"]:
         card = r["card"]
-        for fid, status, mapped, thesis in PATCHES:
-            if card.get("id") == fid:
-                old = card.get("status")
-                card["status"] = status
-                card["mapped_skill"] = mapped
-                if thesis:
-                    card["key_thesis"] = thesis
-                if old != status:
-                    patched += 1
+        raw_id = card.get("id")
+        candidates = [str(raw_id)]
+        if isinstance(raw_id, str) and raw_id.startswith("file_"):
+            candidates.append(raw_id.removeprefix("file_"))
+        matched = next((c for c in candidates if c in patch_map), None)
+        if matched is not None:
+            status, mapped, thesis = patch_map[matched]
+            old = card.get("status")
+            card["status"] = status
+            card["mapped_skill"] = mapped
+            if thesis:
+                card["key_thesis"] = thesis
+            if old != status:
+                patched += 1
     # aggregate
     status_dist = {"SKELETON": 0, "ABSENT": 0, "PARTIAL": 0, "ACTIVE": 0}
     for r in data["results"]:
