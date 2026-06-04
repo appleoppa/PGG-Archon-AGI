@@ -29,6 +29,7 @@ from typing import Any
 from .pgg_archon_tiangong_skill import collect_tiangong_status
 from .pgg_archon_research_unified_engine import collect_research_artifacts
 from .pgg_archon_multimodal_status import collect_multimodal_status
+from .pgg_archon_se_sync import sync as sync_super_evolution_cards
 
 
 def _write(path: Path, data: Any) -> None:
@@ -52,6 +53,9 @@ def run_lane(out_dir: Path, run_id: str | None = None) -> dict[str, Any]:
     }
     _write(lane_dir / "01_snap.json", snap)
 
+    se_sync = sync_super_evolution_cards()
+    _write(lane_dir / "02_se_sync.json", se_sync)
+
     finished = datetime.now(timezone.utc).isoformat()
     return {
         "schema": "PGGArchonSuperEvolutionLaneResult/v1",
@@ -60,6 +64,9 @@ def run_lane(out_dir: Path, run_id: str | None = None) -> dict[str, Any]:
         "finished_at": finished,
         "lane_dir": str(lane_dir),
         "snap_path": str(lane_dir / "01_snap.json"),
+        "se_sync_path": str(lane_dir / "02_se_sync.json"),
+        "synced_33_card_path": se_sync.get("synced_path"),
+        "se_sync_status_distribution": se_sync.get("status_distribution"),
         "tiangong_summary_state": snap["tiangong"]["summary_state"],
         "research_engine_state": snap["research_engine"]["engine_state"],
         "multimodal_overall": snap["multimodal"]["overall"],
