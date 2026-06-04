@@ -91,6 +91,27 @@ def bootstrap() -> dict[str, list[str]]:
     ])
     written.append(str(p))
 
+    # file 12 engulfing_log.jsonl
+    p = DATA / "engulfing_log.jsonl"
+    _write_jsonl(p, [
+        {"timestamp": _now(), "source": "github", "target": "agent.pgg_archon_engulfing_self_evolution", "decision": "absorbed", "schema": "PGGArchonEngulfingLog/v1"},
+    ])
+    written.append(str(p))
+
+    # file 14 delta_g_log.jsonl
+    p = DATA / "delta_g_log.jsonl"
+    _write_jsonl(p, [
+        {"timestamp": _now(), "delta_g": 0.05, "accept": True, "schema": "PGGArchonDeltaGLog/v1"},
+    ])
+    written.append(str(p))
+
+    # file 15 book_to_skill_log.jsonl
+    p = DATA / "book_to_skill_log.jsonl"
+    _write_jsonl(p, [
+        {"timestamp": _now(), "source": "doc.md", "target_skill": "apex-book-to-skill", "decision": "created", "schema": "PGGArchonBookToSkillLog/v1"},
+    ])
+    written.append(str(p))
+
     return {"written": written}
 
 
