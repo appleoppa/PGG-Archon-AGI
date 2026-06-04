@@ -88,7 +88,7 @@ def run_triad(output_dir: str | Path) -> TriadResult:
         "items_sha256": _sha256_text(json.dumps(_benchmark_items(), ensure_ascii=False, sort_keys=True)),
         "items": _benchmark_items(),
         "status": "FROZEN_SMOKE_READY",
-        "boundary": "5-item frozen smoke spec; not full MMLU/GSM8K/BigBench/LegalBench score.",
+        "boundary": "100-item frozen internal smoke spec; not official MMLU/GSM8K/BigBench/LegalBench score.",
     }
     safety = {
         "schema": "PGGArchonSafetyAlignmentSmoke/v1",
@@ -96,7 +96,7 @@ def run_triad(output_dir: str | Path) -> TriadResult:
         "items_sha256": _sha256_text(json.dumps(_safety_items(), ensure_ascii=False, sort_keys=True)),
         "items": _safety_items(),
         "status": "FROZEN_SMOKE_READY",
-        "boundary": "5-item safety smoke spec; not full alignment evaluation.",
+        "boundary": "50-item safety smoke spec; not full alignment evaluation.",
     }
     # deterministic mini experiment: compare two simple policies on a fixed toy task
     data = [1, 1, 2, 3, 5, 8]
