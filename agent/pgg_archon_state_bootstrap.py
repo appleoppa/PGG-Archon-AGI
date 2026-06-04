@@ -112,6 +112,20 @@ def bootstrap() -> dict[str, list[str]]:
     ])
     written.append(str(p))
 
+    # file 8 personal_agent_log.jsonl
+    p = DATA / "personal_agent_log.jsonl"
+    _write_jsonl(p, [
+        {"timestamp": _now(), "user": "苹果哥", "action": "execute_case", "schema": "PGGArchonPersonalAgentLog/v1"},
+    ])
+    written.append(str(p))
+
+    # file 17 fusion_log.jsonl
+    p = DATA / "fusion_log.jsonl"
+    _write_jsonl(p, [
+        {"timestamp": _now(), "core_a": "deepseek-reasonix", "core_b": "apex-skill", "decision": "fused", "schema": "PGGArchonFusionLog/v1"},
+    ])
+    written.append(str(p))
+
     return {"written": written}
 
 
