@@ -27,6 +27,8 @@ def test_score_prediction_exact_contains_and_json() -> None:
 
     json_task = BenchmarkTask("t3", "json", "", '{"status":"ok"}', scorer="json_key_value")
     assert score_prediction(json_task, '{"status":"ok"}').passed
+    assert score_prediction(json_task, '```json\n{"status": "ok"}\n```').passed
+    assert score_prediction(json_task, 'Here is the JSON: {"status": "ok"}').passed
     assert not score_prediction(json_task, "not-json").passed
 
 

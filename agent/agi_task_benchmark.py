@@ -10,6 +10,7 @@ benchmark result, not proof of AGI, and not proof of legal correctness.
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -64,6 +65,24 @@ def _normalize(text: Any) -> str:
     return " ".join(str(text).strip().lower().split())
 
 
+def _extract_json_candidate(text: Any) -> str:
+    """Extract a deterministic JSON candidate from common model wrappers.
+
+    This keeps scoring strict about JSON equality while allowing harmless
+    Markdown fences such as ```json ... ``` that models often emit despite
+    concise prompts.
+    """
+    raw = str(text).strip()
+    fenced = re.search(r"```(?:json)?\s*(.*?)\s*```", raw, flags=re.IGNORECASE | re.DOTALL)
+    if fenced:
+        return fenced.group(1).strip()
+    first = raw.find("{")
+    last = raw.rfind("}")
+    if 0 <= first < last:
+        return raw[first : last + 1].strip()
+    return raw
+
+
 def score_prediction(task: BenchmarkTask, prediction: Any) -> TaskScore:
     """Score one prediction with deterministic, transparent rules."""
     pred = str(prediction)
@@ -80,7 +99,7 @@ def score_prediction(task: BenchmarkTask, prediction: Any) -> TaskScore:
         reason = "prediction contains expected" if passed else "prediction does not contain expected"
     elif scorer == "json_key_value":
         try:
-            pred_obj = json.loads(pred)
+            pred_obj = json.loads(_extract_json_candidate(pred))
             exp_obj = json.loads(expected)
             passed = isinstance(pred_obj, dict) and pred_obj == exp_obj
             score = 1.0 if passed else 0.0
