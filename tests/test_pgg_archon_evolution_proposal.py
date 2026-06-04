@@ -6,6 +6,7 @@ from pathlib import Path
 from agent.pgg_archon_evolution_proposal import (
     build_evolution_proposal,
     build_evolution_proposals,
+    main,
     write_evolution_proposals,
 )
 
@@ -79,3 +80,14 @@ def test_write_evolution_proposals_outputs_batch_and_jsonl(tmp_path: Path) -> No
     assert batch["proposals"][0]["source_task_id"] == "high"
     assert Path(paths["jsonl"]).read_text(encoding="utf-8").count("\n") == 1
     assert "no patches" in batch["boundary"]
+
+
+def test_main_writes_proposals_from_cli_args(tmp_path: Path, capsys) -> None:
+    queue = tmp_path / "queue.jsonl"
+    queue.write_text(json.dumps(_queue_item(task_id="cli", input_hash="e" * 64)) + "\n", encoding="utf-8")
+    output_dir = tmp_path / "cli-out"
+    assert main(["--queue", str(queue), "--output-dir", str(output_dir), "--limit", "1"]) == 0
+    printed = json.loads(capsys.readouterr().out)
+    assert printed["proposal_count"] == 1
+    assert Path(printed["batch"]).is_file()
+    assert Path(printed["jsonl"]).is_file()

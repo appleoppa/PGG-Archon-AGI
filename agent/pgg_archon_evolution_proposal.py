@@ -6,6 +6,7 @@ patch application, no GeneDB promotion, and no policy/routing changes.
 """
 from __future__ import annotations
 
+import argparse
 import hashlib
 import json
 from dataclasses import asdict, dataclass
@@ -158,3 +159,18 @@ def write_evolution_proposals(
         "proposal_count": len(proposals),
         "generated_at": generated_at,
     }
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="Build read-only PGG Archon evolution proposals from a failed-example queue.")
+    parser.add_argument("--queue", required=True, help="Path to PGGArchonEvolutionQueueItem JSONL file")
+    parser.add_argument("--output-dir", required=True, help="Directory for proposal JSON/JSONL outputs")
+    parser.add_argument("--limit", type=int, default=None, help="Maximum number of prioritized queue items to convert")
+    args = parser.parse_args(list(argv) if argv is not None else None)
+    result = write_evolution_proposals(args.queue, output_dir=args.output_dir, limit=args.limit)
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    return 0
+
+
+if __name__ == "__main__":  # pragma: no cover - exercised by CLI smoke test
+    raise SystemExit(main())
