@@ -24,6 +24,7 @@ class AutonomousEvolutionStatus:
     cron_job: dict[str, Any]
     rust_watcher: dict[str, Any]
     latest_readiness_package: dict[str, Any]
+    event_ledger_summary: dict[str, Any]
     known_gaps: list[str]
     boundary: str
 
@@ -96,6 +97,36 @@ def _latest_readiness(base: Path) -> dict[str, Any]:
     return {"path": str(files[0]), "status": payload.get("status"), "blockers": payload.get("blockers"), "generated_at": payload.get("generated_at")}
 
 
+def _event_ledger_summary(path: Path, *, limit: int = 20) -> dict[str, Any]:
+    try:
+        lines = [line for line in path.expanduser().read_text(encoding="utf-8").splitlines() if line.strip()]
+    except Exception as exc:  # noqa: BLE001
+        return {"status": "missing_or_unreadable", "path": str(path), "error": repr(exc)}
+    selected = lines[-limit:]
+    events = []
+    for line in selected:
+        try:
+            events.append(json.loads(line))
+        except Exception:
+            continue
+    by_source: dict[str, int] = {}
+    by_status: dict[str, int] = {}
+    for event in events:
+        source = str(event.get("source"))
+        status = str(event.get("status"))
+        by_source[source] = by_source.get(source, 0) + 1
+        by_status[status] = by_status.get(status, 0) + 1
+    return {
+        "schema": "PGGAutonomousEvolutionEventSummary/v1",
+        "status": "PASS" if events else "WATCH",
+        "path": str(path),
+        "event_count": len(events),
+        "latest_event": events[-1] if events else None,
+        "by_source": by_source,
+        "by_status": by_status,
+    }
+
+
 def build_status(*, home: str | Path | None = None) -> AutonomousEvolutionStatus:
     h = Path(home).expanduser() if home else Path.home()
     manifest = _load_json(h / ".hermes/data/EVOLUTION_MANIFEST.json", {})
@@ -105,6 +136,7 @@ def build_status(*, home: str | Path | None = None) -> AutonomousEvolutionStatus
     gene = _gene_state(h / ".hermes/data/pgg_archon.db", 347)
     cron = _cron_job(h / ".hermes/cron/jobs.json", str(loop_cap.get("cron_job_id") or "c0fad245e325"))
     readiness = _latest_readiness(h / ".hermes/workspace/evolution/autonomous_loop")
+    event_summary = _event_ledger_summary(h / ".hermes/data/pgg-background-evolution/autonomous_events.jsonl")
     known_gaps = []
     if readiness.get("status") != "READY_FOR_MAIN_PATCH_OR_GENE_CANDIDATE_REVIEW":
         known_gaps.append("latest promotion readiness package is not READY")
@@ -114,6 +146,8 @@ def build_status(*, home: str | Path | None = None) -> AutonomousEvolutionStatus
         known_gaps.append("Rust fused watcher is not confirmed active")
     if ((gene.get("lifecycle") or [None, None])[1]) != "promoted":
         known_gaps.append("gene_id=347 is not promoted")
+    if event_summary.get("status") != "PASS":
+        known_gaps.append("autonomous event ledger has no readable events")
     if "Claude" not in json.dumps(manifest, ensure_ascii=False) and True:
         known_gaps.append("Claude provider health remains externally unresolved unless separately verified")
     return AutonomousEvolutionStatus(
@@ -132,6 +166,7 @@ def build_status(*, home: str | Path | None = None) -> AutonomousEvolutionStatus
         cron_job=cron,
         rust_watcher=_rust_watcher_status(),
         latest_readiness_package=readiness,
+        event_ledger_summary=event_summary,
         known_gaps=known_gaps,
         boundary="Read-only status dashboard; no mutations, no full AGI proof.",
     )
