@@ -62,7 +62,15 @@ def probe_memory_system() -> MemorySystemProbe:
         "env_PGG_ARCHON_MEMORY_VERSION": _probe_env("PGG_ARCHON_MEMORY_VERSION"),
         "path_~/.hermes/memories": _probe_path_writable(mem_dir),
     }
-    present = sum(1 for v in deps.values() if v in {"importable", "present", "writable"})
+    present = 0
+    if deps["memory_db_present"] == "present":
+        present += 1
+    if deps["module_memory_retrieval_architecture"] == "importable":
+        present += 1
+    if deps["env_PGG_ARCHON_MEMORY_VERSION"] == "present":
+        present += 1
+    if deps["path_~/.hermes/memories"] == "writable":
+        present += 1
     if present == 4:
         status = "ACTIVE"
     elif present >= 2:
