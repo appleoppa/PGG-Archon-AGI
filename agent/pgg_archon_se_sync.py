@@ -25,12 +25,15 @@ _SOURCE = _HOME / ".hermes" / "workspace" / "audit" / "super_evolution_cards_202
 
 # (file_id, status, mapped_skill, key_thesis_override)
 PATCHES: list[tuple[str, str, str, str | None]] = [
+    ("1", "PARTIAL", "quantum_channel_router_v1", "Quantum channel router super-evolution 1; 2/4 surface gates resolved (cache empty, health log missing)"),
     ("4", "PARTIAL", "context_learning_new_framework_v1", "Context learning new framework; 3/4 surface gates resolved (memory_file_count=0)"),
     ("5", "PARTIAL", "memory_system_v1", "Memory system; 2/4 surface gates resolved (memory.db missing, retrieval module missing)"),
     ("5.5", "ACTIVE", "full_toolcall_integration_v1", "Full toolcall integration; 4/4 surface gates resolved"),
     ("6", "ACTIVE", "token_hygiene_v1", "Token hygiene super-evolution 6; 4/4 surface gates resolved"),
+    ("9", "PARTIAL", "evomaster_v1", "EvoMaster native evolution core super-evolution 9; 2/4 surface gates resolved (state log missing, audit trail missing)"),
     ("11", "ACTIVE", "tiangong_four_core_v1", "Tiangong 4-core: 3/4 ACTIVE in env default (evolver / openhands / superpowers); autoresearch PARTIAL (ARXIV key missing)"),
     ("13", "ACTIVE", "apex_skill_v0.1.1", "APEX-SKILL v0.1.1 release layer; 4/4 surface gates resolved (61 modules, 112 skills)"),
+    ("21", "PARTIAL", "core_cognition_v1", "Core cognition prompt enforcement super-evolution 21; 3/4 surface gates resolved (log missing)"),
 ]
 
 
