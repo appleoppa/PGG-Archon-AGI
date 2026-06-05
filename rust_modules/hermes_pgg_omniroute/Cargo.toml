@@ -1,0 +1,19 @@
+[package]
+name = "hermes-pgg-omniroute"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "hermes_pgg_omniroute"
+crate-type = ["rlib"]
+
+[[bin]]
+name = "pgg-omniroute-smoke"
+path = "src/bin/smoke.rs"
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+[dev-dependencies]
+proptest = "1.6"

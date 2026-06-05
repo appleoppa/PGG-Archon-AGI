@@ -821,7 +821,57 @@ export const api = {
     fetchJSON<{ results: SkillHubResult[] }>(
       `/api/skills/hub/search?q=${encodeURIComponent(q)}&source=${encodeURIComponent(source)}&limit=${limit}`,
     ),
+
+  // ── PGG OmniRoute / 河图洛书 ─────────────────────────────────────────
+  getOmniRouteSnapshot: () => fetchJSON<OmniRouteSnapshot>("/api/omniroute/snapshot"),
+  setOmniRouteControl: (body: OmniRouteControlRequest) =>
+    fetchJSON<OmniRouteControlResponse>("/api/omniroute/control", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }),
 };
+
+export interface OmniRouteProviderCard {
+  provider: string;
+  status: string;
+  score?: number | string | null;
+  blocked?: boolean;
+  blocked_reasons?: string[];
+}
+
+export interface OmniRouteControl {
+  mode: "auto" | "manual";
+  selected_provider_override: string;
+  force_refresh_next: boolean;
+  updated_at?: number | null;
+}
+
+export interface OmniRouteSnapshot {
+  schema: string;
+  server_time: number;
+  paths: Record<string, string>;
+  control: OmniRouteControl;
+  summary: Record<string, unknown>;
+  selected_provider: string;
+  effective_selected_provider: string;
+  provider_cards: OmniRouteProviderCard[];
+  provider_health_snapshot: Record<string, unknown>;
+  dashboard: Record<string, unknown>;
+  boundary: string;
+}
+
+export interface OmniRouteControlRequest {
+  mode?: "auto" | "manual";
+  selected_provider?: string;
+  force_refresh?: boolean;
+}
+
+export interface OmniRouteControlResponse {
+  ok: boolean;
+  control: OmniRouteControl;
+  snapshot: OmniRouteSnapshot;
+}
 
 /** Identity payload returned by ``GET /api/auth/me`` (Phase 7).
  *

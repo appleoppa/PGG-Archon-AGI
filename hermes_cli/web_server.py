@@ -15,6 +15,7 @@ import asyncio
 import base64
 import binascii
 import hmac
+import hashlib
 import importlib.util
 import json
 import logging
@@ -62,7 +63,7 @@ from utils import env_var_enabled
 try:
     from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
     from fastapi.middleware.cors import CORSMiddleware
-    from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
+    from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response, StreamingResponse
     from fastapi.staticfiles import StaticFiles
     from pydantic import BaseModel
 except ImportError:
@@ -74,7 +75,7 @@ except ImportError:
         _lazy_ensure("tool.dashboard", prompt=False)
         from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
         from fastapi.middleware.cors import CORSMiddleware
-        from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
+        from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response, StreamingResponse
         from fastapi.staticfiles import StaticFiles
         from pydantic import BaseModel
     except Exception:
@@ -324,7 +325,17 @@ async def auth_middleware(request: Request, call_next):
     if getattr(request.app.state, "auth_required", False):
         return await call_next(request)
     path = request.url.path
+    if request.method == "OPTIONS":
+        return await call_next(request)
     if path.startswith("/api/") and path not in _PUBLIC_API_PATHS:
+        # EventSource cannot attach custom headers, so the OmniRoute live stream
+        # accepts the same ephemeral dashboard token via query string. Keep this
+        # narrowly scoped to the read-only SSE endpoint; every other /api route
+        # still requires the normal header/Bearer token path.
+        if path == "/api/omniroute/stream":
+            token = request.query_params.get("token", "")
+            if token and hmac.compare_digest(token.encode(), _SESSION_TOKEN.encode()):
+                return await call_next(request)
         if not _has_valid_session_token(request):
             return JSONResponse(
                 status_code=401,
@@ -669,6 +680,341 @@ def _probe_gateway_health() -> tuple[bool, dict | None]:
             continue
     return False, None
 
+
+# ---------------------------------------------------------------------------
+# PGG OmniRoute / HeTuLuoShu live dashboard API
+# ---------------------------------------------------------------------------
+_OMNIROUTE_ANALYSIS_DIR = Path.home() / ".hermes" / "workspace" / "github_absorption" / "9router" / "analysis"
+_OMNIROUTE_DASHBOARD_PATH = _OMNIROUTE_ANALYSIS_DIR / "pgg-omniroute-dashboard-20260605.json"
+_OMNIROUTE_HEALTH_PATH = _OMNIROUTE_ANALYSIS_DIR / "pgg-omniroute-provider-health-20260605.json"
+_OMNIROUTE_CONTROL_PATH = Path.home() / ".hermes" / "data" / "omniroute_control.json"
+_OMNIROUTE_EVENTS_PATH = Path.home() / ".hermes" / "data" / "omniroute_events.jsonl"
+
+
+def _read_json_file(path: Path) -> dict:
+    try:
+        if not path.exists():
+            return {"status": "missing", "path": str(path)}
+        return json.loads(path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        return {"status": "error", "path": str(path), "error": repr(exc)}
+
+
+def _write_omniroute_event(event: str, payload: dict | None = None) -> None:
+    try:
+        _OMNIROUTE_EVENTS_PATH.parent.mkdir(parents=True, exist_ok=True)
+        row = {
+            "ts": time.time(),
+            "event": event,
+            "payload": payload or {},
+        }
+        with _OMNIROUTE_EVENTS_PATH.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(row, ensure_ascii=False) + "\n")
+    except Exception:
+        pass
+
+
+def _read_omniroute_control() -> dict:
+    default = {
+        "mode": "auto",
+        "selected_provider_override": "",
+        "force_refresh_next": False,
+        "updated_at": None,
+    }
+    data = _read_json_file(_OMNIROUTE_CONTROL_PATH)
+    if data.get("status") in {"missing", "error"}:
+        return default
+    if not isinstance(data, dict):
+        return default
+    merged = {**default, **data}
+    if merged.get("mode") not in {"auto", "manual"}:
+        merged["mode"] = "auto"
+    return merged
+
+
+def _write_omniroute_control(control: dict) -> dict:
+    _OMNIROUTE_CONTROL_PATH.parent.mkdir(parents=True, exist_ok=True)
+    control = dict(control)
+    control["updated_at"] = time.time()
+    tmp = _OMNIROUTE_CONTROL_PATH.with_suffix(".tmp")
+    tmp.write_text(json.dumps(control, ensure_ascii=False, indent=2), encoding="utf-8")
+    tmp.replace(_OMNIROUTE_CONTROL_PATH)
+    _write_omniroute_event("control_updated", control)
+    return control
+
+
+def _recent_omniroute_events(limit: int = 20) -> list[dict[str, Any]]:
+    try:
+        if not _OMNIROUTE_EVENTS_PATH.exists():
+            return []
+        rows = _OMNIROUTE_EVENTS_PATH.read_text(encoding="utf-8").splitlines()[-limit:]
+        out = []
+        for row in rows:
+            try:
+                item = json.loads(row)
+                if isinstance(item, dict):
+                    out.append(item)
+            except Exception:
+                continue
+        return out
+    except Exception:
+        return []
+
+
+def _omniroute_file_sig(path: Path) -> dict[str, Any]:
+    try:
+        st = path.stat()
+        return {"path": str(path), "mtime_ns": st.st_mtime_ns, "size": st.st_size}
+    except OSError:
+        return {"path": str(path), "mtime_ns": 0, "size": 0}
+
+
+def _omniroute_generation(dashboard: dict, health: dict, control: dict) -> dict[str, Any]:
+    file_sigs = [
+        _omniroute_file_sig(_OMNIROUTE_DASHBOARD_PATH),
+        _omniroute_file_sig(_OMNIROUTE_HEALTH_PATH),
+        _omniroute_file_sig(_OMNIROUTE_CONTROL_PATH),
+        _omniroute_file_sig(_OMNIROUTE_EVENTS_PATH),
+    ]
+    facts = {
+        "dashboard_epoch_ms": dashboard.get("generated_at_epoch_ms") if isinstance(dashboard, dict) else None,
+        "health_epoch_ms": health.get("generated_epoch_ms") if isinstance(health, dict) else None,
+        "embedded_health_epoch_ms": (dashboard.get("provider_health_snapshot", {}) or {}).get("generated_epoch_ms") if isinstance(dashboard, dict) else None,
+        "control_updated_at": control.get("updated_at") if isinstance(control, dict) else None,
+        "file_sigs": file_sigs,
+    }
+    raw = json.dumps(facts, sort_keys=True, ensure_ascii=False).encode("utf-8")
+    generation_id = hashlib.sha256(raw).hexdigest()[:16]
+    mixed = bool(
+        facts["health_epoch_ms"]
+        and facts["embedded_health_epoch_ms"]
+        and facts["health_epoch_ms"] != facts["embedded_health_epoch_ms"]
+    )
+    return {
+        "generation_id": generation_id,
+        "consistency_status": "mixed_generation" if mixed else "consistent",
+        "facts": facts,
+        "boundary": "generation_id is a local consistency hash, not proof of provider task participation.",
+    }
+
+
+def _recent_route_call_events(limit: int = 20) -> list[dict[str, Any]]:
+    try:
+        from agent.pgg_archon_quantum_channel_router import recent_omniroute_route_events
+
+        return recent_omniroute_route_events(limit)
+    except Exception:
+        return []
+
+
+def _recent_provider_call_events(limit: int = 20) -> list[dict[str, Any]]:
+    try:
+        from agent.pgg_archon_quantum_channel_router import recent_omniroute_provider_call_events
+
+        return recent_omniroute_provider_call_events(limit)
+    except Exception:
+        return []
+
+
+def _force_refresh_omniroute() -> dict[str, Any]:
+    """Force a real provider health refresh and regenerate Rust dashboard.
+
+    Boundaries: localhost operator action only; records errors instead of
+    converting provider failures into success.
+    """
+    started = time.time()
+    _write_omniroute_event("force_refresh_started", {"source": "dashboard"})
+    old = os.environ.get("PGG_OMNIROUTE_HEALTH_FORCE_REFRESH")
+    os.environ["PGG_OMNIROUTE_HEALTH_FORCE_REFRESH"] = "1"
+    try:
+        from agent.pgg_archon_quantum_channel_router import _run_omniroute_dashboard
+
+        result = _run_omniroute_dashboard()
+        status = str(result.get("status", "unknown")) if isinstance(result, dict) else "unknown"
+        payload = {
+            "status": status,
+            "elapsed_sec": round(time.time() - started, 3),
+            "result": result if isinstance(result, dict) else {"raw": repr(result)},
+        }
+        _write_omniroute_event("force_refresh_finished" if status == "present" else "force_refresh_error", payload)
+        return payload
+    except Exception as exc:
+        payload = {"status": "error", "elapsed_sec": round(time.time() - started, 3), "error": repr(exc)}
+        _write_omniroute_event("force_refresh_error", payload)
+        return payload
+    finally:
+        if old is None:
+            os.environ.pop("PGG_OMNIROUTE_HEALTH_FORCE_REFRESH", None)
+        else:
+            os.environ["PGG_OMNIROUTE_HEALTH_FORCE_REFRESH"] = old
+
+
+def _latest_omniroute_snapshot() -> dict:
+    dashboard = _read_json_file(_OMNIROUTE_DASHBOARD_PATH)
+    health = dashboard.get("provider_health_snapshot") if isinstance(dashboard, dict) else None
+    if not isinstance(health, dict):
+        health = _read_json_file(_OMNIROUTE_HEALTH_PATH)
+    control = _read_omniroute_control()
+    providers = []
+    if isinstance(dashboard, dict):
+        for card in dashboard.get("provider_cards", []) or []:
+            if isinstance(card, dict):
+                providers.append({
+                    "provider": card.get("provider") or card.get("id") or card.get("name") or "",
+                    "status": card.get("status") or card.get("health_status") or "unknown",
+                    "score": card.get("score") or card.get("route_score") or card.get("final_score"),
+                    "blocked": card.get("blocked", False),
+                    "blocked_reasons": card.get("blocked_reasons") or card.get("reasons") or [],
+                })
+    summary = dashboard.get("summary", {}) if isinstance(dashboard, dict) else {}
+    selected = summary.get("selected_provider") or dashboard.get("selected_provider") if isinstance(dashboard, dict) else ""
+    effective_selected = control.get("selected_provider_override") if control.get("mode") == "manual" else selected
+    generation = _omniroute_generation(
+        dashboard if isinstance(dashboard, dict) else {},
+        health if isinstance(health, dict) else {},
+        control,
+    )
+    return {
+        "schema": "pgg_omniroute_live_snapshot.v2",
+        "server_time": time.time(),
+        "generation_id": generation["generation_id"],
+        "consistency_status": generation["consistency_status"],
+        "generation": generation,
+        "paths": {
+            "dashboard": str(_OMNIROUTE_DASHBOARD_PATH),
+            "health": str(_OMNIROUTE_HEALTH_PATH),
+            "control": str(_OMNIROUTE_CONTROL_PATH),
+            "events": str(_OMNIROUTE_EVENTS_PATH),
+        },
+        "control": control,
+        "recent_events": _recent_omniroute_events(),
+        "recent_route_events": _recent_route_call_events(),
+        "recent_provider_call_events": _recent_provider_call_events(),
+        "summary": summary,
+        "selected_provider": selected,
+        "effective_selected_provider": effective_selected,
+        "provider_cards": providers,
+        "provider_health_snapshot": health if isinstance(health, dict) else {},
+        "dashboard": dashboard if isinstance(dashboard, dict) else {},
+        "boundary": "Live display/control surface only. Manual selection records operator preference and does not prove provider participation until a real task route/call is executed.",
+    }
+
+
+class OmniRouteControlRequest(BaseModel):
+    mode: Optional[str] = None
+    selected_provider: Optional[str] = None
+    force_refresh: Optional[bool] = None
+
+
+class OmniRouteDecisionRequest(BaseModel):
+    task_type: Optional[str] = "general"
+    requested_provider: Optional[str] = ""
+
+
+class OmniRouteProviderCallRequest(BaseModel):
+    task_type: Optional[str] = "participation_probe"
+    requested_provider: Optional[str] = ""
+    prompt: Optional[str] = "Reply exactly: PGG_ROUTE_OK"
+    timeout: Optional[float] = 45.0
+
+
+@app.get("/api/omniroute/snapshot")
+async def get_omniroute_snapshot():
+    return _latest_omniroute_snapshot()
+
+
+@app.post("/api/omniroute/call")
+async def call_omniroute_provider(body: OmniRouteProviderCallRequest):
+    try:
+        from agent.pgg_archon_quantum_channel_router import execute_omniroute_provider_call
+
+        result = execute_omniroute_provider_call(
+            prompt=body.prompt or "Reply exactly: PGG_ROUTE_OK",
+            task_type=body.task_type or "participation_probe",
+            requested_provider=body.requested_provider or "",
+            timeout=float(body.timeout or 45.0),
+        )
+        _write_omniroute_event(
+            "provider_participation_recorded",
+            {"provider": result.get("provider"), "participated": result.get("participated"), "http_status": result.get("http_status")},
+        )
+        return {"ok": True, "result": result, "snapshot": _latest_omniroute_snapshot()}
+    except Exception as exc:
+        _write_omniroute_event("provider_participation_error", {"error": repr(exc)})
+        raise HTTPException(status_code=500, detail=repr(exc))
+
+
+@app.post("/api/omniroute/decide")
+async def decide_omniroute_route(body: OmniRouteDecisionRequest):
+    try:
+        from agent.pgg_archon_quantum_channel_router import decide_omniroute_provider
+
+        decision = decide_omniroute_provider(
+            task_type=body.task_type or "general",
+            requested_provider=body.requested_provider or "",
+        )
+        _write_omniroute_event("route_decision_recorded", {"selected_provider": decision.get("selected_provider"), "source": decision.get("selected_source")})
+        return {"ok": True, "decision": decision, "snapshot": _latest_omniroute_snapshot()}
+    except Exception as exc:
+        _write_omniroute_event("route_decision_error", {"error": repr(exc)})
+        raise HTTPException(status_code=500, detail=repr(exc))
+
+
+@app.post("/api/omniroute/control")
+async def set_omniroute_control(body: OmniRouteControlRequest):
+    control = _read_omniroute_control()
+    if body.mode is not None:
+        if body.mode not in {"auto", "manual"}:
+            raise HTTPException(status_code=400, detail="mode must be auto or manual")
+        control["mode"] = body.mode
+    if body.selected_provider is not None:
+        control["selected_provider_override"] = body.selected_provider.strip()
+        if body.selected_provider.strip():
+            control["mode"] = "manual"
+    refresh_result = None
+    if body.force_refresh is not None:
+        control["force_refresh_next"] = bool(body.force_refresh)
+        if body.force_refresh:
+            _write_omniroute_event("force_refresh_requested", {"source": "dashboard"})
+            refresh_result = _force_refresh_omniroute()
+            # Force refresh is an immediate action; do not leave a sticky flag on.
+            control["force_refresh_next"] = False
+    saved = _write_omniroute_control(control)
+    return {"ok": True, "control": saved, "refresh_result": refresh_result, "snapshot": _latest_omniroute_snapshot()}
+
+
+@app.get("/api/omniroute/stream")
+async def stream_omniroute_snapshot(request: Request):
+    async def event_gen():
+        last_sig = None
+        # Initial full snapshot, then lightweight 2s file/control watcher + 25s ping.
+        ping_deadline = time.time() + 25
+        while True:
+            if await request.is_disconnected():
+                break
+            try:
+                stat_bits = []
+                for path in (_OMNIROUTE_DASHBOARD_PATH, _OMNIROUTE_HEALTH_PATH, _OMNIROUTE_CONTROL_PATH, _OMNIROUTE_EVENTS_PATH):
+                    try:
+                        st = path.stat()
+                        stat_bits.append((str(path), st.st_mtime_ns, st.st_size))
+                    except OSError:
+                        stat_bits.append((str(path), 0, 0))
+                sig = json.dumps(stat_bits, sort_keys=True)
+                now = time.time()
+                if sig != last_sig:
+                    last_sig = sig
+                    yield f"event: snapshot\ndata: {json.dumps(_latest_omniroute_snapshot(), ensure_ascii=False)}\n\n"
+                elif now >= ping_deadline:
+                    ping_deadline = now + 25
+                    yield ": ping\n\n"
+                await asyncio.sleep(2)
+            except asyncio.CancelledError:
+                break
+            except Exception as exc:
+                yield f"event: error\ndata: {json.dumps({'error': repr(exc)}, ensure_ascii=False)}\n\n"
+                await asyncio.sleep(5)
+    return StreamingResponse(event_gen(), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "Connection": "keep-alive"})
 
 @app.get("/api/status")
 async def get_status():
