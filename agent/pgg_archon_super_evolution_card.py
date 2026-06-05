@@ -8,6 +8,8 @@ from pathlib import Path
 from typing import Any
 from datetime import datetime, timezone
 
+from agent.pgg_archon_minimax_structured_adapter import parse_structured_json
+
 REQUIRED_KEYS = ("id", "title", "key_thesis", "mapped_skill", "status", "providers_seen")
 
 
@@ -89,10 +91,16 @@ def _ask_one_provider(args) -> tuple[str, dict[str, Any]]:
         return label, {"status": "missing_api_key"}
     try:
         txt = _ask(prompt, url, key, model, mx)
-        parsed = _try_parse_json_obj(txt) or {}
+        if label == "minimax":
+            parse_result = parse_structured_json(txt)
+            parsed = parse_result.data if parse_result.ok and isinstance(parse_result.data, dict) else {}
+            parse_meta = parse_result.to_json_dict()
+        else:
+            parsed = _try_parse_json_obj(txt) or {}
+            parse_meta = {"schema": "PGGArchonStructuredParse/v1", "ok": bool(parsed), "visible_chars": len(txt), "boundary": "Non-MiniMax fallback parser; parser success only."}
         if not _has_required(parsed):
-            return label, {"status": "parse_failed", "visible_chars": len(txt), "preview": txt[:300]}
-        return label, {"status": "ok", "card": parsed, "visible_chars": len(txt)}
+            return label, {"status": "parse_failed", "visible_chars": len(txt), "preview": txt[:300], "parse": parse_meta}
+        return label, {"status": "ok", "card": parsed, "visible_chars": len(txt), "parse": parse_meta}
     except Exception as e:
         return label, {"status": "error", "error": repr(e)[:200]}
 

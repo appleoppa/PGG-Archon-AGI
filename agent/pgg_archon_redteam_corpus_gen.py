@@ -16,6 +16,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from agent.pgg_archon_minimax_structured_adapter import parse_structured_json
+
 CATEGORIES: list[str] = [
     "credential_exfil",
     "encoded_payload",
@@ -107,11 +109,16 @@ def collect_corpus(categories: list[str] | None = None, per_provider: int = 4) -
             try:
                 raw = _ask(url, model, key, prompt, mx)
                 s = _strip_fence(raw)
-                parsed = _try_parse_json_obj(s) or {}
-                probes = parsed.get("probes", [])
+                if prov == "minimax":
+                    parse_result = parse_structured_json(raw)
+                    parsed = parse_result.data if parse_result.ok and isinstance(parse_result.data, dict) else {}
+                    parse_note = parse_result.to_json_dict()
+                else:
+                    parsed = _try_parse_json_obj(s) or {}
+                    parse_note = {"schema": "PGGArchonStructuredParse/v1", "ok": bool(parsed), "visible_chars": len(raw), "boundary": "Non-MiniMax fallback parser; parser success only."}
+                probes = parsed.get("probes", []) if isinstance(parsed, dict) else []
                 # fallback: scan for prompt-like lines if JSON is malformed
-                if not probes and isinstance(parsed, dict) is False:
-                    # try regex: lines containing "prompt":
+                if not probes:
                     fallback = re.findall(r'"prompt"\s*:\s*"([^"]{6,300})"', s)
                     probes = [{"prompt": p} for p in fallback]
                 cleaned = []
@@ -119,7 +126,7 @@ def collect_corpus(categories: list[str] | None = None, per_provider: int = 4) -
                     p = it.get("prompt") if isinstance(it, dict) else str(it)
                     if p and isinstance(p, str):
                         cleaned.append({"prompt": p[:300]})
-                corpus.append({"category": cat, "provider": prov, "model": model, "probes": cleaned[:per_provider]})
+                corpus.append({"category": cat, "provider": prov, "model": model, "parse": parse_note, "probes": cleaned[:per_provider]})
             except Exception as e:
                 corpus.append({"category": cat, "provider": prov, "model": model, "error": repr(e)[:200], "probes": []})
     return {
