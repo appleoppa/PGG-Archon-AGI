@@ -25,7 +25,7 @@ def test_default_external_benchmark_sources_separate_official_adapted_internal()
     assert all(s.boundary == BOUNDARY for s in sources)
 
 
-def test_bridge_report_marks_agnes_as_third_party_judge_only_and_case_0006_watch(tmp_path: Path) -> None:
+def test_bridge_report_marks_mimo_as_third_party_judge_only_and_case_0006_watch(tmp_path: Path) -> None:
     case_root = tmp_path / "0006-PGGMS-20260605-demo"
     (case_root / "正式文书").mkdir(parents=True)
     (case_root / "总结报告").mkdir()
@@ -38,8 +38,9 @@ def test_bridge_report_marks_agnes_as_third_party_judge_only_and_case_0006_watch
     assert report.schema == "PGGArchonExternalBenchmarkBridge/v1"
     assert report.evidence_summary["cross_domain_task_count"] == 1
     assert report.evidence_summary["task_status_counts"] == {"WATCH": 1}
-    assert report.agnes_policy["role"] == "third_party_benchmark_judge_only"
-    assert "daily task handling" in report.agnes_policy["forbidden"]
+    assert report.third_party_judge_policy["provider_id"] == "mimo_v25_pro_auditor"
+    assert report.third_party_judge_policy["role"] == "third_party_benchmark_judge_only"
+    assert "daily task handling" in report.third_party_judge_policy["forbidden"]
     assert report.case_0006_review["status"] == "WATCH"
     assert "CMS guard recorded BLOCKED" in report.case_0006_review["open_gaps"]
 

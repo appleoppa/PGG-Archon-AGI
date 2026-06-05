@@ -60,10 +60,13 @@ def _has_required(d: dict[str, Any]) -> bool:
 
 _PROVIDERS = [
     ("deepseek", "deepseek-v4-flash", "https://api.deepseek.com/v1/chat/completions", "DEEPSEEK_V4_FLASH_API_KEY", "chat", 4096),
-    ("mimo", "mimo-v2.5-pro", "https://token-plan-cn.xiaomimimo.com/v1/chat/completions", "MIMO_V25_PRO_API_KEY", "chat", 4096),
     ("agnes", "agnes-2.0-flash", "https://apihub.agnes-ai.com/v1/chat/completions", "AGNES_AI_API_KEY", "chat", 2200),
     ("minimax", "MiniMax-M3", "https://api.minimax.chat/v1/chat/completions", "MINIMAX_API_KEY", "chat", 2200),
     ("gpt55", "gpt-5.5", "https://chuangagent.eu.cc/v1/chat/completions", "GPT55_5YUANTOKEN_API_KEY", "chat", 4096),
+]
+
+_THIRD_PARTY_JUDGE_PROVIDERS = [
+    ("mimo", "mimo-v2.5-pro", "https://token-plan-cn.xiaomimimo.com/v1/chat/completions", "MIMO_V25_PRO_API_KEY", "chat", 4096),
 ]
 
 

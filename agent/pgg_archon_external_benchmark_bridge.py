@@ -91,7 +91,7 @@ class BridgeReport:
     benchmark_sources: list[dict[str, Any]]
     cross_domain_tasks: list[dict[str, Any]]
     evidence_summary: dict[str, Any]
-    agnes_policy: dict[str, Any]
+    third_party_judge_policy: dict[str, Any]
     case_0006_review: dict[str, Any]
     boundary: str = BOUNDARY
 
@@ -228,11 +228,12 @@ def build_bridge_report(
             "evidence_path_count": len(evidence_paths),
             "evidence_bundle_hash": hashlib.sha256("\n".join(sorted(evidence_paths)).encode("utf-8")).hexdigest() if evidence_paths else "",
         },
-        agnes_policy={
-            "provider_id": "agnes_ai",
+        third_party_judge_policy={
+            "provider_id": "mimo_v25_pro_auditor",
             "role": "third_party_benchmark_judge_only",
             "allowed": ["independent benchmark validation", "evidence bundle review", "anti-overclaim audit"],
             "forbidden": ["daily task handling", "case drafting", "ordinary evolution processing", "candidate answer optimization"],
+            "reason": "Agnes link is unstable; MiMo is held out as the fixed third-party judge.",
         },
         case_0006_review={
             "status": "WATCH",

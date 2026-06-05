@@ -83,22 +83,52 @@ class MultiProviderBenchmarkResult:
     boundary: str
 
 
-def default_pgg_model_providers() -> list[ModelProvider]:
-    """Return the configured GPT/Claude/DeepSeek/MiniMax/MiMo/Agnes provider descriptors.
+def _mimo_third_party_judge_provider() -> ModelProvider:
+    """Return MiMo as the isolated third-party benchmark judge.
 
-    Reasoning models such as DeepSeek-V4-Flash and MiMo-v2.5-Pro can spend
-    small token budgets entirely on ``reasoning_content`` and return
-    ``content=\"\"``. Keep their default budgets high enough for visible final
-    answers in provider health/evolution gates.
+    User policy update (2026-06-06): MiMo/mimo_v25_pro_auditor is the
+    independent third-party benchmark/audit judge because Agnes is unstable.
+    Agnes may participate only as ordinary/non-critical collaboration channel.
     """
-    return [
+    return ModelProvider(
+        "mimo_v25_pro_auditor",
+        "mimo-v2.5-pro",
+        "chat_completions",
+        "https://token-plan-cn.xiaomimimo.com/v1",
+        "MIMO_V25_PRO_API_KEY",
+        max_tokens=4096,
+    )
+
+
+def third_party_benchmark_judge_providers() -> list[ModelProvider]:
+    """Providers reserved for independent benchmark validation only."""
+    return [_mimo_third_party_judge_provider()]
+
+
+def default_pgg_model_providers(*, include_third_party_judges: bool = False) -> list[ModelProvider]:
+    """Return configured providers for ordinary PGG processing.
+
+    By default this excludes MiMo because MiMo is reserved as an independent
+    third-party benchmark judge. Set ``include_third_party_judges=True`` only in
+    benchmark validation / external judge code paths that explicitly need the
+    held-out evaluator. Agnes may participate as an ordinary/non-critical
+    provider, with instability recorded honestly when it fails.
+
+    Reasoning models such as DeepSeek-V4-Flash can spend small token budgets
+    entirely on ``reasoning_content`` and return ``content=\"\"``. Keep the
+    default budget high enough for visible final answers in provider
+    health/evolution gates.
+    """
+    providers = [
         ModelProvider("gpt55_5yuantoken", "gpt-5.5", "responses", "https://chuangagent.eu.cc/v1/responses", "GPT55_5YUANTOKEN_API_KEY", max_tokens=1600),
         ModelProvider("claude_opus46_5yuantoken", "claude-opus-4-6", "responses", "https://chuangagent.eu.cc/v1/responses", "CLAUDE_OPUS47_5YUANTOKEN_API_KEY", max_tokens=1600),
         ModelProvider("deepseek_v4_flash", "deepseek-v4-flash", "chat_completions", "https://api.deepseek.com/chat/completions", "DEEPSEEK_V4_FLASH_API_KEY", max_tokens=4096),
         ModelProvider("minimax_m3", "MiniMax-M3", "chat_completions", "https://api.minimax.chat/v1", "MINIMAX_API_KEY", max_tokens=1600),
-        ModelProvider("mimo_v25_pro_auditor", "mimo-v2.5-pro", "chat_completions", "https://token-plan-cn.xiaomimimo.com/v1", "MIMO_V25_PRO_API_KEY", max_tokens=4096),
         ModelProvider("agnes_ai", "agnes-2.0-flash", "chat_completions", "https://apihub.agnes-ai.com/v1", "AGNES_AI_API_KEY", max_tokens=1600),
     ]
+    if include_third_party_judges:
+        providers.extend(third_party_benchmark_judge_providers())
+    return providers
 
 
 def load_dotenv_file(path: str | Path = "/Users/appleoppa/.hermes/.env") -> None:

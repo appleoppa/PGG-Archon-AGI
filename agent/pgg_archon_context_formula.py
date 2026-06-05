@@ -5,6 +5,9 @@
   2. ~/.hermes/data/context_formula_log.jsonl exists
   3. env PGG_ARCHON_CONTEXT_FORMULA_VERSION is set
   4. ~/.hermes/memories/MEMORY.md is present
+
+Also houses build_context_formula_report() and build_context_budget_policy()
+for tools.pgg_archon_tools import compatibility.
 """
 
 from __future__ import annotations
@@ -70,6 +73,52 @@ def run_context_formula() -> dict[str, Any]:
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "probe": asdict(p),
         "boundary": "status surface; ACTIVE means 4/4 gates resolved; not full AGI",
+    }
+
+
+def build_context_formula_report(
+    signals: dict[str, Any] | None = None,
+    delta_signals: dict[str, Any] | None = None,
+    source: str = "hermes_tool:pgg_ultimate_evolution:context_formula",
+) -> dict[str, Any]:
+    """Build a bounded context formula report.
+
+    Read-only APEX_MAX context efficiency score.
+    Accepts optional context signals, returns structured JSON report.
+    """
+    if signals is None:
+        signals = {}
+    return {
+        "schema": "PGGArchonContextFormula/v1",
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "source": source,
+        "omega_a": signals.get("omega_a", 1.0),
+        "token_savings": signals.get("token_savings", 0),
+        "efficiency": signals.get("efficiency", 0.0),
+        "accuracy": signals.get("accuracy", 0.0),
+        "completeness": signals.get("completeness", 0.0),
+        "logic_flow": signals.get("logic_flow", 0.0),
+        "response_speed": signals.get("response_speed", 0.0),
+        "boundary": "read-only context formula report; not full AGI",
+    }
+
+
+def build_context_budget_policy(
+    report: dict[str, Any],
+) -> dict[str, Any]:
+    """Build a concrete token/tool/skill budget policy from a context formula report.
+
+    Read-only; returns budget recommendations without modifying any config.
+    """
+    return {
+        "schema": "PGGArchonContextBudgetPolicy/v1",
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "source": report.get("source", "hermes_tool:pgg_ultimate_evolution:context_budget_policy"),
+        "max_context_tokens": 128000,
+        "compression_threshold": 0.85,
+        "tool_budget": 90,
+        "skill_depth_limit": 3,
+        "boundary": "read-only budget policy; does not modify config",
     }
 
 

@@ -11,6 +11,7 @@ from agent.pgg_archon_provider_benchmark import (
     default_pgg_model_providers,
     run_multi_provider_benchmark,
     run_provider_benchmark,
+    third_party_benchmark_judge_providers,
     write_multi_provider_result,
 )
 
@@ -36,17 +37,23 @@ def test_extract_responses_text_handles_output_items() -> None:
     assert _extract_responses_text({"output_text": "fallback"}) == "fallback"
 
 
-def test_default_pgg_model_providers_include_minimax_m3_mimo_agnes_and_reasoning_budgets() -> None:
+def test_default_pgg_model_providers_exclude_mimo_by_default_and_hold_out_as_judge() -> None:
     providers = {provider.provider_id: provider for provider in default_pgg_model_providers()}
     assert "minimax_m3" in providers
     assert providers["minimax_m3"].model == "MiniMax-M3"
     assert providers["minimax_m3"].api_mode == "chat_completions"
     assert providers["minimax_m3"].api_key_env == "MINIMAX_API_KEY"
     assert providers["deepseek_v4_flash"].max_tokens >= 4096
-    assert providers["mimo_v25_pro_auditor"].url == "https://token-plan-cn.xiaomimimo.com/v1"
-    assert providers["mimo_v25_pro_auditor"].max_tokens >= 4096
+    assert "mimo_v25_pro_auditor" not in providers
     assert providers["agnes_ai"].url == "https://apihub.agnes-ai.com/v1"
     assert providers["agnes_ai"].model == "agnes-2.0-flash"
+
+    judges = {provider.provider_id: provider for provider in third_party_benchmark_judge_providers()}
+    assert judges["mimo_v25_pro_auditor"].url == "https://token-plan-cn.xiaomimimo.com/v1"
+    assert judges["mimo_v25_pro_auditor"].max_tokens >= 4096
+
+    providers_with_judge = {provider.provider_id: provider for provider in default_pgg_model_providers(include_third_party_judges=True)}
+    assert providers_with_judge["mimo_v25_pro_auditor"] == judges["mimo_v25_pro_auditor"]
 
 
 def test_chat_completions_base_url_is_completed(monkeypatch) -> None:

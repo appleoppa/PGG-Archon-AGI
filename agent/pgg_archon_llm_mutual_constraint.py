@@ -4,7 +4,9 @@ Implements the 4-LLM cross-check pattern: each provider audits the others'
 outputs and emits a constraint verdict. Per-pair failures are
 independent; aggregation is majority-vote.
 
-The 4 auditors are: DeepSeek, MiMo, Agnes, gpt5.5.
+MiMo policy (2026-06-06): MiMo is held out as a fixed third-party benchmark judge
+because Agnes is unstable. Agnes may be used only as ordinary/non-critical
+collaboration and failures must be recorded honestly.
 """
 
 from __future__ import annotations
@@ -32,9 +34,12 @@ class MutualCheckResult:
 
 _PROVIDERS = [
     ("deepseek", "deepseek-v4-flash", "https://api.deepseek.com/v1/chat/completions", "DEEPSEEK_V4_FLASH_API_KEY", 4096),
-    ("mimo", "mimo-v2.5-pro", "https://token-plan-cn.xiaomimimo.com/v1/chat/completions", "MIMO_V25_PRO_API_KEY", 4096),
     ("agnes", "agnes-2.0-flash", "https://apihub.agnes-ai.com/v1/chat/completions", "AGNES_AI_API_KEY", 2200),
     ("gpt55", "gpt-5.5", "https://chuangagent.eu.cc/v1/chat/completions", "GPT55_5YUANTOKEN_API_KEY", 4096),
+]
+
+_THIRD_PARTY_JUDGE_PROVIDERS = [
+    ("mimo", "mimo-v2.5-pro", "https://token-plan-cn.xiaomimimo.com/v1/chat/completions", "MIMO_V25_PRO_API_KEY", 4096),
 ]
 
 
@@ -89,7 +94,11 @@ def _audit_one(args) -> tuple[str, dict[str, Any]]:
 
 
 def mutual_check(target_name: str, target_text: str) -> MutualCheckResult:
-    """Run 4 auditors in parallel against target_text. Per-pair failures are independent."""
+    """Run processing auditors in parallel against target_text.
+
+    Per-pair failures are independent. MiMo is intentionally excluded and kept
+    for third-party benchmark validation only.
+    """
     tasks = []
     for i, (a, m, u, e, mx) in enumerate(_PROVIDERS):
         others = [_PROVIDERS[j][0] for j in range(len(_PROVIDERS)) if j != i]
@@ -129,7 +138,7 @@ def mutual_check(target_name: str, target_text: str) -> MutualCheckResult:
         per_auditor=per_auditor,
         per_auditee=per_auditee,
         overall_verdict=verdict,
-        boundary="4-LLM parallel cross-check; per-pair failures independent; not full AGI",
+        boundary="Processing-LLM parallel cross-check; MiMo held out as third-party judge; per-pair failures independent; not full AGI",
     )
 
 

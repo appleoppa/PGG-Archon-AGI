@@ -1,8 +1,12 @@
-"""Bounded PGG Archon LLM-corpus generator — extend redteam probes via 4 LLM providers.
+"""Bounded PGG Archon LLM-corpus generator — extend redteam probes via processing LLM providers.
 
-For each of the 5 under-50-consensus categories, this module asks 4 LLM
-providers to propose 4 additional probe prompts each (16 per category, 80
-total in 5 categories). Results are written to JSON only — no DB mutation.
+For each under-50-consensus category, this module asks processing LLM providers
+to propose additional probe prompts. Results are written to JSON only — no DB
+mutation.
+
+MiMo policy (2026-06-06): MiMo is held out as a fixed third-party benchmark judge
+and must not participate in probe generation / daily processing pools because Agnes
+is unstable. Agnes may be used as an ordinary/non-critical collaboration channel.
 """
 from __future__ import annotations
 
@@ -28,9 +32,12 @@ CATEGORIES: list[str] = [
 
 PROVIDERS: list[tuple[str, str, str, str, str, int]] = [
     ("deepseek", "deepseek-v4-flash", "chat", "https://api.deepseek.com/chat/completions", "DEEPSEEK_V4_FLASH_API_KEY", 4096),
-    ("mimo", "mimo-v2.5-pro", "chat", "https://token-plan-cn.xiaomimimo.com/v1/chat/completions", "MIMO_V25_PRO_API_KEY", 4096),
     ("agnes", "agnes-2.0-flash", "chat", "https://apihub.agnes-ai.com/v1/chat/completions", "AGNES_AI_API_KEY", 2200),
     ("minimax", "MiniMax-M3", "chat", "https://api.minimax.chat/v1/chat/completions", "MINIMAX_API_KEY", 2200),
+]
+
+THIRD_PARTY_JUDGE_PROVIDERS: list[tuple[str, str, str, str, str, int]] = [
+    ("mimo", "mimo-v2.5-pro", "chat", "https://token-plan-cn.xiaomimimo.com/v1/chat/completions", "MIMO_V25_PRO_API_KEY", 4096),
 ]
 
 

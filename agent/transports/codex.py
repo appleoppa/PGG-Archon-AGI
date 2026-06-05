@@ -236,7 +236,15 @@ class ResponsesApiTransport(ProviderTransport):
                 kwargs["extra_headers"] = merged_extra_headers
 
         max_tokens = params.get("max_tokens")
-        if max_tokens is not None and not is_codex_backend:
+        # ChuangAgent's Responses-compatible proxy (used by the local gpt-5.5 /
+        # claude-opus custom providers) currently returns HTTP 200 with an empty
+        # ``output`` when any explicit output-budget field is sent.  Direct smoke
+        # tests show the same endpoint produces visible text when the budget field
+        # is omitted, so leave token budgeting to the proxy for this host instead
+        # of converting Hermes ``max_tokens`` into ``max_output_tokens``.
+        base_url = str(params.get("base_url") or "")
+        is_chuangagent_responses_proxy = "chuangagent.eu.cc" in base_url.lower()
+        if max_tokens is not None and not is_codex_backend and not is_chuangagent_responses_proxy:
             kwargs["max_output_tokens"] = max_tokens
 
         if is_xai_responses and session_id:
