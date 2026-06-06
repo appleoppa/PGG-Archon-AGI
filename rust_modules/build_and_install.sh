@@ -1,12 +1,18 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT="/Users/appleoppa/.hermes/hermes-agent"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT="${HERMES_AGENT_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd)}"
 BASE="$ROOT/rust_modules"
-SITE="$ROOT/venv/lib/python3.11/site-packages"
-CRATES=(hermes_pgg_status hermes_pgg_ecc hermes_pgg_overlay)
+PYTHON_BIN="${PYO3_PYTHON:-$ROOT/venv/bin/python}"
+SITE="${HERMES_PY_SITE:-$($PYTHON_BIN - <<'PY'
+import site
+print(site.getsitepackages()[0])
+PY
+)}"
+CRATES=(hermes_pgg_status hermes_pgg_ecc hermes_pgg_overlay hermes_pgg_ralph hermes_pgg_pilotdeck)
 
-export PYO3_PYTHON="$ROOT/venv/bin/python"
+export PYO3_PYTHON="$PYTHON_BIN"
 
 for crate in "${CRATES[@]}"; do
   echo "==> build $crate"
@@ -17,7 +23,7 @@ for crate in "${CRATES[@]}"; do
   cp "$src" "$dest"
   codesign --remove-signature "$dest" 2>/dev/null || true
   codesign --force --sign - "$dest"
-  "$ROOT/venv/bin/python" - <<PY
+  "$PYTHON_BIN" - <<PY
 import importlib, json
 m=importlib.import_module('$crate')
 print(json.dumps({'module':'$crate','version':m.version(),'file':getattr(m,'__file__',None)}, ensure_ascii=False))
