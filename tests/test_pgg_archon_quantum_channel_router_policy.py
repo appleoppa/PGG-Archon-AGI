@@ -45,6 +45,13 @@ def test_provider_call_rejects_mimo_before_registry_call(monkeypatch) -> None:
     assert called["value"] is False
 
 
+def test_route_policy_intent_classification_order_and_version() -> None:
+    assert mod.OMNIROUTE_ROUTE_POLICY_VERSION == "v2.6-fresh-calibrated-window-20260606"
+    assert mod._classify_route_intent(prompt="legal contract litigation review")["intent"] == "chinese_legal"
+    assert mod._classify_route_intent(prompt="PGG Archon audit evaluation verdict")["intent"] == "audit_judge"
+    assert mod._classify_route_intent(prompt="PGG Archon Rust router compile fix")["intent"] == "agi_architecture_coding"
+
+
 def test_route_policy_version_is_emitted_in_decision_and_mirror(monkeypatch, tmp_path) -> None:
     monkeypatch.setattr(mod, "OMNIROUTE_ROUTE_CALL_EVENTS", tmp_path / "route_events.jsonl")
     monkeypatch.setattr(mod, "OMNIROUTE_MIRROR_EVENTS", tmp_path / "mirror_events.jsonl")

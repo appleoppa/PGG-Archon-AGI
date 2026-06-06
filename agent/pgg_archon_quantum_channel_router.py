@@ -35,7 +35,7 @@ OMNIROUTE_MULTI_TASK_EVENTS = HOME / ".hermes" / "data" / "omniroute_multi_task_
 OMNIROUTE_MIRROR_EVENTS = HOME / ".hermes" / "data" / "omniroute_core_mirror_events.jsonl"
 OMNIROUTE_PROVIDER_COOLDOWN = HOME / ".hermes" / "data" / "omniroute_provider_cooldown.json"
 OMNIROUTE_EVIDENCE_DIR = HOME / ".hermes" / "workspace" / "github_absorption" / "9router" / "analysis" / "evidence"
-OMNIROUTE_ROUTE_POLICY_VERSION = "v2.5-task-intent-policy-20260606"
+OMNIROUTE_ROUTE_POLICY_VERSION = "v2.6-fresh-calibrated-window-20260606"
 OMNIROUTE_THIRD_PARTY_JUDGE_ALIASES = {"mimo", "mimo_v25_pro_auditor", "custom:mimo_v25_pro_auditor"}
 
 
@@ -253,14 +253,14 @@ def _route_generation_id(dashboard: dict[str, Any], control: dict[str, Any]) -> 
 
 def _classify_route_intent(task_type: str = "", prompt: str = "") -> dict[str, Any]:
     text = f"{task_type}\n{prompt}".lower()
-    if any(k in text for k in ["法律", "法条", "案例", "合同", "诉讼", "办案", "刑事", "民事", "公司法", "破产", "执行"]):
+    if any(k in text for k in ["法律", "法条", "案例", "合同", "诉讼", "办案", "刑事", "民事", "公司法", "破产", "执行", "legal", "law", "litigation", "contract"]):
         return {"intent": "chinese_legal", "preferred": ["deepseek", "gpt55", "claude", "mimo"], "reason": "Chinese legal work prefers DeepSeek, with GPT/Claude as review; MiMo is not primary."}
-    if any(k in text for k in ["agi", "pgg", "archon", "进化", "架构", "route", "router", "omniroute", "apex", "系统", "代码", "编译", "rust", "优化"]):
-        return {"intent": "agi_architecture_coding", "preferred": ["gpt55", "claude", "deepseek", "mimo"], "reason": "AGI/architecture/coding tasks prefer GPT/Claude per user policy; MiMo is not primary."}
-    if any(k in text for k in ["审计", "judge", "benchmark", "评测", "验证", "verdict", "pass", "fail", "打分", "复核"]):
+    if any(k in text for k in ["审计", "judge", "benchmark", "评测", "验证", "verdict", "pass", "fail", "打分", "复核", "audit", "evaluator", "evaluation"]):
         return {"intent": "audit_judge", "preferred": ["mimo", "claude", "gpt55", "deepseek"], "reason": "Audit/judge tasks may prefer MiMo as judge."}
     if any(k in text for k in ["math", "gsm8k", "计算", "算", "answer exactly", "reply exactly", "只回答"]):
         return {"intent": "bounded_exact_or_math", "preferred": ["gpt55", "deepseek", "mimo", "claude"], "reason": "Bounded exact/math tasks keep GPT/DeepSeek ahead of judge-only MiMo."}
+    if any(k in text for k in ["agi", "pgg", "archon", "进化", "架构", "route", "router", "omniroute", "apex", "系统", "代码", "编译", "rust", "优化"]):
+        return {"intent": "agi_architecture_coding", "preferred": ["gpt55", "claude", "deepseek", "mimo"], "reason": "AGI/architecture/coding tasks prefer GPT/Claude per user policy; MiMo is not primary."}
     return {"intent": "general", "preferred": ["gpt55", "deepseek", "claude", "mimo"], "reason": "General tasks prefer current strong GPT/DeepSeek before MiMo judge."}
 
 
