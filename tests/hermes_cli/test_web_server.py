@@ -34,6 +34,23 @@ def test_omniroute_web_validators_block_mimo_and_clamp_timeout():
         web_server._omniroute_validate_text("x" * (web_server.OMNIROUTE_MAX_TASK_CHARS + 1), field="task")
 
 
+def test_omniroute_route_suggest_metrics_exposes_post_policy_window(monkeypatch):
+    from hermes_cli import web_server
+    from agent.pgg_archon_quantum_channel_router import OMNIROUTE_ROUTE_POLICY_VERSION
+
+    calls = []
+
+    def fake_metrics(limit=200, policy_version=None):
+        calls.append((limit, policy_version))
+        return {"schema": "PGGArchonOmniRouteRouteSuggestMetrics/v1", "policy_version": policy_version or "rolling"}
+
+    monkeypatch.setattr("agent.pgg_archon_quantum_channel_router.omniroute_route_suggest_metrics", fake_metrics)
+    result = web_server._latest_omniroute_route_suggest_metrics()
+    assert result["policy_version"] == "rolling"
+    assert result["post_policy_window"]["policy_version"] == OMNIROUTE_ROUTE_POLICY_VERSION
+    assert calls == [(200, None), (200, OMNIROUTE_ROUTE_POLICY_VERSION)]
+
+
 # ---------------------------------------------------------------------------
 # Shared fixtures
 # ---------------------------------------------------------------------------

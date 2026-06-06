@@ -975,9 +975,12 @@ def _latest_omniroute_task_evidence_package() -> dict[str, Any]:
 
 def _latest_omniroute_route_suggest_metrics() -> dict[str, Any]:
     try:
-        from agent.pgg_archon_quantum_channel_router import omniroute_route_suggest_metrics
+        from agent.pgg_archon_quantum_channel_router import OMNIROUTE_ROUTE_POLICY_VERSION, omniroute_route_suggest_metrics
 
-        return omniroute_route_suggest_metrics(limit=200)
+        rolling = omniroute_route_suggest_metrics(limit=200)
+        post_policy = omniroute_route_suggest_metrics(limit=200, policy_version=OMNIROUTE_ROUTE_POLICY_VERSION)
+        rolling["post_policy_window"] = post_policy
+        return rolling
     except Exception as exc:
         return {"schema": "PGGArchonOmniRouteRouteSuggestMetrics/v1", "status": "error", "error": repr(exc)}
 
