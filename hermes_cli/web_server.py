@@ -989,7 +989,9 @@ def _latest_omniroute_route_enforce_canary() -> dict[str, Any]:
     try:
         from agent.pgg_archon_quantum_channel_router import read_route_enforce_canary_config, recent_route_enforce_events
 
-        return {"config": read_route_enforce_canary_config(), "recent_events": recent_route_enforce_events(20)}
+        latest_path = Path.home() / ".hermes" / "workspace" / "github_absorption" / "9router" / "analysis" / "omniroute-v29-window-test-latest.json"
+        latest = _read_json_file(latest_path) if latest_path.exists() else {}
+        return {"config": read_route_enforce_canary_config(), "recent_events": recent_route_enforce_events(20), "latest_window_test": latest, "latest_window_test_path": str(latest_path)}
     except Exception as exc:
         return {"config": {}, "recent_events": [], "error": repr(exc)}
 
@@ -1110,6 +1112,10 @@ class OmniRouteEnforceConfigRequest(BaseModel):
     denied_intents: Optional[list[str]] = None
     require_route_class_match_actual: Optional[bool] = None
     require_policy_version: Optional[str] = None
+
+
+class OmniRouteEnforceWindowTestRequest(BaseModel):
+    sample_count: Optional[int] = 50
 
 
 class OmniRouteMultiCallRequest(BaseModel):
@@ -1241,6 +1247,22 @@ async def run_omniroute_enforce_selftest_api():
         return {"ok": bool(result.get("passed")), "result": result, "path": str(out_path), "snapshot": _latest_omniroute_snapshot()}
     except Exception as exc:
         _write_omniroute_event("route_enforce_canary_selftest_error", {"error": repr(exc)})
+        raise HTTPException(status_code=500, detail=repr(exc))
+
+
+@app.post("/api/omniroute/enforce/window-test")
+async def run_omniroute_enforce_window_test_api(body: OmniRouteEnforceWindowTestRequest):
+    try:
+        from agent.pgg_archon_quantum_channel_router import run_route_enforce_canary_window_test
+
+        result = run_route_enforce_canary_window_test(int(body.sample_count or 50))
+        out_path = Path.home() / ".hermes" / "workspace" / "github_absorption" / "9router" / "analysis" / "omniroute-v29-window-test-latest.json"
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
+        _write_omniroute_event("route_enforce_canary_window_test", {"status": result.get("status"), "passed": result.get("passed"), "sample_count": result.get("sample_count"), "path": str(out_path)})
+        return {"ok": bool(result.get("passed")), "result": result, "path": str(out_path), "snapshot": _latest_omniroute_snapshot()}
+    except Exception as exc:
+        _write_omniroute_event("route_enforce_canary_window_test_error", {"error": repr(exc)})
         raise HTTPException(status_code=500, detail=repr(exc))
 
 

@@ -135,6 +135,22 @@ def test_record_core_mirror_includes_route_enforce_canary(monkeypatch, tmp_path)
     assert payload["route_enforce_canary"]["schema"] == "PGGArchonOmniRouteEnforceDecision/v1"
 
 
+def test_route_enforce_canary_window_test_passes_rolls_back_and_blocks_leakage(monkeypatch, tmp_path) -> None:
+    monkeypatch.setattr(mod, "OMNIROUTE_ENFORCE_CONFIG", tmp_path / "enforce.json")
+    monkeypatch.setattr(mod, "OMNIROUTE_ENFORCE_EVENTS", tmp_path / "events.jsonl")
+    previous = mod.write_route_enforce_canary_config({"enabled": False, "mode": "observe_only"})
+    result = mod.run_route_enforce_canary_window_test(1)
+    assert result["schema"] == "PGGArchonOmniRouteEnforceCanaryWindowTest/v1"
+    assert result["sample_count"] == 10
+    assert result["passed"] is True
+    assert result["allowed_count"] == 10
+    assert result["leakage_count"] == 0
+    assert "no provider substitution" in result["boundary"]
+    restored = mod.read_route_enforce_canary_config()
+    assert restored["enabled"] == previous["enabled"]
+    assert restored["mode"] == previous["mode"]
+
+
 def test_route_policy_intent_classification_order_and_version() -> None:
     assert mod.OMNIROUTE_ROUTE_POLICY_VERSION == "v2.6-fresh-calibrated-window-20260606"
     assert mod._classify_route_intent(prompt="legal contract litigation review")["intent"] == "chinese_legal"

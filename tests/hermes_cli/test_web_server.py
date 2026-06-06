@@ -74,6 +74,23 @@ def test_omniroute_route_enforce_canary_snapshot_and_config_api(monkeypatch, tmp
     assert "Default is fail-open" in cfg["rollback"]
 
 
+def test_omniroute_route_enforce_window_test_api_and_snapshot(monkeypatch, tmp_path):
+    from hermes_cli import web_server
+    from agent import pgg_archon_quantum_channel_router as router
+
+    monkeypatch.setattr(router, "OMNIROUTE_ENFORCE_CONFIG", tmp_path / "enforce.json")
+    monkeypatch.setattr(router, "OMNIROUTE_ENFORCE_EVENTS", tmp_path / "events.jsonl")
+    monkeypatch.setattr(web_server.Path, "home", staticmethod(lambda: tmp_path))
+    # The endpoint writes under patched HOME/.hermes/...; verify it returns a bounded no-substitution result.
+    result = asyncio.run(web_server.run_omniroute_enforce_window_test_api(web_server.OmniRouteEnforceWindowTestRequest(sample_count=1)))
+    assert result["ok"] is True
+    assert result["result"]["sample_count"] == 10
+    assert result["result"]["leakage_count"] == 0
+    assert "no provider substitution" in result["result"]["boundary"]
+    panel = web_server._latest_omniroute_route_enforce_canary()
+    assert panel["latest_window_test"]["schema"] == "PGGArchonOmniRouteEnforceCanaryWindowTest/v1"
+
+
 def test_omniroute_route_suggest_metrics_exposes_post_policy_window(monkeypatch):
     from hermes_cli import web_server
     from agent.pgg_archon_quantum_channel_router import OMNIROUTE_ROUTE_POLICY_VERSION

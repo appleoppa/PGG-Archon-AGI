@@ -36,6 +36,7 @@ OMNIROUTE_MIRROR_EVENTS = HOME / ".hermes" / "data" / "omniroute_core_mirror_eve
 OMNIROUTE_PROVIDER_COOLDOWN = HOME / ".hermes" / "data" / "omniroute_provider_cooldown.json"
 OMNIROUTE_ENFORCE_CONFIG = HOME / ".hermes" / "data" / "omniroute_route_enforce_canary.json"
 OMNIROUTE_ENFORCE_EVENTS = HOME / ".hermes" / "data" / "omniroute_route_enforce_events.jsonl"
+OMNIROUTE_SUBSTITUTION_EVENTS = HOME / ".hermes" / "data" / "omniroute_provider_substitution_events.jsonl"
 OMNIROUTE_EVIDENCE_DIR = HOME / ".hermes" / "workspace" / "github_absorption" / "9router" / "analysis" / "evidence"
 OMNIROUTE_ROUTE_POLICY_VERSION = "v2.6-fresh-calibrated-window-20260606"
 OMNIROUTE_THIRD_PARTY_JUDGE_ALIASES = {"mimo", "mimo_v25_pro_auditor", "custom:mimo_v25_pro_auditor"}
@@ -667,6 +668,153 @@ def run_route_enforce_canary_selftest() -> dict[str, Any]:
             "require_policy_version": previous.get("require_policy_version") or OMNIROUTE_ROUTE_POLICY_VERSION,
         })
         _append_route_enforce_event({"ts": datetime.now(timezone.utc).timestamp(), "event": "route_enforce_canary_selftest_rollback", "payload": {"restored_enabled": bool(previous.get("enabled", False)), "restored_mode": str(previous.get("mode") or "observe_only")}})
+
+
+def run_route_enforce_canary_window_test(sample_count: int = 50) -> dict[str, Any]:
+    sample_count = max(10, min(int(sample_count or 50), 200))
+    previous = read_route_enforce_canary_config()
+    started_at = _now_iso()
+    results: list[dict[str, Any]] = []
+    denied_leakage_cases = [
+        ("legal", "中文法律合同诉讼法条"),
+        ("audit", "audit judge benchmark verdict"),
+        ("agi", "PGG Archon AGI Rust router evolution"),
+    ]
+    try:
+        write_route_enforce_canary_config({"enabled": True, "mode": "canary"})
+        for i in range(sample_count):
+            case = "exact" if i % 2 == 0 else "general"
+            prompt = f"Reply exactly: PGG_V29_{case.upper()}_{i:03d}" if case == "exact" else f"general routing smoke {i:03d}"
+            suggestion = decide_omniroute_provider(task_type=case, prompt_preview=prompt)
+            decision = evaluate_route_enforce_canary(suggestion, "custom:gpt55_5yuantoken", "gpt-5.5")
+            match = decision.get("suggested_route_class") == decision.get("actual_route_class")
+            results.append({
+                "case": case,
+                "index": i,
+                "allowed": bool(decision.get("allowed")),
+                "route_class_match": bool(match),
+                "suggested_route_class": decision.get("suggested_route_class"),
+                "actual_route_class": decision.get("actual_route_class"),
+                "reasons": decision.get("reasons", []),
+            })
+        leakage: list[dict[str, Any]] = []
+        for case, prompt in denied_leakage_cases:
+            suggestion = decide_omniroute_provider(task_type=case, prompt_preview=prompt)
+            decision = evaluate_route_enforce_canary(suggestion, "custom:gpt55_5yuantoken", "gpt-5.5")
+            leakage.append({"case": case, "allowed": bool(decision.get("allowed")), "reasons": decision.get("reasons", []), "suggested_route_class": decision.get("suggested_route_class"), "actual_route_class": decision.get("actual_route_class")})
+        allowed_count = sum(1 for r in results if r["allowed"])
+        match_count = sum(1 for r in results if r["route_class_match"])
+        error_count = sum(1 for r in results if r.get("reasons"))
+        leakage_count = sum(1 for r in leakage if r["allowed"])
+        class_match_rate = round(match_count / len(results), 4) if results else 0.0
+        suggestion_error_rate = round(error_count / len(results), 4) if results else 1.0
+        passed = len(results) == sample_count and allowed_count == sample_count and class_match_rate >= 0.95 and suggestion_error_rate <= 0.01 and leakage_count == 0
+        return {
+            "schema": "PGGArchonOmniRouteEnforceCanaryWindowTest/v1",
+            "started_at": started_at,
+            "finished_at": _now_iso(),
+            "sample_count": sample_count,
+            "status": "PASS" if passed else "FAIL",
+            "passed": passed,
+            "allowed_count": allowed_count,
+            "class_match_rate": class_match_rate,
+            "suggestion_error_rate": suggestion_error_rate,
+            "leakage_count": leakage_count,
+            "leakage": leakage,
+            "results_head": results[:5],
+            "results_tail": results[-5:],
+            "next_gate": "provider_substitution_canary_candidate" if passed else "hold",
+            "boundary": "Window test evaluates canary decisions only; no provider substitution.",
+        }
+    finally:
+        write_route_enforce_canary_config({
+            "enabled": bool(previous.get("enabled", False)),
+            "mode": str(previous.get("mode") or "observe_only"),
+            "allowed_intents": previous.get("allowed_intents") or ["bounded_exact_or_math", "general"],
+            "denied_intents": previous.get("denied_intents") or ["chinese_legal", "audit_judge", "agi_architecture_coding"],
+            "require_route_class_match_actual": bool(previous.get("require_route_class_match_actual", True)),
+            "require_policy_version": previous.get("require_policy_version") or OMNIROUTE_ROUTE_POLICY_VERSION,
+        })
+        _append_route_enforce_event({"ts": datetime.now(timezone.utc).timestamp(), "event": "route_enforce_canary_window_test_rollback", "payload": {"restored_enabled": bool(previous.get("enabled", False)), "restored_mode": str(previous.get("mode") or "observe_only")}})
+
+
+def _append_substitution_event(event: dict[str, Any]) -> None:
+    try:
+        OMNIROUTE_SUBSTITUTION_EVENTS.parent.mkdir(parents=True, exist_ok=True)
+        with OMNIROUTE_SUBSTITUTION_EVENTS.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(event, ensure_ascii=False) + "\n")
+    except Exception:
+        pass
+
+
+def recent_provider_substitution_events(limit: int = 20) -> list[dict[str, Any]]:
+    return _read_jsonl_tail(OMNIROUTE_SUBSTITUTION_EVENTS, limit)
+
+
+def plan_provider_substitution_canary(task: str, task_type: str = "exact", actual_provider: str = "custom:gpt55_5yuantoken", model: str = "gpt-5.5") -> dict[str, Any]:
+    suggestion = decide_omniroute_provider(task_type=task_type, prompt_preview=task[:1000])
+    previous = read_route_enforce_canary_config()
+    try:
+        write_route_enforce_canary_config({"enabled": True, "mode": "canary"})
+        enforce = evaluate_route_enforce_canary(suggestion, actual_provider, model)
+    finally:
+        write_route_enforce_canary_config({
+            "enabled": bool(previous.get("enabled", False)),
+            "mode": str(previous.get("mode") or "observe_only"),
+            "allowed_intents": previous.get("allowed_intents") or ["bounded_exact_or_math", "general"],
+            "denied_intents": previous.get("denied_intents") or ["chinese_legal", "audit_judge", "agi_architecture_coding"],
+            "require_route_class_match_actual": bool(previous.get("require_route_class_match_actual", True)),
+            "require_policy_version": previous.get("require_policy_version") or OMNIROUTE_ROUTE_POLICY_VERSION,
+        })
+    allowed = bool(enforce.get("allowed"))
+    plan = {
+        "schema": "PGGArchonOmniRouteProviderSubstitutionPlan/v1",
+        "planned_at": _now_iso(),
+        "task_type": task_type,
+        "task_preview": task[:160],
+        "suggestion": suggestion,
+        "enforce_decision": enforce,
+        "substitution_provider": suggestion.get("selected_provider") if allowed else "",
+        "allowed": allowed,
+        "boundary": "Plan only; execution requires explicit canary execute and writes provider participation evidence.",
+    }
+    _append_substitution_event({"ts": datetime.now(timezone.utc).timestamp(), "event": "provider_substitution_plan", "payload": plan})
+    return plan
+
+
+def execute_provider_substitution_canary(task: str, task_type: str = "exact", timeout: float = 60.0) -> dict[str, Any]:
+    import hashlib
+    started = datetime.now(timezone.utc)
+    canary_id = hashlib.sha256(f"{started.isoformat()}::{task}".encode("utf-8")).hexdigest()[:16]
+    plan = plan_provider_substitution_canary(task, task_type=task_type)
+    if not plan.get("allowed"):
+        result = {
+            "schema": "PGGArchonOmniRouteProviderSubstitutionCanary/v1",
+            "canary_id": canary_id,
+            "started_at": started.isoformat(),
+            "success": False,
+            "executed": False,
+            "plan": plan,
+            "error": "substitution plan not allowed",
+            "boundary": "No provider call made because guard denied substitution.",
+        }
+        _append_substitution_event({"ts": datetime.now(timezone.utc).timestamp(), "event": "provider_substitution_canary", "payload": result})
+        return result
+    provider = str(plan.get("substitution_provider") or "")
+    execution = execute_omniroute_task(task, task_type=f"substitution_canary:{task_type}", requested_provider=provider, timeout=timeout)
+    result = {
+        "schema": "PGGArchonOmniRouteProviderSubstitutionCanary/v1",
+        "canary_id": canary_id,
+        "started_at": started.isoformat(),
+        "finished_at": _now_iso(),
+        "success": bool(execution.get("success")),
+        "executed": True,
+        "plan": plan,
+        "execution": execution,
+        "boundary": "Single bounded substitution canary. This does not enable global route enforcement.",
+    }
+    _append_substitution_event({"ts": datetime.now(timezone.utc).timestamp(), "event": "provider_substitution_canary", "payload": result})
+    return result
 
 
 def record_omniroute_core_mirror(
