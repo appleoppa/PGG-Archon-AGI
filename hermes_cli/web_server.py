@@ -1145,6 +1145,12 @@ class OmniRouteFallbackWindowRequest(BaseModel):
     fallback_provider: Optional[str] = "deepseek"
 
 
+class OmniRouteEnforceExecuteRequest(BaseModel):
+    task: str = "Reply exactly: PGG_V36_EXACT_OK"
+    task_type: Optional[str] = "exact"
+    timeout: Optional[float] = 60.0
+
+
 class OmniRouteMultiCallRequest(BaseModel):
     task: str
     task_type: Optional[str] = "dashboard_multi_task_probe"
@@ -1341,6 +1347,24 @@ async def execute_omniroute_provider_substitution_fallback_window_api(body: Omni
         raise
     except Exception as exc:
         _write_omniroute_event("provider_substitution_fallback_window_error", {"error": repr(exc)})
+        raise HTTPException(status_code=500, detail=repr(exc))
+
+
+@app.post("/api/omniroute/enforce/execute-canary")
+async def execute_omniroute_route_enforce_canary_api(body: OmniRouteEnforceExecuteRequest):
+    try:
+        from agent.pgg_archon_quantum_channel_router import execute_route_enforce_canary
+
+        result = execute_route_enforce_canary(_omniroute_validate_text(body.task, field="task"), task_type=body.task_type or "exact", timeout=_omniroute_clamp_timeout(body.timeout, 60.0))
+        out_path = Path.home() / ".hermes" / "workspace" / "github_absorption" / "9router" / "analysis" / "omniroute-v36-route-enforce-canary-latest.json"
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
+        _write_omniroute_event("route_enforce_canary_execute", {"success": result.get("success"), "executed": result.get("executed"), "task_type": result.get("task_type"), "path": str(out_path)})
+        return {"ok": bool(result.get("success")), "result": result, "path": str(out_path), "snapshot": _latest_omniroute_snapshot()}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        _write_omniroute_event("route_enforce_canary_execute_error", {"error": repr(exc)})
         raise HTTPException(status_code=500, detail=repr(exc))
 
 

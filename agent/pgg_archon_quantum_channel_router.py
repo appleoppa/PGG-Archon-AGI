@@ -835,29 +835,28 @@ def run_provider_substitution_fallback_window(sample_count: int = 20, fallback_p
     results: list[dict[str, Any]] = []
     for i in range(sample_count):
         case = "exact" if i % 2 == 0 else "general"
-        prompt = f"Reply exactly: PGG_V32_{case.upper()}_{i:03d}" if case == "exact" else f"Reply exactly: PGG_V32_GENERAL_{i:03d}"
-        item = execute_provider_substitution_canary(prompt, task_type=case, timeout=timeout, fallback_provider=fallback_provider)
-        ex = item.get("execution", {}) if isinstance(item, dict) else {}
-        fb = item.get("fallback_execution", {}) if isinstance(item, dict) else {}
+        task = f"Reply exactly: PGG_V32_{case.upper()}_{i:03d}" if case == "exact" else f"Reply exactly: PGG_V32_GENERAL_{i:03d}"
+        result = execute_provider_substitution_canary(task, task_type=case, timeout=timeout, fallback_provider=fallback_provider)
+        primary = result.get("execution", {})
+        fallback = result.get("fallback_execution", {})
         results.append({
-            "index": i,
             "case": case,
-            "success": bool(item.get("success")),
-            "same_class_success": bool(item.get("same_class_substitution_success")),
-            "fallback_success": bool(item.get("fallback_participation_success")),
-            "primary_provider": ex.get("provider"),
-            "primary_http": ex.get("http_status"),
-            "primary_participated": ex.get("participated"),
-            "fallback_provider": fb.get("provider"),
-            "fallback_http": fb.get("http_status"),
-            "fallback_participated": fb.get("participated"),
-            "cross_class_fallback": fb.get("cross_class_fallback"),
-            "answer_preview": fb.get("answer_preview") or ex.get("answer_preview"),
+            "index": i,
+            "success": bool(result.get("success")),
+            "same_class_success": bool(result.get("same_class_substitution_success")),
+            "fallback_success": bool(result.get("fallback_participation_success")),
+            "primary_provider": primary.get("provider"),
+            "primary_http": primary.get("http_status"),
+            "primary_participated": primary.get("participated"),
+            "fallback_provider": fallback.get("provider"),
+            "fallback_http": fallback.get("http_status"),
+            "fallback_participated": fallback.get("participated"),
+            "cross_class_fallback": bool(fallback.get("cross_class_fallback")),
         })
     leakage = []
     for case, prompt in [("legal", "中文法律合同诉讼法条"), ("audit", "audit judge benchmark verdict"), ("agi", "PGG Archon AGI Rust router evolution")]:
         plan = plan_provider_substitution_canary(prompt, task_type=case)
-        leakage.append({"case": case, "allowed": bool(plan.get("allowed")), "provider": plan.get("substitution_provider"), "reasons": (plan.get("enforce_decision") or {}).get("reasons", [])})
+        leakage.append({"case": case, "allowed": bool(plan.get("allowed")), "provider": plan.get("substitution_provider"), "reasons": plan.get("enforce_decision", {}).get("reasons", [])})
     n = len(results)
     primary_success = sum(1 for r in results if r["same_class_success"])
     fallback_success = sum(1 for r in results if r["fallback_success"])
@@ -890,6 +889,54 @@ def run_provider_substitution_fallback_window(sample_count: int = 20, fallback_p
     }
     _append_substitution_event({"ts": datetime.now(timezone.utc).timestamp(), "event": "provider_substitution_fallback_window", "payload": summary})
     return summary
+
+
+def execute_route_enforce_canary(task: str, task_type: str = "exact", timeout: float = 60.0) -> dict[str, Any]:
+    previous = read_route_enforce_canary_config()
+    started_at = _now_iso()
+    try:
+        write_route_enforce_canary_config({"enabled": True, "mode": "canary"})
+        plan = plan_provider_substitution_canary(task, task_type=task_type)
+        if not plan.get("allowed"):
+            result = {
+                "schema": "PGGArchonOmniRouteRouteEnforceCanaryExecution/v1",
+                "started_at": started_at,
+                "finished_at": _now_iso(),
+                "task_type": task_type,
+                "success": False,
+                "executed": False,
+                "plan": plan,
+                "error": "route-enforce canary denied by guard",
+                "boundary": "Denied before provider substitution; legal/audit/AGI and mismatches remain blocked.",
+            }
+            _append_substitution_event({"ts": datetime.now(timezone.utc).timestamp(), "event": "route_enforce_canary_execute", "payload": result})
+            return result
+        execution = execute_provider_substitution_canary(task, task_type=task_type, timeout=timeout, fallback_provider="")
+        same_class_ok = bool(execution.get("same_class_substitution_success"))
+        result = {
+            "schema": "PGGArchonOmniRouteRouteEnforceCanaryExecution/v1",
+            "started_at": started_at,
+            "finished_at": _now_iso(),
+            "task_type": task_type,
+            "success": same_class_ok,
+            "executed": True,
+            "plan": plan,
+            "execution": execution,
+            "boundary": "Default-off route-enforce canary for exact/general GPT55 same-class only; config is rolled back after execution.",
+        }
+        _append_substitution_event({"ts": datetime.now(timezone.utc).timestamp(), "event": "route_enforce_canary_execute", "payload": result})
+        return result
+    finally:
+        write_route_enforce_canary_config({
+            "enabled": bool(previous.get("enabled", False)),
+            "mode": str(previous.get("mode") or "observe_only"),
+            "allowed_intents": previous.get("allowed_intents") or ["bounded_exact_or_math", "general"],
+            "denied_intents": previous.get("denied_intents") or ["chinese_legal", "audit_judge", "agi_architecture_coding"],
+            "require_route_class_match_actual": bool(previous.get("require_route_class_match_actual", True)),
+            "require_policy_version": previous.get("require_policy_version") or OMNIROUTE_ROUTE_POLICY_VERSION,
+        })
+        _append_route_enforce_event({"ts": datetime.now(timezone.utc).timestamp(), "event": "route_enforce_canary_execute_rollback", "payload": {"restored_enabled": bool(previous.get("enabled", False)), "restored_mode": str(previous.get("mode") or "observe_only")}})
+
 
 
 def record_omniroute_core_mirror(
