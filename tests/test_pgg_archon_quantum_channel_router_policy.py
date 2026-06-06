@@ -151,36 +151,26 @@ def test_route_enforce_canary_window_test_passes_rolls_back_and_blocks_leakage(m
     assert restored["mode"] == previous["mode"]
 
 
-def test_provider_substitution_core_fallback_counts_success_and_failure(monkeypatch, tmp_path) -> None:
+def test_provider_substitution_fallback_is_cross_class_participation_not_same_class_success(monkeypatch, tmp_path) -> None:
     monkeypatch.setattr(mod, "OMNIROUTE_SUBSTITUTION_EVENTS", tmp_path / "subst.jsonl")
     monkeypatch.setattr(mod, "plan_provider_substitution_canary", lambda task, task_type="exact": {"allowed": True, "substitution_provider": "gpt55"})
-    monkeypatch.setattr(mod, "execute_omniroute_task", lambda *a, **k: {"success": False, "provider": "gpt55", "error": "registry failed"})
-    import run_agent
+    calls = []
 
-    class GoodAgent:
-        def __init__(self, *args, **kwargs):
-            pass
-        def run_conversation(self, task):
-            return {"final_response": "PGG_V30_CANARY_OK"}
+    def fake_execute(task, task_type="", requested_provider="", timeout=60.0):
+        calls.append((task_type, requested_provider))
+        if requested_provider == "gpt55":
+            return {"success": False, "provider": "gpt55", "error": "registry failed"}
+        return {"success": False, "participated": True, "provider": requested_provider, "http_status": 200, "parsed_text_preview": "ok"}
 
-    monkeypatch.setattr(run_agent, "AIAgent", GoodAgent)
-    good = mod.execute_provider_substitution_canary("Reply exactly: PGG_V30_CANARY_OK")
-    assert good["success"] is True
-    assert good["core_fallback_execution"]["participated"] is True
-    assert good["core_fallback_execution"]["http_status"] == 200
-
-    class BadAgent:
-        def __init__(self, *args, **kwargs):
-            pass
-        def run_conversation(self, task):
-            return {"final_response": "API call failed: HTTP 502 Bad Gateway"}
-
-    monkeypatch.setattr(run_agent, "AIAgent", BadAgent)
-    bad = mod.execute_provider_substitution_canary("Reply exactly: PGG_V30_CANARY_OK")
-    assert bad["success"] is False
-    assert bad["core_fallback_execution"]["participated"] is False
-    assert bad["core_fallback_execution"]["http_status"] == 0
-    assert "failure text" in bad["core_fallback_execution"]["error"]
+    monkeypatch.setattr(mod, "execute_omniroute_task", fake_execute)
+    result = mod.execute_provider_substitution_canary("Reply exactly: PGG_V30_CANARY_OK", fallback_provider="deepseek")
+    assert result["success"] is True
+    assert result["same_class_substitution_success"] is False
+    assert result["fallback_participation_success"] is True
+    assert result["fallback_execution"]["cross_class_fallback"] is True
+    assert result["fallback_execution"]["fallback_from_provider"] == "gpt55"
+    assert "not be counted as same-class GPT substitution success" in result["fallback_execution"]["boundary"]
+    assert calls == [("substitution_canary:exact", "gpt55"), ("substitution_canary_fallback:exact", "deepseek")]
 
 
 def test_route_policy_intent_classification_order_and_version() -> None:

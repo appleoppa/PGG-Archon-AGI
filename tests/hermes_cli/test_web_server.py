@@ -46,6 +46,7 @@ def test_omniroute_endpoint_mimo_rejections_remain_http_400(monkeypatch):
             web_server.execute_omniroute_main_task_api(web_server.OmniRouteTaskRequest(task="x", requested_provider="mimo")),
             web_server.execute_omniroute_task_api(web_server.OmniRouteTaskRequest(task="x", requested_provider="mimo")),
             web_server.call_omniroute_provider(web_server.OmniRouteProviderCallRequest(prompt="x", requested_provider="mimo")),
+            web_server.execute_omniroute_provider_substitution_canary_api(web_server.OmniRouteSubstitutionCanaryRequest(task="x", fallback_provider="mimo")),
             web_server.decide_omniroute_route(web_server.OmniRouteDecisionRequest(requested_provider="mimo")),
         ]
         for coro in cases:
@@ -100,7 +101,7 @@ def test_omniroute_substitution_plan_and_execute_apis_are_bounded(monkeypatch, t
     def fake_plan(task, task_type="exact"):
         return {"schema": "PGGArchonOmniRouteProviderSubstitutionPlan/v1", "allowed": False, "substitution_provider": "", "boundary": "Plan only; execution requires explicit canary execute and writes provider participation evidence."}
 
-    def fake_execute(task, task_type="exact", timeout=60.0):
+    def fake_execute(task, task_type="exact", timeout=60.0, fallback_provider="deepseek"):
         return {"schema": "PGGArchonOmniRouteProviderSubstitutionCanary/v1", "success": False, "executed": False, "boundary": "No provider call made because guard denied substitution."}
 
     monkeypatch.setattr(router, "plan_provider_substitution_canary", fake_plan)

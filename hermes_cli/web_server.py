@@ -1132,6 +1132,7 @@ class OmniRouteSubstitutionCanaryRequest(BaseModel):
     task: str = "Reply exactly: PGG_V30_CANARY_OK"
     task_type: Optional[str] = "exact"
     timeout: Optional[float] = 60.0
+    fallback_provider: Optional[str] = "deepseek"
 
 
 class OmniRouteMultiCallRequest(BaseModel):
@@ -1302,7 +1303,7 @@ async def execute_omniroute_provider_substitution_canary_api(body: OmniRouteSubs
     try:
         from agent.pgg_archon_quantum_channel_router import execute_provider_substitution_canary
 
-        result = execute_provider_substitution_canary(_omniroute_validate_text(body.task, field="task"), task_type=body.task_type or "exact", timeout=_omniroute_clamp_timeout(body.timeout, 60.0))
+        result = execute_provider_substitution_canary(_omniroute_validate_text(body.task, field="task"), task_type=body.task_type or "exact", timeout=_omniroute_clamp_timeout(body.timeout, 60.0), fallback_provider=_omniroute_validate_requested_provider(body.fallback_provider or "deepseek"))
         out_path = Path.home() / ".hermes" / "workspace" / "github_absorption" / "9router" / "analysis" / "omniroute-v30-provider-substitution-canary-latest.json"
         out_path.parent.mkdir(parents=True, exist_ok=True)
         out_path.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
