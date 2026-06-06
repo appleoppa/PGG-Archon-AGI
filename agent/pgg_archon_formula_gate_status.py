@@ -161,7 +161,13 @@ def build_formula_gate_status(
         "explicit_formula_gate": explicit,
         "truth_boundary_present": True,
     }
-    missing = [k for k, v in evidence_gates.items() if not v]
+    required_evidence_gates = {
+        "manifest_present": evidence_gates["manifest_present"],
+        "latest_pass_count": evidence_gates["latest_pass_count"],
+        "explicit_formula_gate": evidence_gates["explicit_formula_gate"],
+        "truth_boundary_present": evidence_gates["truth_boundary_present"],
+    }
+    missing = [k for k, v in required_evidence_gates.items() if not v]
     status = "PASS" if explicit and manifest.get("present") and not missing else "WATCH"
     if not task.strip():
         status = "WATCH"
