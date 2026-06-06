@@ -19,7 +19,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from agent.pgg_archon_audited_manifest_gate import default_promptfoo_30_claims, write_audited_manifest_entry
+from agent.pgg_archon_audited_manifest_gate import default_promptfoo_claims, write_audited_manifest_entry
 
 BOUNDARY = (
     "Real promptfoo CLI smoke finalized through audited manifest gate; not an "
@@ -156,7 +156,10 @@ def finalize_promptfoo_suite(
         artifact_path=report_path,
         title=title,
         requested_status=requested_status,
-        claims=default_promptfoo_30_claims(),
+        claims=default_promptfoo_claims(
+            sample_count=report["sample_count"],
+            suite_label="promptfoo official CLI smoke",
+        ),
         audit_output_dir=outdir / "audit_gate",
         call_mimo=call_mimo,
         timeout=timeout,

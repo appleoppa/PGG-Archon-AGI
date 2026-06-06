@@ -168,11 +168,17 @@ def write_audited_manifest_entry(
     return result
 
 
-def default_promptfoo_30_claims() -> list[MicroAuditClaim]:
+def default_promptfoo_claims(*, sample_count: int = 30, suite_label: str = "promptfoo official CLI smoke") -> list[MicroAuditClaim]:
+    """Build standard anti-overclaim MiMo claims for a promptfoo smoke suite.
+
+    The old 30-suite helper remains as a compatibility wrapper below, but new
+    callers should pass the real sample_count so 50-suite gates do not carry
+    stale 30-suite wording into third-party audit prompts.
+    """
     return [
         MicroAuditClaim(
             "benchmark_overclaim",
-            "30题promptfoo official CLI smoke真实30/30 PASS。",
+            f"{sample_count}题{suite_label}真实{sample_count}/{sample_count} PASS。",
             "不可称官方公开benchmark完整分数；仅可称smoke测试通过。",
         ),
         MicroAuditClaim(
@@ -182,10 +188,14 @@ def default_promptfoo_30_claims() -> list[MicroAuditClaim]:
         ),
         MicroAuditClaim(
             "agi_overclaim",
-            "30题smoke不是L2/full AGI证明。",
+            f"{sample_count}题smoke不是L2/full AGI证明。",
             "不可称达到L2或full AGI。",
         ),
     ]
+
+
+def default_promptfoo_30_claims() -> list[MicroAuditClaim]:
+    return default_promptfoo_claims(sample_count=30)
 
 
 def main() -> None:

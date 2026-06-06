@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from agent.pgg_archon_audited_manifest_gate import default_promptfoo_claims
 from agent.pgg_archon_promptfoo_finalize import (
     build_promptfoo_report,
     finalize_promptfoo_suite,
@@ -49,6 +50,14 @@ def test_build_promptfoo_report_validates_domain_total(tmp_path: Path) -> None:
             source_type="official_harness_smoke",
             domains={"x": 1},
         )
+
+
+def test_promptfoo_claims_use_real_sample_count() -> None:
+    claims = default_promptfoo_claims(sample_count=50, suite_label="promptfoo official CLI smoke")
+    assert "50题" in claims[0].claim
+    assert "50/50" in claims[0].claim
+    assert "30/30" not in claims[0].claim
+    assert "50题smoke不是L2/full AGI证明" in claims[2].claim
 
 
 def test_finalize_promptfoo_suite_no_mimo_writes_manifest(tmp_path: Path) -> None:
