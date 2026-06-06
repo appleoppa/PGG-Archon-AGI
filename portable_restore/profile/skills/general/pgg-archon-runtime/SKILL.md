@@ -299,6 +299,8 @@ RC-S02 连续推进、>75% 自动执行轮次上限、pre-provider helper 抽取
 
 当用户要求继续推进 AGI/进化/PGG Archon 系统任务，或质疑“没感觉到你执行公式”时，必须优先使用显式公式门禁状态面板，而不是只声称已内化。关键经验见 `references/formula-gate-status-and-canary-closure-20260606.md`，包括：`/goal` 状态面板、Manifest PASS-family 计数、OmniRoute enforce/substitution canary 分级、MiMo retry、Promptfoo/Rust gate 边界与 Web API 400 透传 pitfall。
 
+当用户要求“调用所有 LLM + GitHub/VX/开源网站学习 + 最大范围合规解决、不造假”时，使用 All-LLM + Open-Source Gap Closure Pattern：先公式门禁与状态包，再官方 repo/docs 学习落盘，再多 LLM 独立调用（MiMo 仅 third-party judge，失败标 ERROR），再按 gap lifecycle 区分 active/superseded/policy boundary，最后测试、Manifest、git clean。详见 `references/all-llm-open-source-gap-closure-20260606.md`。
+
 ## DeepSeek V4 审计方法论
 
 当用户要求"审计员评估"、"系统修复效果评估"、"多维度打分"时，加载 `references/deepseek-v4-audit-methodology.md` 获取完整的9维度审计框架、评分标准、APEX公式代入方法和输出格式模板。
@@ -321,4 +323,5 @@ Provider benchmark / health gate 集成经验：
 5D scoring surface drift 修复：
 - `references/scoring-surface-drift-repair-20260606.md`（清理 sessions 不误伤 Growth；Harmony 识别 Rust fused watcher；内部状态面边界）
 - `references/harmony-runtime-probe-migration-20260606.md` — Harmony/运行状态面迁移修复：旧 plist/API 探测过期时，优先迁移 probe 到当前真实 Rust fused watcher 与兼容导出，禁止补假 legacy 产物或恢复已清理历史 sessions 来堆分。
+- `references/omniroute-route-enforce-batch-canary-settlement-20260606.md` — OmniRoute route-enforce batch canary settlement: hard-deny/rollback semantics, Web API HTTPException 400 passthrough, targeted tests, Rust compile gates, Claude BLOCKED honesty, and manifest/portable_restore sync.
 - `references/portable-restore-and-route-enforce-batch-canary-20260606.md` — Hermes/PGG 当前进化状态 GitHub portable restore 骨架、远程 clone 恢复验证、OmniRoute route-enforce batch canary hard-deny/rollback/Web API 400 透传与 Rust 编译沉淀。

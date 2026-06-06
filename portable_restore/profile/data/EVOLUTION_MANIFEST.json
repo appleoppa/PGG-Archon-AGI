@@ -2432,7 +2432,7 @@
   },
   "for_new_sessions": "阅读此文件获取全部进化进度。并在 memory 中搜索 EVOLUTION 获取最新索引。",
   "generated_at": "2026-06-06T12:24:36.640754",
-  "last_updated": 1780725746,
+  "last_updated": 1780728817,
   "latest_20260606_legal_task_gate_core_fusion": {
     "absorbed_patterns": [
       "domain-specific prompt gates",
@@ -9338,7 +9338,7 @@
   },
   "latest_today_evolution_settlement_20260606": {
     "schema": "PGGArchonTodayEvolutionSettlement/v1",
-    "status": "PASS_WITH_CLAUDE_BLOCKED",
+    "status": "PASS_WITH_CLAUDE_PROBE_CHAIN_ERROR_RECORDED",
     "created_at": "2026-06-06T06:50:15.657677+00:00",
     "summary": "Settled portable GitHub restore bundle and OmniRoute route-enforce batch canary into runtime skill/reference, manifest, tests, and Rust compile gates.",
     "github": {
@@ -9349,9 +9349,10 @@
     },
     "claude": {
       "requested": true,
-      "status": "BLOCKED",
-      "evidence_path": "/Users/appleoppa/.hermes/workspace/pgg-archon-governance/today-evolution-settlement-20260606/claude_raw.json",
-      "error": "HTTP 403 All available accounts exhausted"
+      "status": "PROBE_CHAIN_ERROR_RECORDED_NOT_GLOBAL_BLOCKED",
+      "evidence_path": "/Users/appleoppa/.hermes/workspace/pgg-archon-governance/today-evolution-settlement-20260606/claude_official_provider_probe.txt",
+      "correction": "Do not infer Claude global pool exhaustion/unavailability from this probe; another today session recorded Claude Opus 4-6 OK via Hermes CLI.",
+      "prior_incorrect_claim": "PASS_WITH_CLAUDE_BLOCKED / Claude pool exhausted"
     },
     "tests": [
       "python -m py_compile agent/pgg_archon_quantum_channel_router.py hermes_cli/web_server.py",
@@ -9372,8 +9373,142 @@
     "knowledge_settlement": {
       "skill": "general/pgg-archon-runtime",
       "reference": "/Users/appleoppa/.hermes/skills/general/pgg-archon-runtime/references/portable-restore-and-route-enforce-batch-canary-20260606.md",
-      "reference_sha256": "87275cb85b5cbc5ddd0238ff6b1a179e895d93f434e3aef3a53f162085772786"
+      "reference_sha256": "dd3cba522f59d49ff31adbeaac891a5ee987b6b86eaaed2f441af27dc1dda0a9"
     },
-    "boundary": "Portable restore excludes secrets/OAuth/case files; batch canary is bounded evidence, not global route-enforce or AGI/external benchmark proof."
+    "boundary": "Portable restore excludes secrets/OAuth/case files; batch canary is bounded evidence, not global route-enforce or AGI/external benchmark proof.",
+    "updated_at": "2026-06-06T06:59:30.552733+00:00"
+  },
+  "latest_pilotdeck_hermes_absorb_runtime_verify_20260606": {
+    "schema": "PGG/PilotDeckHermesAbsorbRuntimeVerify/v1",
+    "generated_unix": 1780728817,
+    "status": "PASS",
+    "pilotdeck_root": "/Users/appleoppa/.pilotdeck-agi/PilotDeck",
+    "hermes_manifest": "/Users/appleoppa/.hermes/data/EVOLUTION_MANIFEST.json",
+    "rust_absorber": {
+      "cargo_test": "PASS",
+      "cargo_build_release": "PASS",
+      "absorbed_count": 56,
+      "watch_count": 2,
+      "blocked_count": 0,
+      "audit_hash": "sha256:de89f08d82fa9dc9de616a1cc61eb593bcf6c851d387e1dc02b8b11bb67da905"
+    },
+    "pilotdeck_build": {
+      "command": "npm run build",
+      "exit_code": 0,
+      "status": "PASS"
+    },
+    "runtime_submit_turn_smoke": {
+      "schema": "PGG/PilotDeckAfterHermesAbsorbRuntimeSmoke/v1",
+      "status": "PASS",
+      "verdict": "PASS",
+      "runId": "pgg-after-absorb-1780728687177",
+      "sessionKey": "pgg-after-absorb-cf39250f-ef54-4641-a831-bcb6bd0d20b9",
+      "assistantChars": 36,
+      "toolCalls": 0,
+      "usage": {
+        "inputTokens": 43,
+        "outputTokens": 34,
+        "cacheReadTokens": 13056,
+        "totalTokens": 13133
+      },
+      "eventsCount": 28,
+      "errorEvents": [],
+      "boundary": "Minimal post-absorption submit_turn smoke; proves short non-tool runtime turn only, not long tasks or production autonomy."
+    },
+    "github_private_sync": {
+      "repository": "https://github.com/appleoppa/PilotDeck-apple-sync",
+      "auto_sync_hook": "post-commit/post-merge/post-rewrite",
+      "target_artifacts_excluded": true
+    },
+    "boundary": "This verifies PilotDeck can absorb Hermes evolution evidence via Rust, build TypeScript runtime, and complete a minimal non-tool submit_turn smoke. It does not prove long-task autonomy, full AGI, external benchmark success, or scheduler/security boundary changes.",
+    "audit_hash": "sha256:2ed063ddc3b7078decf1ccb5ef9804792d33342b8fb070364ca8472711fa841b"
+  },
+  "latest_scheduled_postcheck_verify_20260607_1000": {
+    "schema": "PGGArchonEvolutionManifestEntry/v1",
+    "created_at": "2026-06-06T14:54:26.993469",
+    "status": "PASS_SCHEDULED_FOR_20260607_1000_CST",
+    "title": "One-time scheduled verification for fused watcher Rust postcheck, desktop report output",
+    "plist_path": "/Users/appleoppa/Library/LaunchAgents/ai.hermes.verify-pgg-postcheck-once-20260607-1000.plist",
+    "plist_sha256": "962d860de5df56e7658ae5e8370574a33a68fd8adb3b5c81c905e0185940737e",
+    "script_path": "/Users/appleoppa/.hermes/workspace/audit/scheduled_postcheck_verify_20260607_1000/verify_postcheck_once.py",
+    "script_sha256": "7511fa5c3801d6bee219922011bba6fd55ecb2a47b4d71c7ea93eebca77b8614",
+    "scheduled_time": "2026-06-07 10:00:00 CST +0800",
+    "desktop_report_path": "/Users/appleoppa/Desktop/PGG_Archon_明日10点_postcheck验证报告.md",
+    "boundary": "One-time local launchd verification; writes desktop report; self-removes plist after run; not benchmark/legal/full AGI proof."
+  },
+  "latest_all_llm_open_source_gap_closure_v38_20260606": {
+    "schema": "PGGArchonAllLLMOpenSourceGapClosure/v1",
+    "created_at": "2026-06-06 14:56:04",
+    "status": "PASS_WITH_MIMO_JUDGE_ERROR_RECORDED",
+    "formula": "总纲1六维 + 总纲2 Agent_Evolve: LDR(K)→GapDetect→OpenSourceLearn→CodeSelfFix→Verify→KnowledgeSettle",
+    "scope": "route enforce batch canary/operator toggle, provider fallback semantics, gap lifecycle clarity; bounded and reversible",
+    "open_source_learning_path": "/Users/appleoppa/.hermes/workspace/pgg-archon-governance/all_llm_open_source_gap_closure_20260606/open_source_learning_summary.json",
+    "llm_review_path": "/Users/appleoppa/.hermes/workspace/pgg-archon-governance/all_llm_open_source_gap_closure_20260606/all_llm_review_results.json",
+    "llm_summary": [
+      {
+        "alias": "gpt55",
+        "status": "OK",
+        "returncode": 0,
+        "error": ""
+      },
+      {
+        "alias": "claude",
+        "status": "OK",
+        "returncode": 0,
+        "error": ""
+      },
+      {
+        "alias": "deepseek",
+        "status": "OK",
+        "returncode": 0,
+        "error": ""
+      },
+      {
+        "alias": "minimax",
+        "status": "OK",
+        "returncode": 0,
+        "error": ""
+      },
+      {
+        "alias": "agnes",
+        "status": "OK",
+        "returncode": 0,
+        "error": ""
+      },
+      {
+        "alias": "mimo_judge",
+        "status": "ERROR",
+        "returncode": null,
+        "error": "TimeoutExpired(['hermes', '-z', '任务：代入总纲1 AGI六维 + 总纲2 Agent_Evolve，审查当前 unresolved gaps、router/web batch canary/operator toggle、开源学习摘要。只输出 JSON。重点：不造假，区分 PASS-f"
+      }
+    ],
+    "gap_lifecycle": {
+      "superseded_not_mutated": [
+        "latest_pgg_omniroute_provider_substitution_canary_v30_20260606"
+      ],
+      "superseded_by": [
+        "latest_pgg_omniroute_gpt55_lane_reconciliation_v34_20260606",
+        "latest_pgg_omniroute_gpt55_same_class_window_v35_20260606",
+        "latest_pgg_omniroute_route_enforce_canary_v36_20260606",
+        "latest_pgg_omniroute_route_enforce_batch_canary_v37_20260606"
+      ],
+      "default_off_items_are_policy_boundaries_not_runtime_takeover": [
+        "latest_promptfoo_rust_gate_optional_pipeline_policy_20260606",
+        "latest_apex_postcheck_gate_discovery_20260606",
+        "latest_apex_postcheck_promptfoo_gate_manual_run_20260606"
+      ]
+    },
+    "implemented_files": [
+      "agent/pgg_archon_quantum_channel_router.py",
+      "hermes_cli/web_server.py",
+      "tests/test_pgg_archon_quantum_channel_router_policy.py",
+      "tests/hermes_cli/test_web_server.py"
+    ],
+    "tests": [
+      "18 passed: router policy + web batch canary + MiMo 400 rejection",
+      "py_compile router/web PASS"
+    ],
+    "truth_boundary": "MiMo judge timed out and is recorded as ERROR; five other LLM channels returned OK. Batch/operator canaries are bounded; not T5, not full AGI, not production takeover, not legal/audit/AGI enforcement authorization.",
+    "sha256": "bf44a7c18f6e4a7a362075afda767d4d500a040ccaf4a8aaf99a4371ae14511c"
   }
 }

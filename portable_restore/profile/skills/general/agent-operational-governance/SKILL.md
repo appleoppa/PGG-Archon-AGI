@@ -218,6 +218,7 @@ The user's "全量" (full/complete) directive carries specific expectations:
 
 ## References
 
+- `references/hermes-portable-restore-github-migration.md` — GitHub-safe portable restore migration pattern for Hermes/PGG state: never push `~/.hermes` wholesale, build a sanitized `portable_restore/` skeleton, force/include manifest despite broad `data/*` ignores, run secret scan + local restore + fresh remote clone restore before claiming recoverability.
 - `references/router-web-runtime-gate-anti-stall-20260606.md` — Router/Web/runtime hook gate pattern: anti-stall after skill loading, MiMo judge isolation across router/API/test layers, bounded Web validators, mirror-only run_agent hooks, targeted LLM review packs, scoped commit + manifest closure.
 - `references/pilotdeck-evolution-pipeline-evidence-chain.md` — PilotDeck self-evolution 8-step pipeline and structured evidence-chain completion gate. Use when guiding PilotDeck evolution or validating a PilotDeck `DONE` claim.
 - `references/pilotdeck-provider-triad-minimax-mimo-agnes.md` — PilotDeck provider-triad configuration pattern: remove GPT from PilotDeck scope, add MiniMax-M3, keep MIMO default/tools/memory, Agnes chat-only audit, update stale invariants/evidence chain, and verify with direct MiniMax tools probe plus gateway smoke.

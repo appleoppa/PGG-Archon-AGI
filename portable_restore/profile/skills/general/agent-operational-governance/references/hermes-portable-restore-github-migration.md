@@ -1,75 +1,71 @@
-# Hermes/PGG portable restore via private GitHub — verification pattern
+# Hermes/PGG Portable Restore GitHub Migration Pattern
 
-Use when asked whether a local Hermes/PGG evolution state can be moved to a private GitHub repo so a new computer can clone and restore it.
+## Trigger
+
+Use when the user asks whether the current local Hermes/PGG Archon evolution state can be deployed to a remote GitHub repository so a new computer can clone and restore the current state.
 
 ## Core lesson
 
-Do not treat `git push` or a local rsync copy as proof of portability. The completion gate is a fresh remote clone from GitHub into a clean temp directory, followed by restore and verify scripts against an isolated `TARGET_HOME`.
+Do **not** push `~/.hermes` wholesale. Build a GitHub-safe portable restore skeleton, verify it locally, then verify it from a fresh remote clone. A local rsync simulation can pass while a remote clone fails if `.gitignore` excludes required files such as `data/*`.
 
-## Recommended restore-bundle shape
+## Safe restore bundle shape
 
-Create a class-level portable bundle such as:
+Recommended repo subtree:
 
 ```text
 portable_restore/
   README.md
-  bootstrap/
-    install_macos.sh
-    restore_profile.sh
-    verify_runtime.sh
-  config-templates/
-    config.yaml.template
-    env.example
-  docs/
-    INCLUDE_MANIFEST.json
-    SECURITY.md
-  profile/
-    SOUL.md
-    memories/
-      MEMORY.md
-      USER.md
-    data/
-      EVOLUTION_MANIFEST.json
-    skills/
+  bootstrap/install_macos.sh
+  bootstrap/restore_profile.sh
+  bootstrap/verify_runtime.sh
+  config-templates/env.example
+  config-templates/config.yaml.template
+  docs/INCLUDE_MANIFEST.json
+  docs/SECURITY.md
+  profile/SOUL.md
+  profile/memories/MEMORY.md
+  profile/memories/USER.md
+  profile/data/EVOLUTION_MANIFEST.json
+  profile/skills/
 ```
 
-Include source/code changes that are part of the current runtime state, but do not include live credentials, OAuth sessions, `venv/`, `node_modules/`, caches, raw case materials, or large workspaces.
+## Exclude from GitHub
 
-## Gates
+Never commit real values or runtime-heavy local state:
 
-1. Create a new migration branch. Do not push to or overwrite remote `main`/default branch unless explicitly authorized.
-2. Copy only portable state: SOUL, curated memories, skills, selected manifests, templates, and bootstrap scripts.
-3. Redact or remove secret-like fields from manifests and references. Hashes of tokens may still be sensitive enough to redact when not necessary for restore.
-4. Run secret scan over the staged bundle. Treat examples/placeholders conservatively: replace realistic-looking tokens with obvious placeholders such as `<LOCAL_SESSION_TOKEN_PLACEHOLDER>`.
-5. Run script syntax checks and `git diff --cached --check`. If imported skill snapshots have old CRLF/trailing whitespace, normalize only the portable copy, not the live skill library.
-6. Run a local isolated restore smoke:
+- `.env`, `auth.json`, OAuth sessions, secrets, credential stores, API keys.
+- `venv/`, `.venv/`, `node_modules/`, `__pycache__/`, `target/` build outputs.
+- Legal case materials and privileged client files.
+- Large workspace logs/caches unless deliberately redacted and classified.
+
+## Required verification gates
+
+1. Generate/refresh `portable_restore/` from live profile files.
+2. Redact token/hash/secret-like fields and replace placeholder session tokens in portable copies.
+3. Run a staged secret scan; treat placeholder tokens as risks unless explicitly replaced with `<LOCAL_..._PLACEHOLDER>`.
+4. Run `bash -n` for restore/verify/install scripts and `git diff --check`.
+5. Local simulated restore:
 
 ```bash
-TARGET_HOME=/tmp/pgg-archon-newhome bash portable_restore/bootstrap/restore_profile.sh
-TARGET_HOME=/tmp/pgg-archon-newhome bash portable_restore/bootstrap/verify_runtime.sh
+TARGET_HOME=/tmp/pgg-archon-restore-home bash portable_restore/bootstrap/restore_profile.sh
+TARGET_HOME=/tmp/pgg-archon-restore-home bash portable_restore/bootstrap/verify_runtime.sh
 ```
 
-7. Commit and push the migration branch.
-8. Perform the decisive proof: fresh clone from the private GitHub branch, then run restore/verify again against a clean `TARGET_HOME`.
-
-## Important pitfall: `.gitignore` can invalidate local proof
-
-A local rsync/copy restore can pass even when GitHub clone will fail because files under ignored paths were never tracked. In this session, `portable_restore/profile/data/EVOLUTION_MANIFEST.json` was omitted by a broad `data/*` ignore rule. Fix with explicit exceptions or force-add the needed file, then rerun the remote clone proof:
-
-```gitignore
-# Portable restore exceptions
-!portable_restore/profile/data/
-!portable_restore/profile/data/EVOLUTION_MANIFEST.json
-```
-
-Then verify:
+6. Push to a non-main migration branch first.
+7. Fresh remote clone verification:
 
 ```bash
-git clone --branch <migration-branch> --single-branch <private-repo-url> /tmp/pgg-archon-remote-clone
-TARGET_HOME=/tmp/pgg-archon-remote-home bash /tmp/pgg-archon-remote-clone/portable_restore/bootstrap/restore_profile.sh
-TARGET_HOME=/tmp/pgg-archon-remote-home bash /tmp/pgg-archon-remote-clone/portable_restore/bootstrap/verify_runtime.sh
+git clone --branch <branch> --single-branch https://github.com/appleoppa/PGG-Archon-AGI.git /tmp/pgg-archon-remote-clone
+TARGET_HOME=/tmp/pgg-archon-remote-home bash portable_restore/bootstrap/restore_profile.sh
+TARGET_HOME=/tmp/pgg-archon-remote-home bash portable_restore/bootstrap/verify_runtime.sh
 ```
 
-## Truthful boundary wording
+## Critical pitfall
 
-A PASS means the governed Hermes/PGG skeleton is restorable: rules, skills, curated memory, selected manifests, and tracked source state. It does not restore real API keys, OAuth sessions, macOS Keychain, local venv/node_modules, privileged case files, or external service authorization. Report those as required local rehydration steps, not as failures of the GitHub bundle.
+If the repo `.gitignore` contains broad patterns such as `data/*`, `portable_restore/profile/data/EVOLUTION_MANIFEST.json` may be missing from the remote clone even when local tests passed. Add explicit exceptions or `git add -f` and verify via fresh remote clone.
+
+## Completion language
+
+Allowed: “Portable restore skeleton verified from remote clone.”
+
+Not allowed: “100% state restored” unless secrets, OAuth sessions, keychain, case files, local DBs, venv/node_modules, and external service authorizations are also restored and verified. Usually report this boundary explicitly.

@@ -75,7 +75,7 @@ cd /Users/appleoppa/.hermes/hermes-agent/rust_modules/hermes_pgg_omniroute && /U
 
 ## Claude audit boundary
 
-If user requests Claude participation, call Claude provider for real and save raw response. If provider returns HTTP 403 `All available accounts exhausted`, record Claude as `BLOCKED` and do not role-play or claim Claude reviewed. Continue only with explicitly stated boundary and local tests/Rust evidence.
+If user requests Claude participation, call Claude provider for real and save raw response. Do **not** infer global Claude availability from one direct/probe call. A probe returning HTTP 403 `All available accounts exhausted` only proves that specific call chain failed; it must be reconciled with the official Hermes provider/CLI path and cross-session evidence. If another session or official path shows Claude OK, record the failing probe as `CLAUDE_PROBE_CHAIN_ERROR_RECORDED`, not `Claude blocked` or `Claude pool exhausted`.
 
 ## Truth boundary
 

@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-06-06T14:51:45.053508",
+  "generated_at": "2026-06-06T15:00:08.549827",
   "files": [
     {
       "path": "portable_restore/README.md",
@@ -73,7 +73,7 @@
     },
     {
       "path": "portable_restore/profile/skills/.usage.json",
-      "sha256": "6ec3c83ab2cc79134f2838cca731924bf4f110f4fe7ba6a2ac264840f5f79455",
+      "sha256": "421de7626f1dfab6f1ad0cc49b4e29ebf6ac682cfa9af381a4471aa21c37fd15",
       "bytes": 38800
     },
     {
@@ -648,13 +648,13 @@
     },
     {
       "path": "portable_restore/profile/skills/general/agent-operational-governance/SKILL.md",
-      "sha256": "588b77527c415941aa6d434a874f8cf9ff8cd1e17f4ee556329302da053c2b7e",
-      "bytes": 22336
+      "sha256": "b042452e80eb38cb1a24959bc5322fe59425f32601d937f3c1317e23c4575f15",
+      "bytes": 22698
     },
     {
       "path": "portable_restore/profile/skills/general/agent-operational-governance/references/hermes-portable-restore-github-migration.md",
-      "sha256": "1361d8cf27e51e1b33301c19ed28fcdfd2a1ce9a071c1e3a72954d2bc364b8a4",
-      "bytes": 3594
+      "sha256": "3340b81ebddeb9cab47f5d41ac792440c7cb80228e4ccf1ade7ec53dce065fca",
+      "bytes": 2974
     },
     {
       "path": "portable_restore/profile/skills/general/agent-operational-governance/references/agent-due-diligence.md",
@@ -833,8 +833,13 @@
     },
     {
       "path": "portable_restore/profile/skills/general/pgg-archon-runtime/SKILL.md",
-      "sha256": "9f82c5756e25e8e33cb284953a16d47e3e5bb4f3785840018e85b5ebad42f088",
-      "bytes": 16423
+      "sha256": "909423ca0fad06a8833dae3f1b5d86136d4dee97c2f092c1d87639690c54e6d4",
+      "bytes": 17191
+    },
+    {
+      "path": "portable_restore/profile/skills/general/pgg-archon-runtime/references/all-llm-open-source-gap-closure-20260606.md",
+      "sha256": "d8ab157c98dcf85cce262cb03ff3b33a000a9a53eb44e702ed7adee9bd55289a",
+      "bytes": 4051
     },
     {
       "path": "portable_restore/profile/skills/general/pgg-archon-runtime/references/codegenesis-progressive-observability-20260602.md",
@@ -858,8 +863,13 @@
     },
     {
       "path": "portable_restore/profile/skills/general/pgg-archon-runtime/references/portable-restore-and-route-enforce-batch-canary-20260606.md",
-      "sha256": "87275cb85b5cbc5ddd0238ff6b1a179e895d93f434e3aef3a53f162085772786",
-      "bytes": 3810
+      "sha256": "dd3cba522f59d49ff31adbeaac891a5ee987b6b86eaaed2f441af27dc1dda0a9",
+      "bytes": 4033
+    },
+    {
+      "path": "portable_restore/profile/skills/general/pgg-archon-runtime/references/omniroute-route-enforce-batch-canary-settlement-20260606.md",
+      "sha256": "de29f9da01085e68f4ed8559a1bdb8c1ee1afbc5b848f2e352918a5695faddf5",
+      "bytes": 3184
     },
     {
       "path": "portable_restore/profile/skills/general/pgg-archon-runtime/references/formula-gate-status-and-canary-closure-20260606.md",
@@ -4533,8 +4543,8 @@
     },
     {
       "path": "portable_restore/profile/data/EVOLUTION_MANIFEST.json",
-      "sha256": "c385f5bc8c2ee6c73b4eeef57a76e63e9469c2b906aa2adc192c492a5395fef1",
-      "bytes": 460322
+      "sha256": "b43db1883341599e2a797a499f152487040802362eae5941aed1ee5fe91861a0",
+      "bytes": 466811
     },
     {
       "path": "portable_restore/profile/memories/MEMORY.md",
