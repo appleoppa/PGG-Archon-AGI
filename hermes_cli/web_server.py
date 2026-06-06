@@ -995,6 +995,8 @@ def _latest_omniroute_route_enforce_canary() -> dict[str, Any]:
         subst_latest = _read_json_file(subst_latest_path) if subst_latest_path.exists() else {}
         fallback_window_path = Path.home() / ".hermes" / "workspace" / "github_absorption" / "9router" / "analysis" / "omniroute-v32-fallback-window-latest.json"
         fallback_window = _read_json_file(fallback_window_path) if fallback_window_path.exists() else {}
+        batch_canary_path = Path.home() / ".hermes" / "workspace" / "github_absorption" / "9router" / "analysis" / "omniroute-v37-route-enforce-batch-canary-latest.json"
+        batch_canary = _read_json_file(batch_canary_path) if batch_canary_path.exists() else {}
         return {
             "config": read_route_enforce_canary_config(),
             "recent_events": recent_route_enforce_events(20),
@@ -1005,6 +1007,8 @@ def _latest_omniroute_route_enforce_canary() -> dict[str, Any]:
             "latest_substitution_canary_path": str(subst_latest_path),
             "latest_fallback_window": fallback_window,
             "latest_fallback_window_path": str(fallback_window_path),
+            "latest_batch_canary": batch_canary,
+            "latest_batch_canary_path": str(batch_canary_path),
         }
     except Exception as exc:
         return {"config": {}, "recent_events": [], "error": repr(exc)}
@@ -1147,6 +1151,21 @@ class OmniRouteFallbackWindowRequest(BaseModel):
 
 class OmniRouteEnforceExecuteRequest(BaseModel):
     task: str = "Reply exactly: PGG_V36_EXACT_OK"
+    task_type: Optional[str] = "exact"
+    timeout: Optional[float] = 60.0
+
+
+class OmniRouteBatchCanaryRequest(BaseModel):
+    sample_count: Optional[int] = 10
+    timeout: Optional[float] = 60.0
+
+
+class OmniRouteOperatorConfigRequest(BaseModel):
+    enabled: Optional[bool] = None
+
+
+class OmniRouteOperatorExecuteRequest(BaseModel):
+    task: str = "Reply exactly: PGG_V38_OPERATOR_OK"
     task_type: Optional[str] = "exact"
     timeout: Optional[float] = 60.0
 
@@ -1365,6 +1384,52 @@ async def execute_omniroute_route_enforce_canary_api(body: OmniRouteEnforceExecu
         raise
     except Exception as exc:
         _write_omniroute_event("route_enforce_canary_execute_error", {"error": repr(exc)})
+        raise HTTPException(status_code=500, detail=repr(exc))
+
+
+@app.post("/api/omniroute/enforce/batch-canary")
+async def execute_omniroute_route_enforce_batch_canary_api(body: OmniRouteBatchCanaryRequest):
+    try:
+        from agent.pgg_archon_quantum_channel_router import run_route_enforce_batch_canary
+
+        result = run_route_enforce_batch_canary(sample_count=int(body.sample_count or 10), timeout=_omniroute_clamp_timeout(body.timeout, 60.0))
+        out_path = Path.home() / ".hermes" / "workspace" / "github_absorption" / "9router" / "analysis" / "omniroute-v37-route-enforce-batch-canary-latest.json"
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
+        _write_omniroute_event("route_enforce_batch_canary", {"status": result.get("status"), "sample_count": result.get("sample_count"), "success_count": result.get("success_count"), "deny_count": result.get("deny_count"), "path": str(out_path)})
+        return {"ok": bool(result.get("passed")), "result": result, "path": str(out_path), "snapshot": _latest_omniroute_snapshot()}
+    except Exception as exc:
+        _write_omniroute_event("route_enforce_batch_canary_error", {"error": repr(exc)})
+        raise HTTPException(status_code=500, detail=repr(exc))
+
+
+@app.post("/api/omniroute/operator/config")
+async def set_omniroute_operator_config_api(body: OmniRouteOperatorConfigRequest):
+    try:
+        from agent.pgg_archon_quantum_channel_router import write_route_enforce_canary_config, read_route_enforce_canary_config
+
+        enabled = bool(body.enabled)
+        cfg = write_route_enforce_canary_config({"enabled": enabled, "operator_toggle_enabled": enabled, "mode": "operator" if enabled else "observe_only"})
+        _write_omniroute_event("operator_route_enforce_config", {"enabled": cfg.get("enabled"), "operator_toggle_enabled": cfg.get("operator_toggle_enabled"), "mode": cfg.get("mode")})
+        return {"ok": True, "config": read_route_enforce_canary_config(), "snapshot": _latest_omniroute_snapshot()}
+    except Exception as exc:
+        _write_omniroute_event("operator_route_enforce_config_error", {"error": repr(exc)})
+        raise HTTPException(status_code=500, detail=repr(exc))
+
+
+@app.post("/api/omniroute/operator/execute")
+async def execute_omniroute_operator_route_enforce_api(body: OmniRouteOperatorExecuteRequest):
+    try:
+        from agent.pgg_archon_quantum_channel_router import execute_operator_route_enforce
+
+        result = execute_operator_route_enforce(_omniroute_validate_text(body.task, field="task"), task_type=body.task_type or "exact", timeout=_omniroute_clamp_timeout(body.timeout, 60.0))
+        out_path = Path.home() / ".hermes" / "workspace" / "github_absorption" / "9router" / "analysis" / "omniroute-v38-operator-execute-latest.json"
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
+        _write_omniroute_event("operator_route_enforce_execute", {"success": result.get("success"), "executed": result.get("executed"), "task_type": result.get("task_type"), "path": str(out_path)})
+        return {"ok": bool(result.get("success")), "result": result, "path": str(out_path), "snapshot": _latest_omniroute_snapshot()}
+    except Exception as exc:
+        _write_omniroute_event("operator_route_enforce_execute_error", {"error": repr(exc)})
         raise HTTPException(status_code=500, detail=repr(exc))
 
 

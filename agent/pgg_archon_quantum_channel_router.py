@@ -253,20 +253,25 @@ def _default_route_enforce_config() -> dict[str, Any]:
         "schema": "PGGArchonOmniRouteEnforceCanaryConfig/v1",
         "enabled": False,
         "mode": "observe_only",
+        "operator_toggle_enabled": False,
+        "operator_scope": "exact_general_gpt55_same_class_only",
         "allowed_intents": ["bounded_exact_or_math", "general"],
-        "denied_intents": sorted(OMNIROUTE_HARD_DENIED_ENFORCE_INTENTS),
+        "denied_intents": ["chinese_legal", "audit_judge", "agi_architecture_coding"],
         "require_route_class_match_actual": True,
         "require_policy_version": OMNIROUTE_ROUTE_POLICY_VERSION,
-        "rollback": "Set enabled=false or delete this file. Default is fail-open observe_only.",
-        "boundary": "Guarded canary scaffold only. Default-off; legal/audit/AGI denied.",
+        "rollback": "Set enabled=false/operator_toggle_enabled=false or delete this file. Default is fail-open observe_only.",
+        "boundary": "Guarded canary/operator toggle only. Default-off; legal/audit/AGI denied.",
     }
 
 
 def _sanitize_route_enforce_config(cfg: dict[str, Any]) -> dict[str, Any]:
     """Preserve hard safety invariants even if config/API tries to weaken them."""
     cfg = dict(cfg or {})
-    if cfg.get("mode") not in {"observe_only", "canary"}:
+    if cfg.get("mode") not in {"observe_only", "canary", "operator"}:
         cfg["mode"] = "observe_only"
+    if cfg.get("mode") == "operator" and str(cfg.get("operator_scope") or "") != "exact_general_gpt55_same_class_only":
+        cfg["mode"] = "observe_only"
+        cfg["operator_toggle_enabled"] = False
     allowed = [str(x) for x in (cfg.get("allowed_intents") or []) if str(x) not in OMNIROUTE_HARD_DENIED_ENFORCE_INTENTS]
     cfg["allowed_intents"] = sorted(set(allowed))
     denied = set(str(x) for x in (cfg.get("denied_intents") or [])) | OMNIROUTE_HARD_DENIED_ENFORCE_INTENTS
@@ -286,7 +291,7 @@ def read_route_enforce_canary_config() -> dict[str, Any]:
 def write_route_enforce_canary_config(update: dict[str, Any]) -> dict[str, Any]:
     cfg = read_route_enforce_canary_config()
     if isinstance(update, dict):
-        for key in ["enabled", "mode", "allowed_intents", "denied_intents", "require_route_class_match_actual", "require_policy_version"]:
+        for key in ["enabled", "mode", "operator_toggle_enabled", "operator_scope", "allowed_intents", "denied_intents", "require_route_class_match_actual", "require_policy_version"]:
             if key in update:
                 cfg[key] = update[key]
     cfg = _sanitize_route_enforce_config(cfg)
@@ -936,6 +941,102 @@ def execute_route_enforce_canary(task: str, task_type: str = "exact", timeout: f
             "require_policy_version": previous.get("require_policy_version") or OMNIROUTE_ROUTE_POLICY_VERSION,
         })
         _append_route_enforce_event({"ts": datetime.now(timezone.utc).timestamp(), "event": "route_enforce_canary_execute_rollback", "payload": {"restored_enabled": bool(previous.get("enabled", False)), "restored_mode": str(previous.get("mode") or "observe_only")}})
+
+
+def run_route_enforce_batch_canary(sample_count: int = 10, timeout: float = 60.0) -> dict[str, Any]:
+    sample_count = max(2, min(int(sample_count or 10), 30))
+    started_at = _now_iso()
+    results: list[dict[str, Any]] = []
+    for i in range(sample_count):
+        task_type = "exact" if i % 2 == 0 else "general"
+        task = f"Reply exactly: PGG_V37_{task_type.upper()}_{i:03d}"
+        r = execute_route_enforce_canary(task, task_type=task_type, timeout=timeout)
+        execution = r.get("execution", {})
+        provider_exec = execution.get("execution", {}) if isinstance(execution, dict) else {}
+        results.append({
+            "index": i,
+            "task_type": task_type,
+            "success": bool(r.get("success")),
+            "executed": bool(r.get("executed")),
+            "provider": provider_exec.get("provider"),
+            "http_status": provider_exec.get("http_status"),
+            "answer_preview": provider_exec.get("answer_preview"),
+        })
+    deny_cases = []
+    for task_type, task in [("legal", "中文法律合同诉讼法条"), ("audit", "audit judge benchmark verdict"), ("agi", "PGG Archon AGI Rust router evolution")]:
+        r = execute_route_enforce_canary(task, task_type=task_type, timeout=timeout)
+        deny_cases.append({"task_type": task_type, "denied": not bool(r.get("executed")), "success": bool(r.get("success")), "reasons": r.get("plan", {}).get("enforce_decision", {}).get("reasons", [])})
+    cfg = read_route_enforce_canary_config()
+    success_count = sum(1 for r in results if r["success"] and r["executed"] and r["http_status"] == 200)
+    deny_count = sum(1 for r in deny_cases if r["denied"] and not r["success"])
+    rollback_ok = (not bool(cfg.get("enabled"))) and str(cfg.get("mode")) == "observe_only"
+    passed = success_count == sample_count and deny_count == len(deny_cases) and rollback_ok
+    summary = {
+        "schema": "PGGArchonOmniRouteRouteEnforceBatchCanary/v1",
+        "started_at": started_at,
+        "finished_at": _now_iso(),
+        "sample_count": sample_count,
+        "status": "PASS" if passed else "FAIL",
+        "passed": passed,
+        "success_count": success_count,
+        "deny_count": deny_count,
+        "rollback_ok": rollback_ok,
+        "config_after": {"enabled": cfg.get("enabled"), "mode": cfg.get("mode")},
+        "results_head": results[:5],
+        "results_tail": results[-5:],
+        "deny_cases": deny_cases,
+        "boundary": "Batch canary only; not global route-enforce or legal/audit/AGI authorization.",
+    }
+    _append_substitution_event({"ts": datetime.now(timezone.utc).timestamp(), "event": "route_enforce_batch_canary", "payload": summary})
+    return summary
+
+
+def execute_operator_route_enforce(task: str, task_type: str = "exact", timeout: float = 60.0) -> dict[str, Any]:
+    cfg = read_route_enforce_canary_config()
+    started_at = _now_iso()
+    if not (cfg.get("enabled") and cfg.get("operator_toggle_enabled") and cfg.get("mode") == "operator"):
+        result = {
+            "schema": "PGGArchonOmniRouteOperatorExecution/v1",
+            "started_at": started_at,
+            "finished_at": _now_iso(),
+            "success": False,
+            "executed": False,
+            "task_type": task_type,
+            "error": "operator toggle disabled",
+            "config": {"enabled": cfg.get("enabled"), "operator_toggle_enabled": cfg.get("operator_toggle_enabled"), "mode": cfg.get("mode")},
+            "boundary": "No provider call: operator toggle is disabled.",
+        }
+        _append_substitution_event({"ts": datetime.now(timezone.utc).timestamp(), "event": "operator_route_enforce_execute", "payload": result})
+        return result
+    plan = plan_provider_substitution_canary(task, task_type=task_type)
+    if not plan.get("allowed"):
+        result = {
+            "schema": "PGGArchonOmniRouteOperatorExecution/v1",
+            "started_at": started_at,
+            "finished_at": _now_iso(),
+            "success": False,
+            "executed": False,
+            "task_type": task_type,
+            "plan": plan,
+            "error": "operator route-enforce denied by guard",
+            "boundary": "No provider call: guard denied task class or route-class mismatch.",
+        }
+        _append_substitution_event({"ts": datetime.now(timezone.utc).timestamp(), "event": "operator_route_enforce_execute", "payload": result})
+        return result
+    execution = execute_provider_substitution_canary(task, task_type=task_type, timeout=timeout, fallback_provider="")
+    result = {
+        "schema": "PGGArchonOmniRouteOperatorExecution/v1",
+        "started_at": started_at,
+        "finished_at": _now_iso(),
+        "success": bool(execution.get("same_class_substitution_success")),
+        "executed": True,
+        "task_type": task_type,
+        "plan": plan,
+        "execution": execution,
+        "boundary": "Operator-enabled exact/general GPT55 same-class route-enforce execution. Not global; legal/audit/AGI denied by guard.",
+    }
+    _append_substitution_event({"ts": datetime.now(timezone.utc).timestamp(), "event": "operator_route_enforce_execute", "payload": result})
+    return result
 
 
 

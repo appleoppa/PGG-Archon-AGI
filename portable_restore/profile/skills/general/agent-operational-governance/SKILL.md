@@ -157,7 +157,9 @@ When a health check finds a missing repo, daemon, mirror, binary, runtime DB, or
 
 If the component may have been intentionally removed, stop recovery and ask or report the boundary. Automatic low-risk remediation may remove broken residues and verify absence, but must not restore uninstalled agents, mirrors, sidecars, services, or launchd jobs without explicit user authorization. This is especially important during “other local agents” inventory and cleanup tasks.
 
-## Git/GitHub mirror-to-private pitfall
+## Git/GitHub portable restore / mirror-to-private pitfall
+
+For Hermes/PGG state migration to a private GitHub repo, use the portable restore pattern in `references/hermes-portable-restore-github-migration.md`: migration branch, sanitized restore bundle, staged secret scan, local isolated restore, push, then decisive fresh remote clone + restore/verify against clean `TARGET_HOME`. Watch for broad `.gitignore` rules such as `data/*` silently omitting required portable manifests; local rsync proof is insufficient unless a remote clone also passes.
 
 When asked to download/copy a GitHub account or repository into private remotes:
 

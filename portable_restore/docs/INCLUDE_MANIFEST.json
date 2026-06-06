@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-06-06T14:19:13.625203",
+  "generated_at": "2026-06-06T14:51:45.053508",
   "files": [
     {
       "path": "portable_restore/README.md",
@@ -73,7 +73,7 @@
     },
     {
       "path": "portable_restore/profile/skills/.usage.json",
-      "sha256": "6b70ede42fb6d775916c88ce90db1bfbe379d7a5be8844672cee0522f4f8d15b",
+      "sha256": "6ec3c83ab2cc79134f2838cca731924bf4f110f4fe7ba6a2ac264840f5f79455",
       "bytes": 38800
     },
     {
@@ -648,8 +648,13 @@
     },
     {
       "path": "portable_restore/profile/skills/general/agent-operational-governance/SKILL.md",
-      "sha256": "e3870c8162721503ec551d112790a40b0f3a63bac0d84e10efc54e007d4d82cb",
-      "bytes": 21824
+      "sha256": "588b77527c415941aa6d434a874f8cf9ff8cd1e17f4ee556329302da053c2b7e",
+      "bytes": 22336
+    },
+    {
+      "path": "portable_restore/profile/skills/general/agent-operational-governance/references/hermes-portable-restore-github-migration.md",
+      "sha256": "1361d8cf27e51e1b33301c19ed28fcdfd2a1ce9a071c1e3a72954d2bc364b8a4",
+      "bytes": 3594
     },
     {
       "path": "portable_restore/profile/skills/general/agent-operational-governance/references/agent-due-diligence.md",
@@ -828,8 +833,8 @@
     },
     {
       "path": "portable_restore/profile/skills/general/pgg-archon-runtime/SKILL.md",
-      "sha256": "4aa77da08f72c7132c0d29f583ffd568d15c991f8416df85c20a1f6b40509cd0",
-      "bytes": 16154
+      "sha256": "9f82c5756e25e8e33cb284953a16d47e3e5bb4f3785840018e85b5ebad42f088",
+      "bytes": 16423
     },
     {
       "path": "portable_restore/profile/skills/general/pgg-archon-runtime/references/codegenesis-progressive-observability-20260602.md",
@@ -850,6 +855,11 @@
       "path": "portable_restore/profile/skills/general/pgg-archon-runtime/references/deepseek-v4-audit-methodology.md",
       "sha256": "9f8c0305c20ce65fd10c2b53801a487ab0315dfaead0c1a14988c1a05a817311",
       "bytes": 3821
+    },
+    {
+      "path": "portable_restore/profile/skills/general/pgg-archon-runtime/references/portable-restore-and-route-enforce-batch-canary-20260606.md",
+      "sha256": "87275cb85b5cbc5ddd0238ff6b1a179e895d93f434e3aef3a53f162085772786",
+      "bytes": 3810
     },
     {
       "path": "portable_restore/profile/skills/general/pgg-archon-runtime/references/formula-gate-status-and-canary-closure-20260606.md",
@@ -978,8 +988,8 @@
     },
     {
       "path": "portable_restore/profile/skills/quantum-channel-router/SKILL.md",
-      "sha256": "2693096c2f8d20ca8bbd93ee072e0c197d7c5dc65a11aa7ef75e4a96c50f7229",
-      "bytes": 7116
+      "sha256": "9ad9226cd576f80789f42f88a6d60e37d3454a71e8dbdaa7a44f1cbb85e37262",
+      "bytes": 7588
     },
     {
       "path": "portable_restore/profile/skills/quantum-channel-router/references/omniroute-main-task-chain-v2-20260605.md",
@@ -1057,6 +1067,11 @@
       "bytes": 1846
     },
     {
+      "path": "portable_restore/profile/skills/quantum-channel-router/references/omniroute-route-enforce-batch-canary-v37-20260606.md",
+      "sha256": "5ad0461b4b5277956c178d6582a9017d804dfaf70674b1a650fab0aacfcb515d",
+      "bytes": 2302
+    },
+    {
       "path": "portable_restore/profile/skills/quantum-channel-router/references/9router-realtime-dashboard-implementation-20260605.md",
       "sha256": "f550791d3c5db501a6c2b1040e9c4e96eb75b38f0d4361b3ce5568cd3e5096a7",
       "bytes": 3251
@@ -1095,6 +1110,11 @@
       "path": "portable_restore/profile/skills/quantum-channel-router/references/omniroute-cooldown-control-v11-20260605.md",
       "sha256": "408f2719d968c92a03539163e7c9e012c1b7abd5d6c24b8ccf5b823e94135c44",
       "bytes": 1948
+    },
+    {
+      "path": "portable_restore/profile/skills/quantum-channel-router/references/omniroute-route-enforce-canary-v36-20260606.md",
+      "sha256": "7b3926bd4c8d64e1ebd6c8662e4ef182d2cc096aba0ee440fafb1690be0b9836",
+      "bytes": 1177
     },
     {
       "path": "portable_restore/profile/skills/quantum-channel-router/references/omniroute-9router-dashboard-evm-fusion-20260605.md",
@@ -1173,8 +1193,8 @@
     },
     {
       "path": "portable_restore/profile/skills/pgg-archon-eval-harness-suite/SKILL.md",
-      "sha256": "779383c04b16293b2f82b4777bdf8cf2196882de7a92682b319fc4f00f595442",
-      "bytes": 45958
+      "sha256": "61cbb5b632f908d394410334eec3134a53f1816cfa94445eab11867003e5ef4d",
+      "bytes": 47188
     },
     {
       "path": "portable_restore/profile/skills/pgg-archon-eval-harness-suite/references/promptfoo-official-smoke-and-third-party-judge-20260605.md",
@@ -1220,6 +1240,11 @@
       "path": "portable_restore/profile/skills/pgg-archon-eval-harness-suite/references/lessons-p0-p2-provider-runs-20260605.md",
       "sha256": "32c14a56aa3a98836e6b77b5f6fb563d050cdfa7e8e2f5309733692ea828b9e6",
       "bytes": 4977
+    },
+    {
+      "path": "portable_restore/profile/skills/pgg-archon-eval-harness-suite/references/lessons-rust-promptfoo-gate-fused-postcheck-20260606.md",
+      "sha256": "f81e275de195a8b718e984cdf57ace1e51781efceb09c2f7df2cfc476d9a7435",
+      "bytes": 4424
     },
     {
       "path": "portable_restore/profile/skills/pgg-archon-eval-harness-suite/references/lessons-p3-50-probe-multillm-20260604.md",
@@ -2228,8 +2253,8 @@
     },
     {
       "path": "portable_restore/profile/skills/workflow/pgg-archon-external-repo-absorption/SKILL.md",
-      "sha256": "79b0f0d747dbabb97a04e7d92479fa1b4d6228a1fe096f63a851183b14641367",
-      "bytes": 25548
+      "sha256": "81a4f2607d9380dfa16bc9aee6faf2ec2e66be6deef7b6df6974013f4a328993",
+      "bytes": 25864
     },
     {
       "path": "portable_restore/profile/skills/workflow/pgg-archon-external-repo-absorption/references/hidden-agent-bridge-second-agi.md",
@@ -2295,6 +2320,11 @@
       "path": "portable_restore/profile/skills/workflow/pgg-archon-external-repo-absorption/references/phase-file-simulation-fix-patterns-20260602.md",
       "sha256": "deee800a73f9994192e592ff0516d55a42c2cd876a8df3211497c44c106d0b39",
       "bytes": 2578
+    },
+    {
+      "path": "portable_restore/profile/skills/workflow/pgg-archon-external-repo-absorption/references/local-multisource-private-repo-sync-usage-docs.md",
+      "sha256": "a25dfbe2e3564c2c7f106ab6d53752de0ebfc8794d57d133cec65e948e611735",
+      "bytes": 4395
     },
     {
       "path": "portable_restore/profile/skills/workflow/pgg-archon-external-repo-absorption/references/github-knowledge-radar-cron-pattern.md",
@@ -3343,8 +3373,8 @@
     },
     {
       "path": "portable_restore/profile/skills/rust-core-module-development/SKILL.md",
-      "sha256": "3b0d74e4eda98b6444891c02c440948c688169313b6c40b20052faf8865ce9c9",
-      "bytes": 8620
+      "sha256": "960882ae10493d47f23a0589fb04a359e3d852541ef5ea41a962bb0fca6598c3",
+      "bytes": 8851
     },
     {
       "path": "portable_restore/profile/skills/rust-core-module-development/references/cli-wrapper-pattern.md",
@@ -3430,6 +3460,11 @@
       "path": "portable_restore/profile/skills/rust-core-module-development/references/pyo3-property-overlay-validation-pattern.md",
       "sha256": "11e0b58d1c037c795b6462e736c259ae0771f62a2974d43e0ea4bb02a9c7469f",
       "bytes": 3247
+    },
+    {
+      "path": "portable_restore/profile/skills/rust-core-module-development/references/pilotdeck-private-sync-and-hermes-absorption-20260606.md",
+      "sha256": "d1676ac21741e1f52bebefcb2958970ba1e9c8cfbdcaee58c334e19c48b18cbc",
+      "bytes": 3376
     },
     {
       "path": "portable_restore/profile/skills/rust-core-module-development/references/rust-cli-feishu-context-triage-pattern.md",
@@ -4498,8 +4533,8 @@
     },
     {
       "path": "portable_restore/profile/data/EVOLUTION_MANIFEST.json",
-      "sha256": "2398262d91a8e13a976059ab00bf96491b96ac46d0bd1f5e8307255c0421d381",
-      "bytes": 446180
+      "sha256": "c385f5bc8c2ee6c73b4eeef57a76e63e9469c2b906aa2adc192c492a5395fef1",
+      "bytes": 460322
     },
     {
       "path": "portable_restore/profile/memories/MEMORY.md",

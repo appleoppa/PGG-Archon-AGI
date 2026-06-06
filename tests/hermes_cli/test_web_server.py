@@ -48,6 +48,7 @@ def test_omniroute_endpoint_mimo_rejections_remain_http_400(monkeypatch):
             web_server.call_omniroute_provider(web_server.OmniRouteProviderCallRequest(prompt="x", requested_provider="mimo")),
             web_server.execute_omniroute_provider_substitution_canary_api(web_server.OmniRouteSubstitutionCanaryRequest(task="x", fallback_provider="mimo")),
             web_server.execute_omniroute_provider_substitution_fallback_window_api(web_server.OmniRouteFallbackWindowRequest(fallback_provider="mimo")),
+            web_server.execute_omniroute_route_enforce_canary_api(web_server.OmniRouteEnforceExecuteRequest(task="")),
             web_server.decide_omniroute_route(web_server.OmniRouteDecisionRequest(requested_provider="mimo")),
         ]
         for coro in cases:
@@ -74,6 +75,29 @@ def test_omniroute_route_enforce_canary_snapshot_and_config_api(monkeypatch, tmp
     assert "chinese_legal" not in cfg["allowed_intents"]
     assert "chinese_legal" in cfg["denied_intents"]
     assert "Default is fail-open" in cfg["rollback"]
+
+
+def test_omniroute_route_enforce_batch_canary_api_writes_snapshot(monkeypatch, tmp_path):
+    from hermes_cli import web_server
+    from agent import pgg_archon_quantum_channel_router as router
+
+    monkeypatch.setattr(web_server.Path, "home", staticmethod(lambda: tmp_path))
+    monkeypatch.setattr(
+        router,
+        "run_route_enforce_batch_canary",
+        lambda sample_count=10, timeout=60.0: {
+            "status": "PASS",
+            "passed": True,
+            "sample_count": sample_count,
+            "success_count": sample_count,
+            "deny_count": 3,
+            "rollback_ok": True,
+        },
+    )
+    result = asyncio.run(web_server.execute_omniroute_route_enforce_batch_canary_api(web_server.OmniRouteBatchCanaryRequest(sample_count=2)))
+    assert result["ok"] is True
+    assert result["result"]["sample_count"] == 2
+    assert Path(result["path"]).exists()
 
 
 def test_omniroute_route_enforce_window_test_api_and_snapshot(monkeypatch, tmp_path):

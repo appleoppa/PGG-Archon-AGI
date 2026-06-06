@@ -67,3 +67,5 @@ Full historical super-evolution routing notes are archived at:
 - `references/omniroute-webui-restore-v33-20260606.md` — v3.3 WebUI restore：定位当前权威 WebUI 包 `~/.hermes/webui/node_modules/hermes-web-ui/dist/client`，恢复 `/omniroute.html` 并显示 v3.2 fallback window，浏览器 DOM 验证可见。
 - `references/omniroute-gpt55-lane-reconciliation-v34-20260606.md` — v3.4 GPT55 lane reconciliation：响应用户纠正，区分 main/orchestrator GPT55 lane 可用 vs proof lane payload 错误；修 external registry Responses payload，GPT55 same-class substitution canary 200/participated=true。
 - `references/omniroute-gpt55-same-class-window-v35-20260606.md` — v3.5 GPT55 same-class substitution window：20 样本 exact/general primary GPT55 20/20 success、fallback 0、HTTP 502=0、leakage=0；仍非全局 route-enforce。
+- `references/omniroute-route-enforce-canary-v36-20260606.md` — v3.6 default-off route-enforce canary：单条 exact/general 临时 enable→GPT55 same-class execute→rollback；legal deny proof；全局 route-enforce 仍关闭。
+- `references/omniroute-route-enforce-batch-canary-v37-20260606.md` — v3.7 batch route-enforce canary：10 条 exact/general GPT55 same-class 10/10 成功，legal/audit/AGI 3/3 deny，rollback OK；下一步仅可做 operator toggle。

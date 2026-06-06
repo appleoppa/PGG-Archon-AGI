@@ -321,3 +321,4 @@ Provider benchmark / health gate 集成经验：
 5D scoring surface drift 修复：
 - `references/scoring-surface-drift-repair-20260606.md`（清理 sessions 不误伤 Growth；Harmony 识别 Rust fused watcher；内部状态面边界）
 - `references/harmony-runtime-probe-migration-20260606.md` — Harmony/运行状态面迁移修复：旧 plist/API 探测过期时，优先迁移 probe 到当前真实 Rust fused watcher 与兼容导出，禁止补假 legacy 产物或恢复已清理历史 sessions 来堆分。
+- `references/portable-restore-and-route-enforce-batch-canary-20260606.md` — Hermes/PGG 当前进化状态 GitHub portable restore 骨架、远程 clone 恢复验证、OmniRoute route-enforce batch canary hard-deny/rollback/Web API 400 透传与 Rust 编译沉淀。

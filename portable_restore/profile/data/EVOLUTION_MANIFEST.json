@@ -2592,10 +2592,10 @@
     }
   },
   "latest_apex_postcheck_gate_discovery_20260606": {
-    "artifact_path": "/Users/appleoppa/.hermes/workspace/audit/apex_postcheck_discovery_20260606.json",
-    "artifact_sha256": "397dc61880770ee7a40af2a723da9bf629c8ed060fdb89b4d048b3f5172dbb00",
+    "artifact_path": "/Users/appleoppa/.hermes/workspace/audit/apex_postcheck_discovery_compact_dirty_20260606.json",
+    "artifact_sha256": "d9a72e92c616b7739e9af4b9a373c6c9fd5b3a423c521b4aa32c35c8b6456c1a",
     "boundary": "APEX postcheck hook discovery/execution layer: default-off optional gates only; not launchd auto-enable, not official benchmark score, not legal correctness proof, not L2/full AGI proof.",
-    "created_at": "2026-06-06T05:52:53.581269+00:00",
+    "created_at": "2026-06-06T06:21:50.096400+00:00",
     "schema": "PGGArchonEvolutionManifestEntry/v1",
     "status": "PASS_GATES_DISCOVERED_DEFAULT_OFF",
     "title": "APEX postcheck default-off gate discovery"
@@ -2621,6 +2621,40 @@
     "score_after": 47,
     "score_before": 34,
     "updated_at": "2026-06-05T14:49:16"
+  },
+  "latest_claude_guided_unresolved_gap_and_gpt55_lane_repair_20260606": {
+    "boundary": "Gap detection and evidence-lane hardening only; not T5/full AGI, not production route takeover, not official benchmark score, not legal correctness proof.",
+    "claude_review": {
+      "biggest_gap": "Formula gate status looked complete while real-world landing still had PARTIAL/default-off/disabled/substitution unresolved gaps",
+      "dimension": "现实环境落地性能",
+      "evolve_stage": "GapDetect",
+      "risk_level": "low",
+      "verdict": "WATCH"
+    },
+    "commits": [
+      "094ea8f3c",
+      "7246ce679"
+    ],
+    "created_at": "2026-06-06 14:03:05",
+    "hardening": [
+      "Formula gate now computes unresolved_gap_keys/unresolved_gap_count from latest Manifest window",
+      "AGI/evolution/system/route/provider tasks downgrade to WATCH when unresolved gaps exist despite PASS-family evidence",
+      "Render shows unresolved preview so user sees the real biggest gap instead of a clean-looking PASS",
+      "gpt55 codex_responses external benchmark lane uses plain input + max_completion_tokens and retries with max_tokens after proxy 4xx/5xx",
+      "PilotDeck sync evidence absorbs newer protocol smoke / second absorption / rust_sync_evidence_binary_gate artifacts"
+    ],
+    "schema": "PGGArchonEvolutionManifestEntry/v1",
+    "scope": "Claude identified biggest gap: formula gate over-counted PASS-family evidence without surfacing unresolved PARTIAL/default-off/provider-substitution gaps. Fixed formula gate unresolved-gap detection; repaired gpt55 Responses proxy retry; expanded PilotDeck evidence source absorption. Repo clean.",
+    "status": "PASS",
+    "title": "Claude-guided biggest-gap closure: unresolved Manifest gaps and gpt55 lane repair evidence",
+    "verification": {
+      "formula_tests": "12 passed; CLI now WATCH when unresolved Manifest gaps exist and shows unresolved preview",
+      "git_readback": "7246ce679 Expose unresolved gaps and repair gpt55 lane evidence\n094ea8f3c Surface unresolved Manifest gaps in formula gate\n3209d6bd7 Treat PASS-family manifest states as formula evidence\ne85bad41e Add PilotDeck sync evidence CLI\n1b26a8c10 Add substitution fallback window telemetry\ndb15d16de Distinguish substitution fallback participation\n12958829d Clarify formula gate manifest evidence counts\n3836e06bb Harden MiMo audit retry and promptfoo closure readback\naa2a2572e Harden promptfoo claims and substitution fallback\nea6f7f63e Add promptfoo gate Cargo lockfile",
+      "git_status": "GIT_STATUS_CLEAN=PASS",
+      "pilotdeck_rust": "PYO3_PYTHON=venv/bin/python cargo test 4+2 passed; cargo build --bin pilotdeck_sync_evidence PASS",
+      "provider_lane_test": "codex_responses retry test PASS; first max_completion_tokens 502 then max_tokens retry returns parsed text",
+      "py_compile": "PASS touched Python files/tests"
+    }
   },
   "latest_cms_guard_relocated_20260605": {
     "new_root": "/Users/appleoppa/.hermes/workspace/pgg-archon-governance",
@@ -2654,6 +2688,30 @@
     "standard_bin": "/Users/appleoppa/.hermes/bin/cms_case_guard",
     "status": "INTEGRATED_RUNTIME_PROMPT_AND_SKILL_GATE",
     "updated_at": "2026-06-05T15:35:44"
+  },
+  "latest_evol_watcher_postcheck_launchd_enable_20260606": {
+    "backup_apex_sha256": "b396de53708acce3f19602f8769ee1c70f6315b43ff7a8da6eddfa72e3101143",
+    "backup_dir": "/Users/appleoppa/.hermes/workspace/audit/evol_watcher_postcheck_enable_20260606140437",
+    "backup_plist_sha256": "09481afba7791f6352c8e313e5339f339e825b39f1098da35838da0b99770b61",
+    "boundary": "launchd restarted with explicit periodic postcheck; latest fused watcher postcheck PASS; smoke only, not official benchmark/legal correctness/full AGI proof.",
+    "created_at": "2026-06-06T14:04:37.115931",
+    "plist_path": "/Users/appleoppa/Library/LaunchAgents/ai.hermes.evol-watcher.plist",
+    "plist_sha256": "83f90a8bbe9be44ab8cde2a4f6b28d0cb7f7a5d49dfa9de94dc457c68fadd437",
+    "postcheck_gate_id": "promptfoo_adaptive_50_rust_gate",
+    "postcheck_interval_secs": 21600,
+    "schema": "PGGArchonEvolutionManifestEntry/v1",
+    "status": "PASS_LAUNCHD_RESTART_VERIFIED_POSTCHECK_PASS",
+    "title": "Enable fused watcher periodic promptfoo postcheck gate in launchd plist",
+    "verified_at": "2026-06-06T14:28:56.587165",
+    "verified_pid": 96090,
+    "verified_command_contains": [
+      "--postcheck-gate-id",
+      "promptfoo_adaptive_50_rust_gate",
+      "--postcheck-interval-secs",
+      "21600"
+    ],
+    "latest_postcheck_manifest_key": "latest_promptfoo_50_suite_adaptive_fused_postcheck_20260606062206",
+    "latest_postcheck_status": "PASS"
   },
   "latest_evolution_core_settlement_pilotdeck_rust_pyo3_20260606": {
     "archive": "/Users/appleoppa/.hermes/workspace/治理/pilotdeck-hidden15-activation/latest-evolution-core-settlement-20260606.md",
@@ -4226,6 +4284,23 @@
     "root_cause": "external_benchmark_provider_run used Responses input array + max_tokens/max_output_tokens, causing ChuangAgent 502; fixed to input string + max_completion_tokens with max_tokens retry.",
     "status": "PASS_GPT55_PROOF_LANE_REPAIRED",
     "user_correction": "GPT55 main/orchestrator lane has been available; prior issue was proof lane payload mismatch."
+  },
+  "latest_pgg_omniroute_gpt55_same_class_window_v35_20260606": {
+    "boundary": "Bounded exact/general GPT55 same-class window; global route-enforce remains disabled.",
+    "created_at": "2026-06-06T06:08:20.359685+00:00",
+    "cross_class_fallback_count": 0,
+    "fallback_success_count": 0,
+    "files": [
+      "/Users/appleoppa/.hermes/workspace/github_absorption/9router/analysis/omniroute-gpt55-same-class-window-v35-20260606.md",
+      "/Users/appleoppa/.hermes/skills/quantum-channel-router/references/omniroute-gpt55-same-class-window-v35-20260606.md",
+      "/Users/appleoppa/.hermes/workspace/github_absorption/9router/analysis/omniroute-v32-fallback-window-latest.json"
+    ],
+    "leakage_count": 0,
+    "pass_mode": "same_class_primary",
+    "primary_http_502_count": 0,
+    "primary_success_count": 20,
+    "sample_count": 20,
+    "status": "PASS_GPT55_SAME_CLASS_20_WINDOW"
   },
   "latest_pgg_omniroute_guarded_route_enforce_canary_v27_20260606": {
     "api_verified": true,
@@ -6245,6 +6320,126 @@
     "status": "PASS",
     "title": "Promptfoo 50-suite adaptive one-click Rust gate"
   },
+  "latest_promptfoo_50_suite_adaptive_fused_postcheck_20260606060212": {
+    "artifact_path": "/Users/appleoppa/.hermes/workspace/audit/promptfoo_50_suite_adaptive_fused_postcheck_20260606060212/promptfoo_50_suite_adaptive_final_report.json",
+    "artifact_sha256": "09d207803ab9ea835565882e882da50b25d91e19ef057853f4e757bab7d1423c",
+    "audit_gate": {
+      "audit_count": 3,
+      "downgrade_reasons": [],
+      "judge_called": true,
+      "pass_count": 3,
+      "timeout_count": 0
+    },
+    "audit_summary_path": "/Users/appleoppa/.hermes/workspace/audit/promptfoo_50_suite_adaptive_fused_postcheck_20260606060212/audit_gate/mimo_micro_audit_summary.json",
+    "audit_summary_sha256": "1e66835f39311838fd22d8b8ad9f43ed04d290d3ecaff9980af1b8a5e4223b75",
+    "boundary": "Audited manifest gate: PASS only if all MiMo micro-audits PASS; otherwise WATCH. Not legal correctness proof, not official benchmark score, not AGI level proof.",
+    "closure_path": "/Users/appleoppa/.hermes/workspace/audit/promptfoo_50_suite_adaptive_fused_postcheck_20260606060212/promptfoo_50_suite_adaptive_finalize_closure.json",
+    "closure_sha256": "0b6ae6899b70c9b6c3b1fd75d5784252f5d8082956b1af2d73492efe896df0be",
+    "created_at": "2026-06-06 14:03:42",
+    "extra": {
+      "domains": {
+        "arithmetic_toy": 10,
+        "gsm8k_public_sample": 20,
+        "legal_case_0006_fact_boundary": 20
+      },
+      "error_count": 0,
+      "failed_count": 0,
+      "passed_count": 50,
+      "sample_count": 50,
+      "source_type": "official_harness_smoke_50",
+      "suite_id": "promptfoo_50_suite_adaptive"
+    },
+    "legal_boundary_gate": {
+      "artifact_sha256": "09d207803ab9ea835565882e882da50b25d91e19ef057853f4e757bab7d1423c",
+      "missing_rules": [],
+      "note": "local deterministic legal-boundary precheck; not MiMo audit PASS and not legal correctness proof",
+      "status": "PASS"
+    },
+    "requested_status": "PASS",
+    "schema": "PGGArchonEvolutionManifestEntry/v1",
+    "status": "PASS",
+    "title": "Promptfoo 50-suite adaptive one-click Rust gate"
+  },
+  "latest_promptfoo_50_suite_adaptive_launchd_path_repro2_20260606": {
+    "artifact_path": "/Users/appleoppa/.hermes/workspace/audit/promptfoo_50_suite_adaptive_launchd_path_repro2_20260606/promptfoo_50_suite_adaptive_final_report.json",
+    "artifact_sha256": "e56c8a5e5d02737c32e9ab660558ad5e608e5f6199340eb43e82f25bff632929",
+    "audit_gate": {
+      "audit_count": 3,
+      "downgrade_reasons": [],
+      "judge_called": true,
+      "pass_count": 3,
+      "timeout_count": 0
+    },
+    "audit_summary_path": "/Users/appleoppa/.hermes/workspace/audit/promptfoo_50_suite_adaptive_launchd_path_repro2_20260606/audit_gate/mimo_micro_audit_summary.json",
+    "audit_summary_sha256": "d5184844e98f2d23b77d41c1cd661c96397aa039c988628635fe3bcb0d659153",
+    "boundary": "Audited manifest gate: PASS only if all MiMo micro-audits PASS; otherwise WATCH. Not legal correctness proof, not official benchmark score, not AGI level proof.",
+    "closure_path": "/Users/appleoppa/.hermes/workspace/audit/promptfoo_50_suite_adaptive_launchd_path_repro2_20260606/promptfoo_50_suite_adaptive_finalize_closure.json",
+    "closure_sha256": "289cbc1c47ff0bcd8a0ba37d1b0d5758d7e4775b4a316c4ecc918e97d80c18b3",
+    "created_at": "2026-06-06 14:17:58",
+    "extra": {
+      "domains": {
+        "arithmetic_toy": 10,
+        "gsm8k_public_sample": 20,
+        "legal_case_0006_fact_boundary": 20
+      },
+      "error_count": 0,
+      "failed_count": 0,
+      "passed_count": 50,
+      "sample_count": 50,
+      "source_type": "official_harness_smoke_50",
+      "suite_id": "promptfoo_50_suite_adaptive"
+    },
+    "legal_boundary_gate": {
+      "artifact_sha256": "e56c8a5e5d02737c32e9ab660558ad5e608e5f6199340eb43e82f25bff632929",
+      "missing_rules": [],
+      "note": "local deterministic legal-boundary precheck; not MiMo audit PASS and not legal correctness proof",
+      "status": "PASS"
+    },
+    "requested_status": "PASS",
+    "schema": "PGGArchonEvolutionManifestEntry/v1",
+    "status": "PASS",
+    "title": "Promptfoo 50-suite adaptive one-click Rust gate"
+  },
+  "latest_promptfoo_50_suite_adaptive_launchd_path_repro3_20260606": {
+    "artifact_path": "/Users/appleoppa/.hermes/workspace/audit/promptfoo_50_suite_adaptive_launchd_path_repro3_20260606/promptfoo_50_suite_adaptive_final_report.json",
+    "artifact_sha256": "aeaad853ee0d7fd729380d50cc397f69cb8fd26415a6a5ded955e667a6d172e6",
+    "audit_gate": {
+      "audit_count": 3,
+      "downgrade_reasons": [],
+      "judge_called": true,
+      "pass_count": 3,
+      "timeout_count": 0
+    },
+    "audit_summary_path": "/Users/appleoppa/.hermes/workspace/audit/promptfoo_50_suite_adaptive_launchd_path_repro3_20260606/audit_gate/mimo_micro_audit_summary.json",
+    "audit_summary_sha256": "b5f5d0b2147d0e467f00e32f2887f6e7cae490aeb61708d8284713475f8632c3",
+    "boundary": "Audited manifest gate: PASS only if all MiMo micro-audits PASS; otherwise WATCH. Not legal correctness proof, not official benchmark score, not AGI level proof.",
+    "closure_path": "/Users/appleoppa/.hermes/workspace/audit/promptfoo_50_suite_adaptive_launchd_path_repro3_20260606/promptfoo_50_suite_adaptive_finalize_closure.json",
+    "closure_sha256": "5d1b9c3ef1c1414062c322a8fe790e0e43b0dadebbb4d6d012ed1932ab2179d6",
+    "created_at": "2026-06-06 14:21:07",
+    "extra": {
+      "domains": {
+        "arithmetic_toy": 10,
+        "gsm8k_public_sample": 20,
+        "legal_case_0006_fact_boundary": 20
+      },
+      "error_count": 0,
+      "failed_count": 0,
+      "passed_count": 50,
+      "sample_count": 50,
+      "source_type": "official_harness_smoke_50",
+      "suite_id": "promptfoo_50_suite_adaptive"
+    },
+    "legal_boundary_gate": {
+      "artifact_sha256": "aeaad853ee0d7fd729380d50cc397f69cb8fd26415a6a5ded955e667a6d172e6",
+      "missing_rules": [],
+      "note": "local deterministic legal-boundary precheck; not MiMo audit PASS and not legal correctness proof",
+      "status": "PASS"
+    },
+    "requested_status": "PASS",
+    "schema": "PGGArchonEvolutionManifestEntry/v1",
+    "status": "PASS",
+    "title": "Promptfoo 50-suite adaptive one-click Rust gate"
+  },
   "latest_promptfoo_50_suite_adaptive_rust_gate_20260606": {
     "artifact_path": "/Users/appleoppa/.hermes/workspace/audit/promptfoo_50_suite_adaptive_rust_gate_20260606/promptfoo_50_suite_adaptive_final_report.json",
     "artifact_sha256": "606b940e92cdb3fa9a9c06dba1c92fff944a67a010aeae990ddb37427b9b738d",
@@ -6504,6 +6699,27 @@
     "schema": "PGGArchonEvolutionManifestEntry/v1",
     "status": "PASS_OPTIONAL_GATE_REGISTERED_DEFAULT_OFF",
     "title": "Promptfoo adaptive 50 Rust gate registered as optional evolution pipeline postcheck"
+  },
+  "latest_promptfoo_rust_gate_policy_hash_refresh_20260606": {
+    "artifact_path": "/Users/appleoppa/.hermes/workspace/evolution/gates/promptfoo_adaptive_50_rust_gate_policy.json",
+    "artifact_sha256": "8246284f96fde690c4b0a27927b81cebb94a51e9865b1396e40bdb664f15590d",
+    "boundary": "Policy hash refresh only; preserves default-off/explicit postcheck gate semantics; not benchmark/legal/full AGI proof.",
+    "created_at": "2026-06-06T14:19:25.055198",
+    "schema": "PGGArchonEvolutionManifestEntry/v1",
+    "status": "PASS_POLICY_HASH_REFRESHED_AFTER_GATE_REBUILD",
+    "target_path": "/Users/appleoppa/.hermes/hermes-agent/rust_modules/hermes_pgg_promptfoo_gate/target/release/pgg-promptfoo-gate",
+    "target_sha256": "5cb2eab2a8dbd2cacbc90136491129f47ebfde26a390999ea1c8a5f5a5d91a4c",
+    "title": "Refresh promptfoo Rust gate policy target sha256 after launchd compatibility rebuild"
+  },
+  "latest_promptfoo_rust_gate_policy_hash_refresh_compact_dirty_20260606": {
+    "artifact_path": "/Users/appleoppa/.hermes/workspace/evolution/gates/promptfoo_adaptive_50_rust_gate_policy.json",
+    "artifact_sha256": "0482fd5124fc385e6ed79b6bdb92fc5db92da0a20d12d39f12de079826ac8c92",
+    "boundary": "Policy hash refresh after compact dirty_guard; preserves explicit postcheck gate semantics.",
+    "created_at": "2026-06-06T14:21:50.078327",
+    "schema": "PGGArchonEvolutionManifestEntry/v1",
+    "status": "PASS_POLICY_HASH_REFRESHED_COMPACT_DIRTY_GUARD",
+    "target_path": "/Users/appleoppa/.hermes/hermes-agent/rust_modules/hermes_pgg_promptfoo_gate/target/release/pgg-promptfoo-gate",
+    "target_sha256": "eef9e1af35c9a020bab0263e0906927a092250dded367a57e9df3cb522e7d82e"
   },
   "latest_ralph_core_runtime_final_fusion_20260605": {
     "boundary": "Runtime install/core documentation fusion only; no scheduler/security boundary mutation.",
@@ -9009,51 +9225,17 @@
     "total_components": 32
   },
   "version": "1.0",
-  "latest_claude_guided_unresolved_gap_and_gpt55_lane_repair_20260606": {
+  "latest_promptfoo_50_suite_adaptive_fused_postcheck_20260606062206": {
     "schema": "PGGArchonEvolutionManifestEntry/v1",
-    "created_at": "2026-06-06 14:03:05",
-    "status": "PASS",
-    "title": "Claude-guided biggest-gap closure: unresolved Manifest gaps and gpt55 lane repair evidence",
-    "commits": [
-      "094ea8f3c",
-      "7246ce679"
-    ],
-    "scope": "Claude identified biggest gap: formula gate over-counted PASS-family evidence without surfacing unresolved PARTIAL/default-off/provider-substitution gaps. Fixed formula gate unresolved-gap detection; repaired gpt55 Responses proxy retry; expanded PilotDeck evidence source absorption. Repo clean.",
-    "claude_review": {
-      "verdict": "WATCH",
-      "biggest_gap": "Formula gate status looked complete while real-world landing still had PARTIAL/default-off/disabled/substitution unresolved gaps",
-      "dimension": "现实环境落地性能",
-      "evolve_stage": "GapDetect",
-      "risk_level": "low"
-    },
-    "verification": {
-      "formula_tests": "12 passed; CLI now WATCH when unresolved Manifest gaps exist and shows unresolved preview",
-      "provider_lane_test": "codex_responses retry test PASS; first max_completion_tokens 502 then max_tokens retry returns parsed text",
-      "pilotdeck_rust": "PYO3_PYTHON=venv/bin/python cargo test 4+2 passed; cargo build --bin pilotdeck_sync_evidence PASS",
-      "py_compile": "PASS touched Python files/tests",
-      "git_status": "GIT_STATUS_CLEAN=PASS",
-      "git_readback": "7246ce679 Expose unresolved gaps and repair gpt55 lane evidence\n094ea8f3c Surface unresolved Manifest gaps in formula gate\n3209d6bd7 Treat PASS-family manifest states as formula evidence\ne85bad41e Add PilotDeck sync evidence CLI\n1b26a8c10 Add substitution fallback window telemetry\ndb15d16de Distinguish substitution fallback participation\n12958829d Clarify formula gate manifest evidence counts\n3836e06bb Harden MiMo audit retry and promptfoo closure readback\naa2a2572e Harden promptfoo claims and substitution fallback\nea6f7f63e Add promptfoo gate Cargo lockfile"
-    },
-    "hardening": [
-      "Formula gate now computes unresolved_gap_keys/unresolved_gap_count from latest Manifest window",
-      "AGI/evolution/system/route/provider tasks downgrade to WATCH when unresolved gaps exist despite PASS-family evidence",
-      "Render shows unresolved preview so user sees the real biggest gap instead of a clean-looking PASS",
-      "gpt55 codex_responses external benchmark lane uses plain input + max_completion_tokens and retries with max_tokens after proxy 4xx/5xx",
-      "PilotDeck sync evidence absorbs newer protocol smoke / second absorption / rust_sync_evidence_binary_gate artifacts"
-    ],
-    "boundary": "Gap detection and evidence-lane hardening only; not T5/full AGI, not production route takeover, not official benchmark score, not legal correctness proof."
-  },
-  "latest_promptfoo_50_suite_adaptive_fused_postcheck_20260606060212": {
-    "schema": "PGGArchonEvolutionManifestEntry/v1",
-    "created_at": "2026-06-06 14:03:42",
+    "created_at": "2026-06-06 14:23:23",
     "status": "PASS",
     "requested_status": "PASS",
     "title": "Promptfoo 50-suite adaptive one-click Rust gate",
     "boundary": "Audited manifest gate: PASS only if all MiMo micro-audits PASS; otherwise WATCH. Not legal correctness proof, not official benchmark score, not AGI level proof.",
-    "artifact_path": "/Users/appleoppa/.hermes/workspace/audit/promptfoo_50_suite_adaptive_fused_postcheck_20260606060212/promptfoo_50_suite_adaptive_final_report.json",
-    "artifact_sha256": "09d207803ab9ea835565882e882da50b25d91e19ef057853f4e757bab7d1423c",
-    "audit_summary_path": "/Users/appleoppa/.hermes/workspace/audit/promptfoo_50_suite_adaptive_fused_postcheck_20260606060212/audit_gate/mimo_micro_audit_summary.json",
-    "audit_summary_sha256": "1e66835f39311838fd22d8b8ad9f43ed04d290d3ecaff9980af1b8a5e4223b75",
+    "artifact_path": "/Users/appleoppa/.hermes/workspace/audit/promptfoo_50_suite_adaptive_fused_postcheck_20260606062206/promptfoo_50_suite_adaptive_final_report.json",
+    "artifact_sha256": "e511bf9b809d9e8359734f347ba4cacb852ed74142250fca318d1e1be54ed5f6",
+    "audit_summary_path": "/Users/appleoppa/.hermes/workspace/audit/promptfoo_50_suite_adaptive_fused_postcheck_20260606062206/audit_gate/mimo_micro_audit_summary.json",
+    "audit_summary_sha256": "ce29f87b8bf5dd48f8c7fbedc3991c381c651e4b7c0717465917b087ac2efaff",
     "audit_gate": {
       "judge_called": true,
       "pass_count": 3,
@@ -9064,7 +9246,7 @@
     "legal_boundary_gate": {
       "status": "PASS",
       "missing_rules": [],
-      "artifact_sha256": "09d207803ab9ea835565882e882da50b25d91e19ef057853f4e757bab7d1423c",
+      "artifact_sha256": "e511bf9b809d9e8359734f347ba4cacb852ed74142250fca318d1e1be54ed5f6",
       "note": "local deterministic legal-boundary precheck; not MiMo audit PASS and not legal correctness proof"
     },
     "extra": {
@@ -9080,38 +9262,118 @@
         "legal_case_0006_fact_boundary": 20
       }
     },
-    "closure_path": "/Users/appleoppa/.hermes/workspace/audit/promptfoo_50_suite_adaptive_fused_postcheck_20260606060212/promptfoo_50_suite_adaptive_finalize_closure.json",
-    "closure_sha256": "0b6ae6899b70c9b6c3b1fd75d5784252f5d8082956b1af2d73492efe896df0be"
+    "closure_path": "/Users/appleoppa/.hermes/workspace/audit/promptfoo_50_suite_adaptive_fused_postcheck_20260606062206/promptfoo_50_suite_adaptive_finalize_closure.json",
+    "closure_sha256": "9dca635a49a15eee695e42c09147cadd16d711183ab4b4c7665452317a888d6e"
   },
-  "latest_evol_watcher_postcheck_launchd_enable_20260606": {
-    "schema": "PGGArchonEvolutionManifestEntry/v1",
-    "created_at": "2026-06-06T14:04:37.115931",
-    "status": "PASS_PLIST_PATCHED_PENDING_RESTART",
-    "title": "Enable fused watcher periodic promptfoo postcheck gate in launchd plist",
-    "plist_path": "/Users/appleoppa/Library/LaunchAgents/ai.hermes.evol-watcher.plist",
-    "plist_sha256": "83f90a8bbe9be44ab8cde2a4f6b28d0cb7f7a5d49dfa9de94dc457c68fadd437",
-    "backup_dir": "/Users/appleoppa/.hermes/workspace/audit/evol_watcher_postcheck_enable_20260606140437",
-    "backup_plist_sha256": "09481afba7791f6352c8e313e5339f339e825b39f1098da35838da0b99770b61",
-    "backup_apex_sha256": "b396de53708acce3f19602f8769ee1c70f6315b43ff7a8da6eddfa72e3101143",
-    "postcheck_gate_id": "promptfoo_adaptive_50_rust_gate",
-    "postcheck_interval_secs": 21600,
-    "boundary": "launchd plist patched with explicit postcheck args; requires restart verification; smoke only, not official benchmark/legal correctness/full AGI proof."
-  },
-  "latest_pgg_omniroute_gpt55_same_class_window_v35_20260606": {
-    "status": "PASS_GPT55_SAME_CLASS_20_WINDOW",
-    "created_at": "2026-06-06T06:08:20.359685+00:00",
-    "sample_count": 20,
-    "pass_mode": "same_class_primary",
-    "primary_success_count": 20,
-    "fallback_success_count": 0,
-    "primary_http_502_count": 0,
-    "cross_class_fallback_count": 0,
-    "leakage_count": 0,
+  "latest_pgg_omniroute_route_enforce_canary_v36_20260606": {
+    "status": "PASS_DEFAULT_OFF_EXACT_GENERAL_CANARY_LEGAL_DENY",
+    "created_at": "2026-06-06T06:27:20.308770+00:00",
+    "exact": {
+      "api_ok": true,
+      "success": true,
+      "executed": true,
+      "http": 200,
+      "answer": "PGG_V36_API_EXACT_OK"
+    },
+    "legal_deny": {
+      "api_ok": false,
+      "success": false,
+      "executed": false,
+      "error": "route-enforce canary denied by guard",
+      "reasons": [
+        "intent_denied:chinese_legal",
+        "intent_not_allowed:chinese_legal",
+        "route_class_mismatch:deepseek->gpt"
+      ]
+    },
     "files": [
-      "/Users/appleoppa/.hermes/workspace/github_absorption/9router/analysis/omniroute-gpt55-same-class-window-v35-20260606.md",
-      "/Users/appleoppa/.hermes/skills/quantum-channel-router/references/omniroute-gpt55-same-class-window-v35-20260606.md",
-      "/Users/appleoppa/.hermes/workspace/github_absorption/9router/analysis/omniroute-v32-fallback-window-latest.json"
+      "/Users/appleoppa/.hermes/workspace/github_absorption/9router/analysis/omniroute-route-enforce-canary-v36-20260606.md",
+      "/Users/appleoppa/.hermes/skills/quantum-channel-router/references/omniroute-route-enforce-canary-v36-20260606.md",
+      "/Users/appleoppa/.hermes/workspace/github_absorption/9router/analysis/omniroute-v36-route-enforce-canary-dual-proof.json",
+      "/Users/appleoppa/.hermes/workspace/github_absorption/9router/analysis/omniroute-v36-route-enforce-canary-latest.json",
+      "/Users/appleoppa/.hermes/workspace/github_absorption/9router/analysis/omniroute-v36-route-enforce-canary-latest.json"
     ],
-    "boundary": "Bounded exact/general GPT55 same-class window; global route-enforce remains disabled."
+    "boundary": "Default-off exact/general canary only; global route-enforce disabled; legal/audit/AGI denied."
+  },
+  "latest_fused_watcher_periodic_postcheck_verified_20260606": {
+    "schema": "PGGArchonEvolutionManifestEntry/v1",
+    "created_at": "2026-06-06T14:28:56.587491",
+    "status": "PASS_PERIODIC_POSTCHECK_ENABLED_AND_VERIFIED",
+    "title": "Fused watcher periodic promptfoo postcheck enabled and verified",
+    "launchd_label": "ai.hermes.evol-watcher",
+    "pid": 96090,
+    "postcheck_interval_secs": 21600,
+    "postcheck_gate_id": "promptfoo_adaptive_50_rust_gate",
+    "postcheck_manifest_key": "latest_promptfoo_50_suite_adaptive_fused_postcheck_20260606062206",
+    "postcheck_status": "PASS",
+    "boundary": "launchd restarted with explicit periodic postcheck; latest fused watcher postcheck PASS; smoke only, not official benchmark/legal correctness/full AGI proof."
+  },
+  "latest_pgg_omniroute_route_enforce_batch_canary_v37_20260606": {
+    "status": "PASS_BATCH_CANARY_10_EXACT_GENERAL_DENY_3_ROLLBACK",
+    "created_at": "2026-06-06T06:34:58.263377+00:00",
+    "sample_count": 10,
+    "success_count": 10,
+    "deny_count": 3,
+    "rollback_ok": true,
+    "config_after": {
+      "enabled": false,
+      "mode": "observe_only"
+    },
+    "files": [
+      "/Users/appleoppa/.hermes/workspace/github_absorption/9router/analysis/omniroute-route-enforce-batch-canary-v37-20260606.md",
+      "/Users/appleoppa/.hermes/skills/quantum-channel-router/references/omniroute-route-enforce-batch-canary-v37-20260606.md",
+      "/Users/appleoppa/.hermes/workspace/github_absorption/9router/analysis/omniroute-v37-route-enforce-batch-canary-latest.json"
+    ],
+    "boundary": "Batch canary only; global route-enforce disabled; legal/audit/AGI denied."
+  },
+  "latest_session_closure_rust_gate_fused_watcher_20260606": {
+    "schema": "PGGArchonEvolutionManifestEntry/v1",
+    "created_at": "2026-06-06T14:42:52.966940",
+    "status": "PASS_READY_TO_CLOSE_SESSION",
+    "title": "2026-06-06 PGG Archon Rust promptfoo gate fused watcher closure",
+    "artifact_path": "/Users/appleoppa/.hermes/workspace/audit/session_closure_20260606/session_closure_report.json",
+    "artifact_sha256": "2e18fcf9bde2e7f34118753a00c0ebb0ee4753f0f8e30d0ad956f2e694f702a5",
+    "latest_background_postcheck_key": "latest_promptfoo_50_suite_adaptive_fused_postcheck_20260606062206",
+    "boundary": "Ready to close this chat session. This proves local Rust gate + fused watcher periodic smoke postcheck integration and first verified PASS; not official benchmark score, not legal correctness proof, not L2/full AGI proof."
+  },
+  "latest_today_evolution_settlement_20260606": {
+    "schema": "PGGArchonTodayEvolutionSettlement/v1",
+    "status": "PASS_WITH_CLAUDE_BLOCKED",
+    "created_at": "2026-06-06T06:50:15.657677+00:00",
+    "summary": "Settled portable GitHub restore bundle and OmniRoute route-enforce batch canary into runtime skill/reference, manifest, tests, and Rust compile gates.",
+    "github": {
+      "repo": "appleoppa/PGG-Archon-AGI",
+      "branch": "pgg-archon-portable-restore-20260606-141437",
+      "head": "643f728008f04871013a0ce08d1bc45035dad05f",
+      "portable_restore": "portable_restore/"
+    },
+    "claude": {
+      "requested": true,
+      "status": "BLOCKED",
+      "evidence_path": "/Users/appleoppa/.hermes/workspace/pgg-archon-governance/today-evolution-settlement-20260606/claude_raw.json",
+      "error": "HTTP 403 All available accounts exhausted"
+    },
+    "tests": [
+      "python -m py_compile agent/pgg_archon_quantum_channel_router.py hermes_cli/web_server.py",
+      "pytest -q tests/test_pgg_archon_quantum_channel_router_policy.py tests/hermes_cli/test_web_server.py -q"
+    ],
+    "rust_compile_gates": [
+      {
+        "crate": "rust_modules/hermes_pgg_promptfoo_gate",
+        "cargo_test": "PASS 4/4",
+        "cargo_build_release": "PASS"
+      },
+      {
+        "crate": "rust_modules/hermes_pgg_omniroute",
+        "cargo_test": "PASS 5/5 + smoke/doc tests",
+        "cargo_build_release": "PASS"
+      }
+    ],
+    "knowledge_settlement": {
+      "skill": "general/pgg-archon-runtime",
+      "reference": "/Users/appleoppa/.hermes/skills/general/pgg-archon-runtime/references/portable-restore-and-route-enforce-batch-canary-20260606.md",
+      "reference_sha256": "87275cb85b5cbc5ddd0238ff6b1a179e895d93f434e3aef3a53f162085772786"
+    },
+    "boundary": "Portable restore excludes secrets/OAuth/case files; batch canary is bounded evidence, not global route-enforce or AGI/external benchmark proof."
   }
 }

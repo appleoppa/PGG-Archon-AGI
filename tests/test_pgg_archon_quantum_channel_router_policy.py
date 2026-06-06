@@ -197,6 +197,49 @@ def test_provider_substitution_fallback_window_summarizes_cross_class(monkeypatc
     assert "not GPT same-class substitution" in summary["boundary"]
 
 
+def test_route_enforce_batch_canary_denies_hard_intents_and_rolls_back(monkeypatch, tmp_path) -> None:
+    monkeypatch.setattr(mod, "OMNIROUTE_ENFORCE_CONFIG", tmp_path / "enforce.json")
+    monkeypatch.setattr(mod, "OMNIROUTE_ENFORCE_EVENTS", tmp_path / "enforce_events.jsonl")
+    monkeypatch.setattr(mod, "OMNIROUTE_SUBSTITUTION_EVENTS", tmp_path / "subst.jsonl")
+
+    def fake_execute(task, task_type="exact", timeout=60.0):
+        if task_type in {"legal", "audit", "agi"}:
+            return {"success": False, "executed": False, "plan": {"enforce_decision": {"reasons": [f"intent_denied:{task_type}"]}}}
+        return {"success": True, "executed": True, "execution": {"execution": {"provider": "gpt55", "http_status": 200, "answer_preview": "ok"}}}
+
+    monkeypatch.setattr(mod, "execute_route_enforce_canary", fake_execute)
+    summary = mod.run_route_enforce_batch_canary(sample_count=3)
+    assert summary["sample_count"] == 3
+    assert summary["passed"] is True
+    assert summary["success_count"] == 3
+    assert summary["deny_count"] == 3
+    assert summary["rollback_ok"] is True
+    assert "not global route-enforce" in summary["boundary"]
+
+
+def test_operator_route_enforce_is_default_off_guarded_and_same_class_only(monkeypatch, tmp_path) -> None:
+    monkeypatch.setattr(mod, "OMNIROUTE_ENFORCE_CONFIG", tmp_path / "enforce.json")
+    monkeypatch.setattr(mod, "OMNIROUTE_SUBSTITUTION_EVENTS", tmp_path / "subst.jsonl")
+
+    disabled = mod.execute_operator_route_enforce("Reply exactly: PGG_OPERATOR_OFF", task_type="exact")
+    assert disabled["executed"] is False
+    assert disabled["error"] == "operator toggle disabled"
+    assert "No provider call" in disabled["boundary"]
+
+    mod.write_route_enforce_canary_config({"enabled": True, "operator_toggle_enabled": True, "mode": "operator"})
+    monkeypatch.setattr(mod, "plan_provider_substitution_canary", lambda task, task_type="exact": {"allowed": False, "enforce_decision": {"reasons": ["intent_denied:agi"]}})
+    denied = mod.execute_operator_route_enforce("PGG Archon AGI router evolution", task_type="agi")
+    assert denied["executed"] is False
+    assert denied["error"] == "operator route-enforce denied by guard"
+
+    monkeypatch.setattr(mod, "plan_provider_substitution_canary", lambda task, task_type="exact": {"allowed": True, "substitution_provider": "gpt55", "enforce_decision": {"reasons": []}})
+    monkeypatch.setattr(mod, "execute_provider_substitution_canary", lambda task, task_type="exact", timeout=60.0, fallback_provider="": {"same_class_substitution_success": True, "fallback_participation_success": False})
+    ok = mod.execute_operator_route_enforce("Reply exactly: PGG_OPERATOR_OK", task_type="exact")
+    assert ok["executed"] is True
+    assert ok["success"] is True
+    assert "legal/audit/AGI denied" in ok["boundary"]
+
+
 def test_route_policy_intent_classification_order_and_version() -> None:
     assert mod.OMNIROUTE_ROUTE_POLICY_VERSION == "v2.6-fresh-calibrated-window-20260606"
     assert mod._classify_route_intent(prompt="legal contract litigation review")["intent"] == "chinese_legal"
