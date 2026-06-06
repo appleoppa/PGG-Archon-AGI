@@ -1,0 +1,62 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+from agent import pgg_archon_quantum_channel_router as mod
+
+
+@dataclass
+class Provider:
+    name: str
+    model: str = "m"
+    api_mode: str = "chat"
+
+
+def test_mimo_aliases_are_third_party_judge_only() -> None:
+    assert mod._is_third_party_judge_provider("mimo") is True
+    assert mod._is_third_party_judge_provider("mimo_v25_pro_auditor") is True
+    assert mod._is_third_party_judge_provider("custom:mimo_v25_pro_auditor") is True
+    assert mod._is_third_party_judge_provider("deepseek") is False
+
+
+def test_default_multi_provider_pool_excludes_mimo(monkeypatch) -> None:
+    providers = [Provider("deepseek"), Provider("mimo"), Provider("gpt55")]
+    monkeypatch.setattr(mod, "PROVIDERS", providers, raising=False)
+    assert mod._ordinary_callable_provider_names(providers) == ["deepseek", "gpt55"]
+
+
+def test_provider_call_rejects_mimo_before_registry_call(monkeypatch) -> None:
+    monkeypatch.setattr(
+        mod,
+        "decide_omniroute_provider",
+        lambda task_type="general", requested_provider="": {"selected_provider": "mimo", "task_type": task_type},
+    )
+    called = {"value": False}
+    def fake_call_provider(*args, **kwargs):
+        called["value"] = True
+        raise AssertionError("MiMo should not be called")
+    import agent.pgg_archon_external_benchmark_provider_run as registry
+    monkeypatch.setattr(registry, "PROVIDERS", [Provider("mimo")])
+    monkeypatch.setattr(registry, "_load_env", lambda *args, **kwargs: 0)
+    monkeypatch.setattr(registry, "call_provider", fake_call_provider)
+    result = mod.execute_omniroute_provider_call(prompt="hello", requested_provider="mimo")
+    assert result["participated"] is False
+    assert "reserved for audit/judge" in result["error"]
+    assert called["value"] is False
+
+
+def test_multi_provider_explicit_mimo_is_recorded_failed_not_called(monkeypatch) -> None:
+    import agent.pgg_archon_external_benchmark_provider_run as registry
+    monkeypatch.setattr(registry, "PROVIDERS", [Provider("deepseek"), Provider("mimo")])
+    monkeypatch.setattr(registry, "_load_env", lambda *args, **kwargs: 0)
+    calls = []
+    def fake_call_provider(provider, prompt, timeout):
+        calls.append(provider.name)
+        return {"http_status": 200, "parsed_text": "ok", "elapsed_sec": 0.01, "error": ""}
+    monkeypatch.setattr(registry, "call_provider", fake_call_provider)
+    result = mod.execute_omniroute_multi_provider_task("hello", providers=["deepseek", "mimo"], cooldown_sec=0)
+    assert calls == ["deepseek"]
+    assert result["successful_count"] == 1
+    failed = [c for c in result["calls"] if c["provider"] == "mimo"][0]
+    assert failed["participated"] is False
+    assert "reserved for audit/judge" in failed["error"]

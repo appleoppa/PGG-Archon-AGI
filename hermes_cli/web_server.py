@@ -689,6 +689,8 @@ _OMNIROUTE_DASHBOARD_PATH = _OMNIROUTE_ANALYSIS_DIR / "pgg-omniroute-dashboard-2
 _OMNIROUTE_HEALTH_PATH = _OMNIROUTE_ANALYSIS_DIR / "pgg-omniroute-provider-health-20260605.json"
 _OMNIROUTE_CONTROL_PATH = Path.home() / ".hermes" / "data" / "omniroute_control.json"
 _OMNIROUTE_EVENTS_PATH = Path.home() / ".hermes" / "data" / "omniroute_events.jsonl"
+_OMNIROUTE_BRIDGE_PATH = Path.home() / ".hermes" / "data" / "omniroute_auto_evidence_bridge.json"
+_OMNIROUTE_MIRROR_EVENTS_PATH = Path.home() / ".hermes" / "data" / "omniroute_core_mirror_events.jsonl"
 
 
 def _read_json_file(path: Path) -> dict:
@@ -733,21 +735,53 @@ def _read_omniroute_control() -> dict:
 
 
 def _write_omniroute_control(control: dict) -> dict:
-    _OMNIROUTE_CONTROL_PATH.parent.mkdir(parents=True, exist_ok=True)
-    control = dict(control)
+    control = dict(control or {})
     control["updated_at"] = time.time()
+    _OMNIROUTE_CONTROL_PATH.parent.mkdir(parents=True, exist_ok=True)
     tmp = _OMNIROUTE_CONTROL_PATH.with_suffix(".tmp")
     tmp.write_text(json.dumps(control, ensure_ascii=False, indent=2), encoding="utf-8")
     tmp.replace(_OMNIROUTE_CONTROL_PATH)
-    _write_omniroute_event("control_updated", control)
+    _write_omniroute_event("control_updated", {"control": control})
     return control
 
 
-def _recent_omniroute_events(limit: int = 20) -> list[dict[str, Any]]:
+def _read_omniroute_bridge() -> dict:
+    default = {
+        "enabled": False,
+        "mode": "manual_submit",
+        "task_type": "auto_evidence_bridge_task",
+        "requested_provider": "",
+        "timeout": 60.0,
+        "updated_at": 0,
+        "boundary": "Low-risk bridge: submits bounded tasks to OmniRoute evidence ledger; does not hook Hermes core conversation loop unless explicitly integrated later.",
+    }
+    data = _read_json_file(_OMNIROUTE_BRIDGE_PATH)
+    if not isinstance(data, dict) or data.get("status") in {"missing", "error"}:
+        return default
+    clean = {k: v for k, v in data.items() if k not in {"status", "path", "error"}}
+    merged = {**default, **clean}
+    if merged.get("mode") not in {"manual_submit", "observe_only", "route_suggest"}:
+        merged["mode"] = "manual_submit"
+    return merged
+
+
+def _write_omniroute_bridge(data: dict) -> dict:
+    bridge = _read_omniroute_bridge()
+    bridge.update(dict(data or {}))
+    bridge["updated_at"] = time.time()
+    _OMNIROUTE_BRIDGE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    tmp = _OMNIROUTE_BRIDGE_PATH.with_suffix(".tmp")
+    tmp.write_text(json.dumps(bridge, ensure_ascii=False, indent=2), encoding="utf-8")
+    tmp.replace(_OMNIROUTE_BRIDGE_PATH)
+    _write_omniroute_event("auto_evidence_bridge_updated", {"bridge": bridge})
+    return bridge
+
+
+def _read_jsonl_tail(path: Path, limit: int = 20) -> list[dict[str, Any]]:
     try:
-        if not _OMNIROUTE_EVENTS_PATH.exists():
+        if not path.exists():
             return []
-        rows = _OMNIROUTE_EVENTS_PATH.read_text(encoding="utf-8").splitlines()[-limit:]
+        rows = path.read_text(encoding="utf-8").splitlines()[-limit:]
         out = []
         for row in rows:
             try:
@@ -759,6 +793,19 @@ def _recent_omniroute_events(limit: int = 20) -> list[dict[str, Any]]:
         return out
     except Exception:
         return []
+
+
+def _recent_omniroute_events(limit: int = 20) -> list[dict[str, Any]]:
+    return _read_jsonl_tail(_OMNIROUTE_EVENTS_PATH, limit)
+
+
+def _recent_omniroute_mirror_events(limit: int = 20) -> list[dict[str, Any]]:
+    return _read_jsonl_tail(_OMNIROUTE_MIRROR_EVENTS_PATH, limit)
+
+
+async def _run_blocking(func, *args, **kwargs):
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(None, lambda: func(*args, **kwargs))
 
 
 def _omniroute_file_sig(path: Path) -> dict[str, Any]:
@@ -816,6 +863,24 @@ def _recent_provider_call_events(limit: int = 20) -> list[dict[str, Any]]:
         return []
 
 
+def _recent_task_execution_events(limit: int = 20) -> list[dict[str, Any]]:
+    try:
+        from agent.pgg_archon_quantum_channel_router import recent_omniroute_task_execution_events
+
+        return recent_omniroute_task_execution_events(limit)
+    except Exception:
+        return []
+
+
+def _recent_multi_task_events(limit: int = 20) -> list[dict[str, Any]]:
+    try:
+        from agent.pgg_archon_quantum_channel_router import recent_omniroute_multi_task_events
+
+        return recent_omniroute_multi_task_events(limit)
+    except Exception:
+        return []
+
+
 def _force_refresh_omniroute() -> dict[str, Any]:
     """Force a real provider health refresh and regenerate Rust dashboard.
 
@@ -849,12 +914,85 @@ def _force_refresh_omniroute() -> dict[str, Any]:
             os.environ["PGG_OMNIROUTE_HEALTH_FORCE_REFRESH"] = old
 
 
+def _latest_omniroute_cooldown() -> dict[str, Any]:
+    try:
+        from agent.pgg_archon_quantum_channel_router import get_omniroute_provider_cooldown
+
+        return get_omniroute_provider_cooldown()
+    except Exception as exc:
+        return {"active": {}, "expired": [], "path": str(Path.home() / ".hermes" / "data" / "omniroute_provider_cooldown.json"), "error": repr(exc)}
+
+
+def _latest_omniroute_evidence_package() -> dict[str, Any]:
+    evidence_dir = Path.home() / ".hermes" / "workspace" / "github_absorption" / "9router" / "analysis" / "evidence"
+    latest = evidence_dir / "latest-omniroute-evidence.json"
+    out: dict[str, Any] = {
+        "dir": str(evidence_dir),
+        "latest_path": str(latest),
+        "latest_exists": latest.exists(),
+        "files_count": 0,
+    }
+    try:
+        files = sorted(evidence_dir.glob("omniroute-evidence-*.json"), key=lambda p: p.stat().st_mtime, reverse=True) if evidence_dir.exists() else []
+        out["files_count"] = len(files)
+        out["recent_files"] = [str(p) for p in files[:5]]
+        if latest.exists():
+            data = _read_json_file(latest)
+            result = data.get("result", {}) if isinstance(data, dict) else {}
+            out["latest_task_id"] = result.get("task_id")
+            out["latest_consensus_status"] = result.get("consensus_status")
+            out["latest_successful_count"] = result.get("successful_count")
+            out["latest_failed_count"] = result.get("failed_count")
+    except Exception as exc:
+        out["error"] = repr(exc)
+    return out
+
+
+def _latest_omniroute_task_evidence_package() -> dict[str, Any]:
+    evidence_dir = Path.home() / ".hermes" / "workspace" / "github_absorption" / "9router" / "analysis" / "evidence"
+    latest = evidence_dir / "latest-omniroute-task-evidence.json"
+    out: dict[str, Any] = {
+        "dir": str(evidence_dir),
+        "latest_path": str(latest),
+        "latest_exists": latest.exists(),
+        "files_count": 0,
+    }
+    try:
+        files = sorted(evidence_dir.glob("omniroute-task-evidence-*.json"), key=lambda p: p.stat().st_mtime, reverse=True) if evidence_dir.exists() else []
+        out["files_count"] = len(files)
+        out["recent_files"] = [str(p) for p in files[:5]]
+        if latest.exists():
+            data = _read_json_file(latest)
+            result = data.get("result", {}) if isinstance(data, dict) else {}
+            out["latest_task_id"] = result.get("task_id")
+            out["latest_provider"] = result.get("provider")
+            out["latest_success"] = result.get("success")
+            out["latest_answer_sha256"] = result.get("answer_sha256")
+    except Exception as exc:
+        out["error"] = repr(exc)
+    return out
+
+
+def _latest_omniroute_route_suggest_metrics() -> dict[str, Any]:
+    try:
+        from agent.pgg_archon_quantum_channel_router import omniroute_route_suggest_metrics
+
+        return omniroute_route_suggest_metrics(limit=200)
+    except Exception as exc:
+        return {"schema": "PGGArchonOmniRouteRouteSuggestMetrics/v1", "status": "error", "error": repr(exc)}
+
+
 def _latest_omniroute_snapshot() -> dict:
     dashboard = _read_json_file(_OMNIROUTE_DASHBOARD_PATH)
     health = dashboard.get("provider_health_snapshot") if isinstance(dashboard, dict) else None
     if not isinstance(health, dict):
         health = _read_json_file(_OMNIROUTE_HEALTH_PATH)
     control = _read_omniroute_control()
+    bridge = _read_omniroute_bridge()
+    cooldown = _latest_omniroute_cooldown()
+    evidence_package = _latest_omniroute_evidence_package()
+    task_evidence_package = _latest_omniroute_task_evidence_package()
+    route_suggest_metrics = _latest_omniroute_route_suggest_metrics()
     providers = []
     if isinstance(dashboard, dict):
         for card in dashboard.get("provider_cards", []) or []:
@@ -885,11 +1023,21 @@ def _latest_omniroute_snapshot() -> dict:
             "health": str(_OMNIROUTE_HEALTH_PATH),
             "control": str(_OMNIROUTE_CONTROL_PATH),
             "events": str(_OMNIROUTE_EVENTS_PATH),
+            "cooldown": str(Path.home() / ".hermes" / "data" / "omniroute_provider_cooldown.json"),
+            "evidence_dir": str(Path.home() / ".hermes" / "workspace" / "github_absorption" / "9router" / "analysis" / "evidence"),
         },
         "control": control,
+        "auto_evidence_bridge": bridge,
+        "provider_cooldown": cooldown,
+        "evidence_package": evidence_package,
+        "task_evidence_package": task_evidence_package,
+        "route_suggest_metrics": route_suggest_metrics,
         "recent_events": _recent_omniroute_events(),
+        "recent_mirror_events": _recent_omniroute_mirror_events(),
         "recent_route_events": _recent_route_call_events(),
         "recent_provider_call_events": _recent_provider_call_events(),
+        "recent_task_events": _recent_task_execution_events(),
+        "recent_multi_task_events": _recent_multi_task_events(),
         "summary": summary,
         "selected_provider": selected,
         "effective_selected_provider": effective_selected,
@@ -918,9 +1066,228 @@ class OmniRouteProviderCallRequest(BaseModel):
     timeout: Optional[float] = 45.0
 
 
+class OmniRouteTaskRequest(BaseModel):
+    task: str
+    task_type: Optional[str] = "dashboard_task_probe"
+    requested_provider: Optional[str] = ""
+    timeout: Optional[float] = 60.0
+
+
+class OmniRouteBridgeConfigRequest(BaseModel):
+    enabled: Optional[bool] = None
+    mode: Optional[str] = None
+    task_type: Optional[str] = None
+    requested_provider: Optional[str] = None
+    timeout: Optional[float] = None
+
+
+class OmniRouteBridgeSubmitRequest(BaseModel):
+    task: str
+    task_type: Optional[str] = None
+    requested_provider: Optional[str] = None
+    timeout: Optional[float] = None
+    source: Optional[str] = "manual_bridge_submit"
+
+
+class OmniRouteMultiCallRequest(BaseModel):
+    task: str
+    task_type: Optional[str] = "dashboard_multi_task_probe"
+    providers: Optional[list[str]] = None
+    timeout: Optional[float] = 60.0
+    cooldown_sec: Optional[float] = None
+    force_retry: Optional[bool] = False
+
+
+class OmniRouteCooldownRequest(BaseModel):
+    provider: Optional[str] = None
+
+OMNIROUTE_MAX_TASK_CHARS = 4000
+OMNIROUTE_MAX_TIMEOUT_SEC = 90.0
+OMNIROUTE_MAX_PROVIDERS = 5
+OMNIROUTE_THIRD_PARTY_JUDGE_ALIASES = {"mimo", "mimo_v25_pro_auditor", "custom:mimo_v25_pro_auditor"}
+
+
+def _omniroute_clamp_timeout(value: Optional[float], default: float) -> float:
+    try:
+        timeout = float(value if value is not None else default)
+    except (TypeError, ValueError):
+        timeout = default
+    return max(1.0, min(timeout, OMNIROUTE_MAX_TIMEOUT_SEC))
+
+
+def _omniroute_validate_text(value: str, *, field: str) -> str:
+    text = str(value or "").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail=f"{field} must not be empty")
+    if len(text) > OMNIROUTE_MAX_TASK_CHARS:
+        raise HTTPException(status_code=400, detail=f"{field} exceeds {OMNIROUTE_MAX_TASK_CHARS} chars")
+    return text
+
+
+def _omniroute_is_third_party_judge_provider(provider: Optional[str]) -> bool:
+    raw = str(provider or "").strip()
+    key = raw.split(":", 1)[1] if raw.startswith("custom:") else raw
+    return raw in OMNIROUTE_THIRD_PARTY_JUDGE_ALIASES or key in OMNIROUTE_THIRD_PARTY_JUDGE_ALIASES
+
+
+def _omniroute_validate_requested_provider(provider: Optional[str]) -> str:
+    value = str(provider or "").strip()
+    if _omniroute_is_third_party_judge_provider(value):
+        raise HTTPException(status_code=400, detail="MiMo is reserved for third-party judge/audit paths and cannot be used for ordinary OmniRoute execution")
+    return value
+
+
+def _omniroute_validate_provider_list(providers: Optional[list[str]]) -> list[str] | None:
+    if providers is None:
+        return None
+    cleaned = [str(p or "").strip() for p in providers if str(p or "").strip()]
+    if len(cleaned) > OMNIROUTE_MAX_PROVIDERS:
+        raise HTTPException(status_code=400, detail=f"providers exceeds {OMNIROUTE_MAX_PROVIDERS}")
+    if any(_omniroute_is_third_party_judge_provider(p) for p in cleaned):
+        raise HTTPException(status_code=400, detail="MiMo is reserved for third-party judge/audit paths and cannot be used for ordinary OmniRoute execution")
+    return cleaned
+
+
 @app.get("/api/omniroute/snapshot")
 async def get_omniroute_snapshot():
     return _latest_omniroute_snapshot()
+
+
+@app.post("/api/omniroute/cooldown/clear")
+async def clear_omniroute_cooldown_api(body: OmniRouteCooldownRequest):
+    try:
+        from agent.pgg_archon_quantum_channel_router import clear_omniroute_provider_cooldown
+
+        state = clear_omniroute_provider_cooldown((body.provider or "").strip() or None)
+        _write_omniroute_event("provider_cooldown_cleared", {"provider": body.provider or "", "active_count": len(state.get("active", {}))})
+        return {"ok": True, "cooldown": state, "snapshot": _latest_omniroute_snapshot()}
+    except Exception as exc:
+        _write_omniroute_event("provider_cooldown_clear_error", {"error": repr(exc), "provider": body.provider or ""})
+        raise HTTPException(status_code=500, detail=repr(exc))
+
+
+@app.post("/api/omniroute/multicall")
+async def execute_omniroute_multi_call_api(body: OmniRouteMultiCallRequest):
+    try:
+        from agent.pgg_archon_quantum_channel_router import execute_omniroute_multi_provider_task
+
+        result = execute_omniroute_multi_provider_task(
+            task=_omniroute_validate_text(body.task, field="task"),
+            task_type=body.task_type or "dashboard_multi_task_probe",
+            providers=_omniroute_validate_provider_list(body.providers),
+            timeout=_omniroute_clamp_timeout(body.timeout, 60.0),
+            cooldown_sec=body.cooldown_sec,
+            force_retry=bool(body.force_retry),
+        )
+        _write_omniroute_event(
+            "multi_task_execution_recorded",
+            {"task_id": result.get("task_id"), "successful_count": result.get("successful_count"), "consensus_status": result.get("consensus_status")},
+        )
+        return {"ok": True, "result": result, "snapshot": _latest_omniroute_snapshot()}
+    except Exception as exc:
+        _write_omniroute_event("multi_task_execution_error", {"error": repr(exc)})
+        raise HTTPException(status_code=500, detail=repr(exc))
+
+
+@app.post("/api/omniroute/bridge/config")
+async def set_omniroute_bridge_config_api(body: OmniRouteBridgeConfigRequest):
+    payload: dict[str, Any] = {}
+    if body.enabled is not None:
+        payload["enabled"] = bool(body.enabled)
+    if body.mode is not None:
+        mode = body.mode.strip() or "manual_submit"
+        if mode not in {"manual_submit", "observe_only", "route_suggest"}:
+            raise HTTPException(status_code=400, detail="mode must be manual_submit, observe_only, or route_suggest")
+        payload["mode"] = mode
+    if body.task_type is not None:
+        payload["task_type"] = body.task_type.strip() or "auto_evidence_bridge_task"
+    if body.requested_provider is not None:
+        payload["requested_provider"] = _omniroute_validate_requested_provider(body.requested_provider)
+    if body.timeout is not None:
+        payload["timeout"] = _omniroute_clamp_timeout(body.timeout, 60.0)
+    bridge = _write_omniroute_bridge(payload)
+    return {"ok": True, "bridge": bridge, "snapshot": _latest_omniroute_snapshot()}
+
+
+@app.post("/api/omniroute/bridge/submit")
+async def submit_omniroute_bridge_task_api(body: OmniRouteBridgeSubmitRequest):
+    bridge = _read_omniroute_bridge()
+    if not bridge.get("enabled"):
+        _write_omniroute_event("auto_evidence_bridge_rejected", {"reason": "bridge_disabled", "source": body.source or ""})
+        return {"ok": False, "reason": "bridge_disabled", "bridge": bridge, "snapshot": _latest_omniroute_snapshot()}
+    if bridge.get("mode") == "observe_only":
+        _write_omniroute_event("auto_evidence_bridge_observed", {"task_preview": (body.task or "")[:160], "source": body.source or ""})
+        return {"ok": True, "observed_only": True, "bridge": bridge, "snapshot": _latest_omniroute_snapshot()}
+    try:
+        from agent.pgg_archon_quantum_channel_router import execute_omniroute_task
+
+        result = execute_omniroute_task(
+            task=_omniroute_validate_text(body.task, field="task"),
+            task_type=(body.task_type or bridge.get("task_type") or "auto_evidence_bridge_task"),
+            requested_provider=_omniroute_validate_requested_provider((body.requested_provider if body.requested_provider is not None else bridge.get("requested_provider", "")) or ""),
+            timeout=_omniroute_clamp_timeout(body.timeout if body.timeout is not None else bridge.get("timeout", 60.0), 60.0),
+        )
+        _write_omniroute_event(
+            "auto_evidence_bridge_executed",
+            {
+                "task_id": result.get("task_id"),
+                "provider": result.get("provider"),
+                "success": result.get("success"),
+                "source": body.source or "",
+                "evidence_package_path": result.get("evidence_package_path"),
+            },
+        )
+        return {"ok": True, "bridge": bridge, "result": result, "snapshot": _latest_omniroute_snapshot()}
+    except Exception as exc:
+        _write_omniroute_event("auto_evidence_bridge_error", {"error": repr(exc), "source": body.source or ""})
+        raise HTTPException(status_code=500, detail=repr(exc))
+
+
+@app.post("/api/omniroute/execute")
+async def execute_omniroute_main_task_api(body: OmniRouteTaskRequest):
+    try:
+        from agent.pgg_archon_quantum_channel_router import execute_omniroute_task
+
+        result = execute_omniroute_task(
+            task=_omniroute_validate_text(body.task, field="task"),
+            task_type=body.task_type or "user_main_task",
+            requested_provider=_omniroute_validate_requested_provider(body.requested_provider),
+            timeout=_omniroute_clamp_timeout(body.timeout, 60.0),
+        )
+        _write_omniroute_event(
+            "main_task_execution_recorded",
+            {
+                "task_id": result.get("task_id"),
+                "provider": result.get("provider"),
+                "success": result.get("success"),
+                "evidence_package_path": result.get("evidence_package_path"),
+            },
+        )
+        return {"ok": True, "result": result, "snapshot": _latest_omniroute_snapshot()}
+    except Exception as exc:
+        _write_omniroute_event("main_task_execution_error", {"error": repr(exc)})
+        raise HTTPException(status_code=500, detail=repr(exc))
+
+
+@app.post("/api/omniroute/task")
+async def execute_omniroute_task_api(body: OmniRouteTaskRequest):
+    try:
+        from agent.pgg_archon_quantum_channel_router import execute_omniroute_task
+
+        result = execute_omniroute_task(
+            task=_omniroute_validate_text(body.task, field="task"),
+            task_type=body.task_type or "dashboard_task_probe",
+            requested_provider=_omniroute_validate_requested_provider(body.requested_provider),
+            timeout=_omniroute_clamp_timeout(body.timeout, 60.0),
+        )
+        _write_omniroute_event(
+            "task_execution_recorded",
+            {"task_id": result.get("task_id"), "provider": result.get("provider"), "success": result.get("success")},
+        )
+        return {"ok": True, "result": result, "snapshot": _latest_omniroute_snapshot()}
+    except Exception as exc:
+        _write_omniroute_event("task_execution_error", {"error": repr(exc)})
+        raise HTTPException(status_code=500, detail=repr(exc))
 
 
 @app.post("/api/omniroute/call")
@@ -929,10 +1296,10 @@ async def call_omniroute_provider(body: OmniRouteProviderCallRequest):
         from agent.pgg_archon_quantum_channel_router import execute_omniroute_provider_call
 
         result = execute_omniroute_provider_call(
-            prompt=body.prompt or "Reply exactly: PGG_ROUTE_OK",
+            prompt=_omniroute_validate_text(body.prompt or "Reply exactly: PGG_ROUTE_OK", field="prompt"),
             task_type=body.task_type or "participation_probe",
-            requested_provider=body.requested_provider or "",
-            timeout=float(body.timeout or 45.0),
+            requested_provider=_omniroute_validate_requested_provider(body.requested_provider),
+            timeout=_omniroute_clamp_timeout(body.timeout, 45.0),
         )
         _write_omniroute_event(
             "provider_participation_recorded",
@@ -951,7 +1318,7 @@ async def decide_omniroute_route(body: OmniRouteDecisionRequest):
 
         decision = decide_omniroute_provider(
             task_type=body.task_type or "general",
-            requested_provider=body.requested_provider or "",
+            requested_provider=_omniroute_validate_requested_provider(body.requested_provider),
         )
         _write_omniroute_event("route_decision_recorded", {"selected_provider": decision.get("selected_provider"), "source": decision.get("selected_source")})
         return {"ok": True, "decision": decision, "snapshot": _latest_omniroute_snapshot()}
@@ -994,7 +1361,17 @@ async def stream_omniroute_snapshot(request: Request):
                 break
             try:
                 stat_bits = []
-                for path in (_OMNIROUTE_DASHBOARD_PATH, _OMNIROUTE_HEALTH_PATH, _OMNIROUTE_CONTROL_PATH, _OMNIROUTE_EVENTS_PATH):
+                watched_paths = (
+                    _OMNIROUTE_DASHBOARD_PATH,
+                    _OMNIROUTE_HEALTH_PATH,
+                    _OMNIROUTE_CONTROL_PATH,
+                    _OMNIROUTE_EVENTS_PATH,
+                    Path.home() / ".hermes" / "data" / "omniroute_provider_cooldown.json",
+                    Path.home() / ".hermes" / "workspace" / "github_absorption" / "9router" / "analysis" / "evidence" / "latest-omniroute-evidence.json",
+                    Path.home() / ".hermes" / "workspace" / "github_absorption" / "9router" / "analysis" / "evidence" / "latest-omniroute-task-evidence.json",
+                    _OMNIROUTE_MIRROR_EVENTS_PATH,
+                )
+                for path in watched_paths:
                     try:
                         st = path.stat()
                         stat_bits.append((str(path), st.st_mtime_ns, st.st_size))

@@ -12,7 +12,26 @@ from hermes_cli.config import (
     reload_env,
     redact_key,
     OPTIONAL_ENV_VARS,
-)
+ )
+
+
+def test_omniroute_web_validators_block_mimo_and_clamp_timeout():
+    from fastapi import HTTPException
+    from hermes_cli import web_server
+
+    assert web_server._omniroute_clamp_timeout(999, 60) == web_server.OMNIROUTE_MAX_TIMEOUT_SEC
+    assert web_server._omniroute_clamp_timeout(-5, 60) == 1.0
+    assert web_server._omniroute_validate_requested_provider("deepseek") == "deepseek"
+    with pytest.raises(HTTPException):
+        web_server._omniroute_validate_requested_provider("mimo")
+    with pytest.raises(HTTPException):
+        web_server._omniroute_validate_provider_list(["deepseek", "custom:mimo_v25_pro_auditor"])
+    with pytest.raises(HTTPException):
+        web_server._omniroute_validate_provider_list(["a", "b", "c", "d", "e", "f"])
+    with pytest.raises(HTTPException):
+        web_server._omniroute_validate_text("", field="task")
+    with pytest.raises(HTTPException):
+        web_server._omniroute_validate_text("x" * (web_server.OMNIROUTE_MAX_TASK_CHARS + 1), field="task")
 
 
 # ---------------------------------------------------------------------------

@@ -4831,7 +4831,47 @@ class AIAgent:
     ) -> Dict[str, Any]:
         """Forwarder — see ``agent.conversation_loop.run_conversation``."""
         from agent.conversation_loop import run_conversation
-        return run_conversation(self, user_message, system_message, conversation_history, task_id, stream_callback, persist_user_message)
+        route_suggestion = {}
+        try:
+            import json
+            import time
+            from pathlib import Path
+            bridge_path = Path.home() / ".hermes" / "data" / "omniroute_auto_evidence_bridge.json"
+            bridge = json.loads(bridge_path.read_text(encoding="utf-8")) if bridge_path.exists() else {}
+            if bridge.get("enabled") and bridge.get("mode") == "route_suggest":
+                from agent.pgg_archon_quantum_channel_router import decide_omniroute_provider
+                _suggest_start = time.perf_counter()
+                route_suggestion = decide_omniroute_provider(
+                    task_type=str(bridge.get("task_type") or "core_route_suggest"),
+                    requested_provider=str(bridge.get("requested_provider") or ""),
+                    prompt_preview=str(user_message or "")[:1000],
+                )
+                route_suggestion["suggestion_latency_ms"] = round((time.perf_counter() - _suggest_start) * 1000, 3)
+                route_suggestion["suggestion_error"] = ""
+        except Exception as exc:
+            route_suggestion = {"suggestion_error": repr(exc)}
+        result = run_conversation(self, user_message, system_message, conversation_history, task_id, stream_callback, persist_user_message)
+        # OmniRoute mirror-only hook: fail-open, no provider substitution, no route enforcement.
+        try:
+            import json
+            from pathlib import Path
+            bridge_path = Path.home() / ".hermes" / "data" / "omniroute_auto_evidence_bridge.json"
+            bridge = json.loads(bridge_path.read_text(encoding="utf-8")) if bridge_path.exists() else {}
+            if bridge.get("enabled"):
+                from agent.pgg_archon_quantum_channel_router import record_omniroute_core_mirror
+                record_omniroute_core_mirror(
+                    user_message=user_message,
+                    result=result if isinstance(result, dict) else None,
+                    task_id=task_id or "",
+                    session_id=getattr(self, "session_id", "") or "",
+                    provider=getattr(self, "provider", "") or "",
+                    model=getattr(self, "model", "") or "",
+                    platform=getattr(self, "platform", "") or "",
+                    route_suggestion=route_suggestion,
+                )
+        except Exception:
+            pass
+        return result
 
     def chat(self, message: str, stream_callback: Optional[callable] = None) -> str:
         """
