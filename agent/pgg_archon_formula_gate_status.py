@@ -96,23 +96,46 @@ def _load_manifest_summary(manifest_path: str | Path | None = None) -> dict[str,
     for _, v in latest_items:
         fam = status_family(v)
         status_counts[fam] = status_counts.get(fam, 0) + 1
-    unresolved_markers = [
-        "PARTIAL", "BLOCK", "ERROR", "FAIL", "HOLD", "DISABLED", "DEFAULT_OFF", "502",
+    active_unresolved_markers = [
+        "PARTIAL", "BLOCK", "FAIL", "HOLD", "502",
         "NO PROVIDER SUBSTITUTION", "ROUTE-ENFORCE REMAINS DISABLED", "EXECUTION_BLOCKED",
     ]
+    resolved_gap_keys: set[str] = set()
+    for _, value in latest_items:
+        if not isinstance(value, dict):
+            continue
+        lifecycle = value.get("gap_lifecycle")
+        if isinstance(lifecycle, dict):
+            for field in ["superseded_not_mutated", "closed", "resolved", "policy_boundaries", "default_off_items_are_policy_boundaries_not_runtime_takeover"]:
+                items = lifecycle.get(field) or []
+                if isinstance(items, list):
+                    resolved_gap_keys.update(str(x) for x in items)
+
     unresolved_gap_keys: list[dict[str, str]] = []
+    resolved_or_policy_keys: list[dict[str, str]] = []
     for key, value in latest_items:
         status = str(value.get("status") or "") if isinstance(value, dict) else ""
+        family = status_family(value)
         haystack = " ".join([
             key,
             status,
             str(value.get("title") or "") if isinstance(value, dict) else "",
             str(value.get("scope") or "") if isinstance(value, dict) else "",
             str(value.get("boundary") or "") if isinstance(value, dict) else "",
+            str(value.get("note") or "") if isinstance(value, dict) else "",
         ]).upper()
-        family = status_family(value)
-        if family in {"WATCH", "PARTIAL", "BLOCK_OR_ERROR", "UNKNOWN"} or any(marker in haystack for marker in unresolved_markers):
+        is_policy_boundary = family in {"PASS", "PASS_FAMILY"} and any(marker in haystack for marker in [
+            "DEFAULT_OFF", "DEFAULT-OFF", "OPTIONAL", "MANUAL RUN", "MANUAL/PIPELINE",
+            "ROLLBACK", "GLOBAL ROUTE-ENFORCE DISABLED", "NOT GLOBAL ROUTE-ENFORCE",
+            "POLICY BOUNDARY", "NOT RUNTIME TAKEOVER", "ERROR_RECORDED",
+        ])
+        is_resolved_by_lifecycle = key in resolved_gap_keys
+        is_active_gap = family in {"WATCH", "PARTIAL", "BLOCK_OR_ERROR", "UNKNOWN"} or any(marker in haystack for marker in active_unresolved_markers)
+        if is_active_gap and not (is_resolved_by_lifecycle or is_policy_boundary):
             unresolved_gap_keys.append({"key": key, "status": status or family, "family": family})
+        elif is_active_gap or is_policy_boundary or is_resolved_by_lifecycle:
+            reason = "superseded" if is_resolved_by_lifecycle else ("policy_boundary" if is_policy_boundary else "resolved")
+            resolved_or_policy_keys.append({"key": key, "status": status or family, "family": family, "reason": reason})
 
     return {
         "present": True,
@@ -125,6 +148,8 @@ def _load_manifest_summary(manifest_path: str | Path | None = None) -> dict[str,
         "latest_status_counts": status_counts,
         "unresolved_gap_keys": unresolved_gap_keys,
         "unresolved_gap_count": len(unresolved_gap_keys),
+        "resolved_or_policy_keys": resolved_or_policy_keys,
+        "resolved_or_policy_count": len(resolved_or_policy_keys),
         "sort": "created_at/generated_at/timestamp fallback key",
     }
 
@@ -238,7 +263,7 @@ def render_formula_gate_status(status: dict[str, Any]) -> str:
         f"状态：{status.get('status')} | 任务类型：{status.get('task_type')} | 目标：{status.get('target_tier')}",
         f"总纲1六维：{', '.join(active) if active else '未激活'}",
         f"总纲2闭环：{chain}",
-        f"证据：Manifest={'有' if status.get('evidence_gates', {}).get('manifest_present') else '缺'}；latest PASS族={status.get('evidence_gates', {}).get('latest_pass_count', 0)}；exact PASS={status.get('evidence_gates', {}).get('latest_exact_pass_count', 0)}；未闭环={unresolved}；缺口={missing or '无'}",
+        f"证据：Manifest={'有' if status.get('evidence_gates', {}).get('manifest_present') else '缺'}；latest PASS族={status.get('evidence_gates', {}).get('latest_pass_count', 0)}；exact PASS={status.get('evidence_gates', {}).get('latest_exact_pass_count', 0)}；未闭环={unresolved}；已分类边界={status.get('manifest_summary', {}).get('resolved_or_policy_count', 0)}；缺口={missing or '无'}",
         f"未闭环预览：{unresolved_preview}",
         f"边界：{status.get('boundary')}",
     ])

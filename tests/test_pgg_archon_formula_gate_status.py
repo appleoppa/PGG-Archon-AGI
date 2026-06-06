@@ -113,6 +113,60 @@ def test_formula_gate_manifest_counts_pass_family_statuses(tmp_path: Path) -> No
     assert panel["manifest_summary"]["latest_status_counts"] == {"PASS": 1, "PASS_FAMILY": 1, "WATCH": 1, "PARTIAL": 1}
 
 
+def test_formula_gate_separates_policy_boundaries_from_active_gaps(tmp_path: Path) -> None:
+    manifest = tmp_path / "EVOLUTION_MANIFEST.json"
+    manifest.write_text(
+        json.dumps(
+            {
+                "latest_policy": {
+                    "status": "PASS_OPTIONAL_GATE_REGISTERED_DEFAULT_OFF",
+                    "created_at": "2026-06-06 12:00:00",
+                    "boundary": "Optional default-off policy boundary; not runtime takeover.",
+                },
+                "latest_batch": {
+                    "status": "PASS_BATCH_CANARY_10_EXACT_GENERAL_DENY_3_ROLLBACK",
+                    "created_at": "2026-06-06 12:01:00",
+                    "boundary": "Batch canary only; global route-enforce disabled; rollback OK.",
+                },
+                "latest_settle": {
+                    "status": "PASS_WITH_CLAUDE_PROBE_CHAIN_ERROR_RECORDED",
+                    "created_at": "2026-06-06 12:02:00",
+                    "boundary": "Probe chain error recorded; not global Claude unavailable proof.",
+                },
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    panel = build_formula_gate_status("AGI route provider evolution", manifest_path=manifest)
+    assert panel["status"] == "PASS"
+    assert panel["unresolved_gap_count"] == 0
+    assert panel["manifest_summary"]["resolved_or_policy_count"] == 3
+
+
+def test_formula_gate_lifecycle_superseded_gap_not_counted_active(tmp_path: Path) -> None:
+    manifest = tmp_path / "EVOLUTION_MANIFEST.json"
+    manifest.write_text(
+        json.dumps(
+            {
+                "latest_old_partial": {"status": "PARTIAL_SCAFFOLD_PLAN_PASS_EXECUTION_BLOCKED_BY_GPT55_502", "created_at": "2026-06-06 12:00:00"},
+                "latest_closure": {
+                    "status": "PASS_WITH_MIMO_JUDGE_ERROR_RECORDED",
+                    "created_at": "2026-06-06 12:01:00",
+                    "gap_lifecycle": {"superseded_not_mutated": ["latest_old_partial"]},
+                    "boundary": "MiMo judge timeout recorded; no overclaim.",
+                },
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    panel = build_formula_gate_status("AGI route provider evolution", manifest_path=manifest)
+    assert panel["unresolved_gap_count"] == 0
+    assert panel["manifest_summary"]["resolved_or_policy_count"] >= 1
+    assert panel["status"] == "PASS"
+
+
 def test_formula_gate_manifest_latest_uses_timestamp_sort(tmp_path: Path) -> None:
     manifest = tmp_path / "EVOLUTION_MANIFEST.json"
     manifest.write_text(
