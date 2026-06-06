@@ -205,17 +205,18 @@ def call_provider(spec: ProviderSpec, prompt: str, timeout: float) -> dict[str, 
         }
         body = {
             "model": spec.model,
-            "input": [
-                {"role": "system", "content": "You are a precise short-answer assistant. Reply concisely. If a tool or code is required, say so. Do not hedge on yes/no questions."},
-                {"role": "user", "content": prompt},
-            ],
-            # chuangagent.eu.cc gpt-5.5 quirk: max_output_tokens may be ignored
-            # and reasoning eats the whole budget. Use max_tokens (chat-style) and
-            # also set a high max_output_tokens for Responses API.
-            "max_tokens": spec.max_tokens,
-            "max_output_tokens": spec.max_tokens,
+            "input": prompt,
+            # ChuangAgent gpt-5.5 succeeds with a plain Responses input string
+            # plus max_completion_tokens (see pgg_archon_provider_benchmark).
+            # The previous system/user input array + simultaneous max_tokens and
+            # max_output_tokens can return HTTP 502 on this proxy.
+            "max_completion_tokens": spec.max_tokens,
         }
         status, raw = _http_post_json(url, headers, body, timeout)
+        if status >= 400:
+            # Retry with max_tokens, the other known-good proxy variant.
+            body = {"model": spec.model, "input": prompt, "max_tokens": spec.max_tokens}
+            status, raw = _http_post_json(url, headers, body, timeout)
         parsed = ""
         if status == 200 and raw:
             try:

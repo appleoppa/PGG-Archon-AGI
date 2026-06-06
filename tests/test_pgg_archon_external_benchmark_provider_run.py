@@ -114,6 +114,35 @@ class TestAggregate:
         assert agg["per_provider"]["p1"]["errors"] == 1
 
 
+def test_codex_responses_retries_with_max_tokens_after_proxy_error(monkeypatch):
+    provider = run_mod.ProviderSpec(
+        name="gpt55",
+        api_mode="codex_responses",
+        base_url="https://example.test",
+        chat_path="",
+        responses_path="/v1/responses",
+        model="gpt-5.5",
+        key_env="GPT55_5YUANTOKEN_API_KEY",
+        max_tokens=123,
+    )
+    monkeypatch.setenv("GPT55_5YUANTOKEN_API_KEY", "fake")
+    calls = []
+
+    def fake_post(url, headers, body, timeout):
+        calls.append(body)
+        if len(calls) == 1:
+            return 502, "bad gateway"
+        return 200, json.dumps({"output": [{"content": [{"type": "output_text", "text": "ok"}]}]})
+
+    monkeypatch.setattr(run_mod, "_http_post_json", fake_post)
+    result = run_mod.call_provider(provider, "Reply exactly ok", timeout=5)
+    assert result["http_status"] == 200
+    assert result["parsed_text"] == "ok"
+    assert calls[0]["max_completion_tokens"] == 123
+    assert "max_tokens" not in calls[0]
+    assert calls[1]["max_tokens"] == 123
+
+
 # ---------------------------------------------------------------------------
 # End-to-end with mocked call_chat
 # ---------------------------------------------------------------------------

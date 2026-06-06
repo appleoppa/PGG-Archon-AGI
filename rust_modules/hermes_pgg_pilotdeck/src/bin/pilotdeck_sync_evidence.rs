@@ -111,10 +111,20 @@ fn build_summary(evidence_dir: &Path) -> Value {
     let github_scout =
         read_json(&evidence_dir.join("github_scout.json")).unwrap_or(json!({"status":"MISSING"}));
     let health = read_json(&evidence_dir.join("pilotdeck_health_probes.json")).unwrap_or(json!([]));
-    let rust_gate =
-        read_json(&evidence_dir.join("rust_gate.json")).unwrap_or(json!({"status":"MISSING"}));
-    let commit_text =
-        read_text(&evidence_dir.join("upstream_selected_commit_summaries.txt")).unwrap_or_default();
+    let protocol_smoke = read_json(&evidence_dir.join("protocol_smoke_summary_v4.json"))
+        .or_else(|| read_json(&evidence_dir.join("protocol_smoke_summary_v3.json")))
+        .or_else(|| read_json(&evidence_dir.join("protocol_smoke_summary_v2.json")))
+        .unwrap_or(json!({"status":"MISSING"}));
+    let second_absorption = read_json(&evidence_dir.join("second_absorption_summary.json"))
+        .unwrap_or(json!({"status":"MISSING"}));
+    let submit_turn_smoke = read_json(&evidence_dir.join("submit_turn_smoke_summary.json"))
+        .unwrap_or(json!({"status":"MISSING"}));
+    let rust_gate = read_json(&evidence_dir.join("rust_gate.json"))
+        .or_else(|| read_json(&evidence_dir.join("rust_sync_evidence_binary_gate.json")))
+        .unwrap_or(json!({"status":"MISSING"}));
+    let commit_text = read_text(&evidence_dir.join("upstream_selected_commit_summaries.txt"))
+        .or_else(|| read_text(&evidence_dir.join("upstream_second_absorption.log")))
+        .unwrap_or_default();
     let vx_inventory =
         read_text(&evidence_dir.join("vx_local_inventory_metadata.txt")).unwrap_or_default();
 
@@ -122,8 +132,14 @@ fn build_summary(evidence_dir: &Path) -> Value {
         "llm_summary.json",
         "github_scout.json",
         "pilotdeck_health_probes.json",
+        "protocol_smoke_summary_v4.json",
+        "second_absorption_summary.json",
+        "submit_turn_smoke_summary.json",
+        "ws_submit_turn_smoke.json",
         "rust_gate.json",
+        "rust_sync_evidence_binary_gate.json",
         "upstream_selected_commit_summaries.txt",
+        "upstream_second_absorption.log",
         "vx_local_inventory_metadata.txt",
         "pilotdeck_git_status_after_fetch.txt",
         "pilotdeck_upstream_new_commits.txt",
@@ -146,6 +162,9 @@ fn build_summary(evidence_dir: &Path) -> Value {
             "health": health_status(&health)
         },
         "rust_gate": rust_gate,
+        "protocol_smoke": protocol_smoke,
+        "second_absorption": second_absorption,
+        "submit_turn_smoke": submit_turn_smoke,
         "llm_participation": summarize_llms(&llm_summary),
         "github_learning": {
             "source": github_scout,
