@@ -91,6 +91,8 @@ def test_finalize_promptfoo_suite_no_mimo_writes_manifest(tmp_path: Path) -> Non
     report_path = Path(data["latest_suite3"]["artifact_path"])
     report = json.loads(report_path.read_text(encoding="utf-8"))
     assert report["legal_boundary_statements"]
+    assert report["legal_boundary_gate_summary"]["expected_status_when_prechecked"] == "PASS"
+    assert report["legal_boundary_gate_summary"]["required_statement_count"] == 4
     assert "mimo_judge_not_called" in data["latest_suite3"]["audit_gate"]["downgrade_reasons"]
     assert data["latest_suite3"]["closure_path"].endswith("suite3_finalize_closure.json")
     assert data["latest_suite3"]["closure_sha256"] == result["closure_sha256"]

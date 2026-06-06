@@ -111,6 +111,11 @@ def build_promptfoo_report(
         "provider_path": str(Path(provider).expanduser()) if provider else "",
         "raw_top_keys": sorted(raw_obj.keys())[:50],
         "legal_boundary_statements": legal_boundary_statements,
+        "legal_boundary_gate_summary": {
+            "expected_status_when_prechecked": "PASS" if legal_boundary_statements else "NOT_APPLICABLE",
+            "scope": "deterministic boundary-statement presence check only; not legal correctness proof",
+            "required_statement_count": len(legal_boundary_statements),
+        },
         "boundary": BOUNDARY,
     }
     report_path = outdir / f"{suite_id}_final_report.json"
