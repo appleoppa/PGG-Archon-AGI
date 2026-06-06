@@ -91,6 +91,44 @@ def test_omniroute_route_enforce_window_test_api_and_snapshot(monkeypatch, tmp_p
     assert panel["latest_window_test"]["schema"] == "PGGArchonOmniRouteEnforceCanaryWindowTest/v1"
 
 
+def test_omniroute_substitution_plan_and_execute_apis_are_bounded(monkeypatch, tmp_path):
+    from hermes_cli import web_server
+    from agent import pgg_archon_quantum_channel_router as router
+
+    monkeypatch.setattr(web_server.Path, "home", staticmethod(lambda: tmp_path))
+
+    def fake_plan(task, task_type="exact"):
+        return {"schema": "PGGArchonOmniRouteProviderSubstitutionPlan/v1", "allowed": False, "substitution_provider": "", "boundary": "Plan only; execution requires explicit canary execute and writes provider participation evidence."}
+
+    def fake_execute(task, task_type="exact", timeout=60.0):
+        return {"schema": "PGGArchonOmniRouteProviderSubstitutionCanary/v1", "success": False, "executed": False, "boundary": "No provider call made because guard denied substitution."}
+
+    monkeypatch.setattr(router, "plan_provider_substitution_canary", fake_plan)
+    monkeypatch.setattr(router, "execute_provider_substitution_canary", fake_execute)
+    plan = asyncio.run(web_server.plan_omniroute_provider_substitution_api(web_server.OmniRouteSubstitutionCanaryRequest(task="legal contract", task_type="legal")))
+    assert plan["ok"] is False
+    assert "Plan only" in plan["plan"]["boundary"]
+    result = asyncio.run(web_server.execute_omniroute_provider_substitution_canary_api(web_server.OmniRouteSubstitutionCanaryRequest(task="legal contract", task_type="legal")))
+    assert result["ok"] is False
+    assert result["result"]["executed"] is False
+    assert "No provider call" in result["result"]["boundary"]
+
+
+def test_omniroute_substitution_endpoints_keep_validation_http_400():
+    from fastapi import HTTPException
+    from hermes_cli import web_server
+
+    async def exercise():
+        for coro in [
+            web_server.plan_omniroute_provider_substitution_api(web_server.OmniRouteSubstitutionCanaryRequest(task="")),
+            web_server.execute_omniroute_provider_substitution_canary_api(web_server.OmniRouteSubstitutionCanaryRequest(task="")),
+        ]:
+            with pytest.raises(HTTPException) as exc:
+                await coro
+            assert exc.value.status_code == 400
+    asyncio.run(exercise())
+
+
 def test_omniroute_route_suggest_metrics_exposes_post_policy_window(monkeypatch):
     from hermes_cli import web_server
     from agent.pgg_archon_quantum_channel_router import OMNIROUTE_ROUTE_POLICY_VERSION

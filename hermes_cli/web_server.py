@@ -987,11 +987,21 @@ def _latest_omniroute_route_suggest_metrics() -> dict[str, Any]:
 
 def _latest_omniroute_route_enforce_canary() -> dict[str, Any]:
     try:
-        from agent.pgg_archon_quantum_channel_router import read_route_enforce_canary_config, recent_route_enforce_events
+        from agent.pgg_archon_quantum_channel_router import read_route_enforce_canary_config, recent_route_enforce_events, recent_provider_substitution_events
 
         latest_path = Path.home() / ".hermes" / "workspace" / "github_absorption" / "9router" / "analysis" / "omniroute-v29-window-test-latest.json"
         latest = _read_json_file(latest_path) if latest_path.exists() else {}
-        return {"config": read_route_enforce_canary_config(), "recent_events": recent_route_enforce_events(20), "latest_window_test": latest, "latest_window_test_path": str(latest_path)}
+        subst_latest_path = Path.home() / ".hermes" / "workspace" / "github_absorption" / "9router" / "analysis" / "omniroute-v30-provider-substitution-canary-latest.json"
+        subst_latest = _read_json_file(subst_latest_path) if subst_latest_path.exists() else {}
+        return {
+            "config": read_route_enforce_canary_config(),
+            "recent_events": recent_route_enforce_events(20),
+            "latest_window_test": latest,
+            "latest_window_test_path": str(latest_path),
+            "recent_substitution_events": recent_provider_substitution_events(20),
+            "latest_substitution_canary": subst_latest,
+            "latest_substitution_canary_path": str(subst_latest_path),
+        }
     except Exception as exc:
         return {"config": {}, "recent_events": [], "error": repr(exc)}
 
@@ -1116,6 +1126,12 @@ class OmniRouteEnforceConfigRequest(BaseModel):
 
 class OmniRouteEnforceWindowTestRequest(BaseModel):
     sample_count: Optional[int] = 50
+
+
+class OmniRouteSubstitutionCanaryRequest(BaseModel):
+    task: str = "Reply exactly: PGG_V30_CANARY_OK"
+    task_type: Optional[str] = "exact"
+    timeout: Optional[float] = 60.0
 
 
 class OmniRouteMultiCallRequest(BaseModel):
@@ -1263,6 +1279,39 @@ async def run_omniroute_enforce_window_test_api(body: OmniRouteEnforceWindowTest
         return {"ok": bool(result.get("passed")), "result": result, "path": str(out_path), "snapshot": _latest_omniroute_snapshot()}
     except Exception as exc:
         _write_omniroute_event("route_enforce_canary_window_test_error", {"error": repr(exc)})
+        raise HTTPException(status_code=500, detail=repr(exc))
+
+
+@app.post("/api/omniroute/substitution/plan")
+async def plan_omniroute_provider_substitution_api(body: OmniRouteSubstitutionCanaryRequest):
+    try:
+        from agent.pgg_archon_quantum_channel_router import plan_provider_substitution_canary
+
+        plan = plan_provider_substitution_canary(_omniroute_validate_text(body.task, field="task"), task_type=body.task_type or "exact")
+        _write_omniroute_event("provider_substitution_plan", {"allowed": plan.get("allowed"), "provider": plan.get("substitution_provider")})
+        return {"ok": bool(plan.get("allowed")), "plan": plan, "snapshot": _latest_omniroute_snapshot()}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        _write_omniroute_event("provider_substitution_plan_error", {"error": repr(exc)})
+        raise HTTPException(status_code=500, detail=repr(exc))
+
+
+@app.post("/api/omniroute/substitution/canary")
+async def execute_omniroute_provider_substitution_canary_api(body: OmniRouteSubstitutionCanaryRequest):
+    try:
+        from agent.pgg_archon_quantum_channel_router import execute_provider_substitution_canary
+
+        result = execute_provider_substitution_canary(_omniroute_validate_text(body.task, field="task"), task_type=body.task_type or "exact", timeout=_omniroute_clamp_timeout(body.timeout, 60.0))
+        out_path = Path.home() / ".hermes" / "workspace" / "github_absorption" / "9router" / "analysis" / "omniroute-v30-provider-substitution-canary-latest.json"
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
+        _write_omniroute_event("provider_substitution_canary", {"success": result.get("success"), "executed": result.get("executed"), "provider": (result.get("execution") or {}).get("provider"), "http_status": (result.get("execution") or {}).get("http_status"), "path": str(out_path)})
+        return {"ok": bool(result.get("success")), "result": result, "path": str(out_path), "snapshot": _latest_omniroute_snapshot()}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        _write_omniroute_event("provider_substitution_canary_error", {"error": repr(exc)})
         raise HTTPException(status_code=500, detail=repr(exc))
 
 
