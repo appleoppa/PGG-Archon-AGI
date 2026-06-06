@@ -605,10 +605,277 @@ pub fn to_pretty_json<T: Serialize>(value: &T) -> String {
     serde_json::to_string_pretty(value).unwrap_or_else(|e| format!(r#"{{"error":"{}"}}"#, e))
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GapResolutionKind {
+    ActiveGap,
+    Superseded,
+    PolicyBoundary,
+    Closed,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ManifestGapSignal {
+    pub key: String,
+    pub status: String,
+    pub boundary: String,
+    pub lifecycle_hint: Option<GapResolutionKind>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ManifestGapClassification {
+    pub schema: String,
+    pub active_gap_count: usize,
+    pub resolved_or_policy_count: usize,
+    pub active_keys: Vec<String>,
+    pub resolved_or_policy_keys: Vec<String>,
+    pub status: String,
+    pub boundary: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FallbackOutcomeKind {
+    PrimarySuccess,
+    SameClassSubstitutionSuccess,
+    CrossClassFallbackParticipation,
+    ProviderError,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FallbackOutcome {
+    pub primary_provider: String,
+    pub fallback_provider: Option<String>,
+    pub kind: FallbackOutcomeKind,
+    pub counts_as_primary: bool,
+    pub counts_as_same_class_substitution: bool,
+    pub boundary: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RouteEnforcePolicy {
+    pub enabled: bool,
+    pub mode: String,
+    pub operator_toggle_enabled: bool,
+    pub operator_scope: String,
+    pub hard_denied_intents: Vec<String>,
+    pub allowed_intents: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RouteEnforceDecisionCore {
+    pub schema: String,
+    pub would_execute: bool,
+    pub reason: String,
+    pub rollback_required: bool,
+    pub boundary: String,
+}
+
+pub fn classify_manifest_gaps(signals: &[ManifestGapSignal]) -> ManifestGapClassification {
+    let mut active_keys = Vec::new();
+    let mut resolved_or_policy_keys = Vec::new();
+    for s in signals {
+        let text = format!("{} {} {}", s.key, s.status, s.boundary).to_uppercase();
+        let pass_family = s.status == "PASS" || s.status.starts_with("PASS_");
+        let active_marker = [
+            "PARTIAL",
+            "BLOCK",
+            "FAIL",
+            "502",
+            "EXECUTION_BLOCKED",
+            "NO PROVIDER SUBSTITUTION",
+        ]
+        .iter()
+        .any(|m| text.contains(m));
+        let policy_marker = pass_family
+            && [
+                "DEFAULT_OFF",
+                "DEFAULT-OFF",
+                "OPTIONAL",
+                "MANUAL RUN",
+                "ROLLBACK",
+                "NOT GLOBAL ROUTE-ENFORCE",
+                "ERROR_RECORDED",
+                "POLICY BOUNDARY",
+            ]
+            .iter()
+            .any(|m| text.contains(m));
+        match s.lifecycle_hint {
+            Some(
+                GapResolutionKind::Superseded
+                | GapResolutionKind::PolicyBoundary
+                | GapResolutionKind::Closed,
+            ) => resolved_or_policy_keys.push(s.key.clone()),
+            _ if active_marker && !policy_marker => active_keys.push(s.key.clone()),
+            _ if policy_marker => resolved_or_policy_keys.push(s.key.clone()),
+            _ => {}
+        }
+    }
+    let status = if active_keys.is_empty() {
+        "PASS"
+    } else {
+        "WATCH"
+    };
+    ManifestGapClassification {
+        schema: "PGGArchonManifestGapClassification/v1".to_string(),
+        active_gap_count: active_keys.len(),
+        resolved_or_policy_count: resolved_or_policy_keys.len(),
+        active_keys,
+        resolved_or_policy_keys,
+        status: status.to_string(),
+        boundary: "Rust classifier separates active gaps from superseded/policy-boundary PASS-family entries; it does not mutate Manifest history or prove AGI.".to_string(),
+    }
+}
+
+pub fn classify_fallback_outcome(
+    primary_provider: &str,
+    fallback_provider: Option<&str>,
+    primary_success: bool,
+    fallback_success: bool,
+    same_class: bool,
+) -> FallbackOutcome {
+    let kind = if primary_success {
+        FallbackOutcomeKind::PrimarySuccess
+    } else if fallback_success && same_class {
+        FallbackOutcomeKind::SameClassSubstitutionSuccess
+    } else if fallback_success {
+        FallbackOutcomeKind::CrossClassFallbackParticipation
+    } else {
+        FallbackOutcomeKind::ProviderError
+    };
+    FallbackOutcome {
+        primary_provider: primary_provider.to_string(),
+        fallback_provider: fallback_provider.map(str::to_string),
+        kind,
+        counts_as_primary: primary_success,
+        counts_as_same_class_substitution: matches!(kind, FallbackOutcomeKind::SameClassSubstitutionSuccess),
+        boundary: "Fallback classification only; cross-class fallback participation is not primary success or same-class substitution proof.".to_string(),
+    }
+}
+
+pub fn evaluate_route_enforce_core(
+    policy: &RouteEnforcePolicy,
+    intent: &str,
+) -> RouteEnforceDecisionCore {
+    let normalized = intent.to_lowercase();
+    let hard_denied = policy
+        .hard_denied_intents
+        .iter()
+        .any(|x| x.to_lowercase() == normalized);
+    let allowed = policy
+        .allowed_intents
+        .iter()
+        .any(|x| x.to_lowercase() == normalized);
+    let operator_ready = policy.enabled
+        && policy.operator_toggle_enabled
+        && policy.mode == "operator"
+        && policy.operator_scope == "exact_general_gpt55_same_class_only";
+    let would_execute = operator_ready && allowed && !hard_denied;
+    let reason = if hard_denied {
+        "hard_denied_intent"
+    } else if !operator_ready {
+        "operator_disabled_or_scope_invalid"
+    } else if !allowed {
+        "intent_not_allowed"
+    } else {
+        "operator_exact_general_allowed"
+    };
+    RouteEnforceDecisionCore {
+        schema: "PGGArchonRouteEnforceDecisionCore/v1".to_string(),
+        would_execute,
+        reason: reason.to_string(),
+        rollback_required: would_execute,
+        boundary: "Rust policy evaluator is additive and provider-free; legal/audit/AGI hard-deny must remain enforced outside this crate too.".to_string(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use proptest::prelude::*;
+
+    #[test]
+    fn manifest_gap_lifecycle_separates_active_from_policy_boundary() {
+        let signals = vec![
+            ManifestGapSignal {
+                key: "latest_partial".into(),
+                status: "PARTIAL_SCAFFOLD_PLAN_PASS_EXECUTION_BLOCKED_BY_GPT55_502".into(),
+                boundary: "active execution blocked".into(),
+                lifecycle_hint: None,
+            },
+            ManifestGapSignal {
+                key: "latest_optional".into(),
+                status: "PASS_OPTIONAL_GATE_REGISTERED_DEFAULT_OFF".into(),
+                boundary: "Optional default-off policy boundary; not runtime takeover.".into(),
+                lifecycle_hint: None,
+            },
+            ManifestGapSignal {
+                key: "latest_old".into(),
+                status: "PARTIAL_OLD".into(),
+                boundary: "superseded by newer evidence".into(),
+                lifecycle_hint: Some(GapResolutionKind::Superseded),
+            },
+        ];
+        let c = classify_manifest_gaps(&signals);
+        assert_eq!(c.status, "WATCH");
+        assert_eq!(c.active_keys, vec!["latest_partial"]);
+        assert_eq!(c.resolved_or_policy_count, 2);
+        assert!(c.boundary.contains("does not mutate Manifest"));
+    }
+
+    #[test]
+    fn manifest_gap_lifecycle_passes_when_only_boundaries_remain() {
+        let signals = vec![
+            ManifestGapSignal {
+                key: "latest_batch".into(),
+                status: "PASS_BATCH_CANARY_10_EXACT_GENERAL_DENY_3_ROLLBACK".into(),
+                boundary: "Batch canary only; not global route-enforce.".into(),
+                lifecycle_hint: None,
+            },
+            ManifestGapSignal {
+                key: "latest_promptfoo".into(),
+                status: "PASS_DISCOVERY_AND_MANUAL_RUN_DEFAULT_OFF".into(),
+                boundary: "Manual run only; policy boundary.".into(),
+                lifecycle_hint: Some(GapResolutionKind::PolicyBoundary),
+            },
+        ];
+        let c = classify_manifest_gaps(&signals);
+        assert_eq!(c.status, "PASS");
+        assert_eq!(c.active_gap_count, 0);
+        assert_eq!(c.resolved_or_policy_count, 2);
+    }
+
+    #[test]
+    fn fallback_taxonomy_never_counts_cross_class_as_same_class() {
+        let cross = classify_fallback_outcome("gpt55", Some("deepseek"), false, true, false);
+        assert_eq!(
+            cross.kind,
+            FallbackOutcomeKind::CrossClassFallbackParticipation
+        );
+        assert!(!cross.counts_as_primary);
+        assert!(!cross.counts_as_same_class_substitution);
+        let same = classify_fallback_outcome("gpt55", Some("gpt55_backup"), false, true, true);
+        assert_eq!(same.kind, FallbackOutcomeKind::SameClassSubstitutionSuccess);
+        assert!(same.counts_as_same_class_substitution);
+    }
+
+    #[test]
+    fn route_enforce_core_hard_denies_agi_even_when_operator_on() {
+        let policy = RouteEnforcePolicy {
+            enabled: true,
+            mode: "operator".into(),
+            operator_toggle_enabled: true,
+            operator_scope: "exact_general_gpt55_same_class_only".into(),
+            hard_denied_intents: vec!["legal".into(), "audit".into(), "agi".into()],
+            allowed_intents: vec!["exact".into(), "general".into(), "agi".into()],
+        };
+        let denied = evaluate_route_enforce_core(&policy, "agi");
+        assert!(!denied.would_execute);
+        assert_eq!(denied.reason, "hard_denied_intent");
+        let allowed = evaluate_route_enforce_core(&policy, "exact");
+        assert!(allowed.would_execute);
+        assert!(allowed.rollback_required);
+    }
 
     fn providers() -> Vec<ProviderState> {
         vec![

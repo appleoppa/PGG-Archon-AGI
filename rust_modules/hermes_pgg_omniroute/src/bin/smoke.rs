@@ -431,11 +431,51 @@ fn emit_dashboard_from_live(evm_path: &str, health_path: &str) {
     );
 }
 
+fn emit_governance() {
+    let gap = classify_manifest_gaps(&[
+        ManifestGapSignal {
+            key: "latest_partial_old".into(),
+            status: "PARTIAL_SCAFFOLD_PLAN_PASS_EXECUTION_BLOCKED_BY_GPT55_502".into(),
+            boundary: "superseded by later gpt55 lane repair".into(),
+            lifecycle_hint: Some(GapResolutionKind::Superseded),
+        },
+        ManifestGapSignal {
+            key: "latest_promptfoo_policy".into(),
+            status: "PASS_OPTIONAL_GATE_REGISTERED_DEFAULT_OFF".into(),
+            boundary: "Optional/default-off policy boundary; not runtime takeover.".into(),
+            lifecycle_hint: Some(GapResolutionKind::PolicyBoundary),
+        },
+    ]);
+    let fallback = classify_fallback_outcome("gpt55", Some("deepseek"), false, true, false);
+    let policy = RouteEnforcePolicy {
+        enabled: true,
+        mode: "operator".into(),
+        operator_toggle_enabled: true,
+        operator_scope: "exact_general_gpt55_same_class_only".into(),
+        hard_denied_intents: vec!["legal".into(), "audit".into(), "agi".into()],
+        allowed_intents: vec!["exact".into(), "general".into()],
+    };
+    let exact = evaluate_route_enforce_core(&policy, "exact");
+    let agi = evaluate_route_enforce_core(&policy, "agi");
+    println!(
+        "{}",
+        to_pretty_json(&json!({
+            "schema": "PGGArchonOmniRouteGovernanceSmoke/v1",
+            "manifest_gap_classification": gap,
+            "fallback_taxonomy": fallback,
+            "route_enforce_exact": exact,
+            "route_enforce_agi": agi,
+            "boundary": "Rust governance smoke is additive/provider-free; not T5, not full AGI, not production route enforcement."
+        }))
+    );
+}
+
 fn main() {
     let mut args = env::args().skip(1);
     match args.next().as_deref() {
         Some("decide") => emit_decide(&args.collect::<Vec<_>>().join(" ")),
         Some("dashboard") => emit_dashboard(),
+        Some("governance") => emit_governance(),
         Some("dashboard-from-evm") => {
             let path = args.next().unwrap_or_else(|| {
                 eprintln!("dashboard-from-evm requires <evm_report.json>");
@@ -456,7 +496,7 @@ fn main() {
         }
         Some("smoke") | None => emit_smoke(),
         Some(other) => {
-            eprintln!("unknown mode: {other}; use smoke | decide <text> | dashboard | dashboard-from-evm <evm_report.json> | dashboard-from-live <evm_report.json> <provider_health.json>");
+            eprintln!("unknown mode: {other}; use smoke | decide <text> | dashboard | governance | dashboard-from-evm <evm_report.json> | dashboard-from-live <evm_report.json> <provider_health.json>");
             std::process::exit(2);
         }
     }
