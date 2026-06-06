@@ -66,12 +66,31 @@ def test_formula_gate_manifest_missing_or_malformed_is_watch(tmp_path: Path) -> 
 
 def test_formula_gate_passes_with_pass_family_even_without_exact_pass(tmp_path: Path) -> None:
     manifest = tmp_path / "EVOLUTION_MANIFEST.json"
-    manifest.write_text(json.dumps({"latest_family": {"status": "PASS_SCAFFOLD_DEFAULT_OFF", "created_at": "2026-06-06 12:01:00"}}, ensure_ascii=False), encoding="utf-8")
+    manifest.write_text(json.dumps({"latest_family": {"status": "PASS_RUST_COMPILED_ACTIVE", "created_at": "2026-06-06 12:01:00"}}, ensure_ascii=False), encoding="utf-8")
     panel = build_formula_gate_status("AGI 进化任务", manifest_path=manifest)
     assert panel["status"] == "PASS"
     assert panel["manifest_summary"]["latest_pass_count"] == 1
     assert panel["manifest_summary"]["latest_exact_pass_count"] == 0
     assert "latest_exact_pass_count" not in panel["missing_gates"]
+
+
+def test_formula_gate_marks_unresolved_partial_gap_watch_for_agi(tmp_path: Path) -> None:
+    manifest = tmp_path / "EVOLUTION_MANIFEST.json"
+    manifest.write_text(
+        json.dumps(
+            {
+                "latest_pass": {"status": "PASS_SCAFFOLD_DEFAULT_OFF", "created_at": "2026-06-06 12:00:00", "boundary": "default-off scaffold"},
+                "latest_partial": {"status": "PARTIAL_SCAFFOLD_PLAN_PASS_EXECUTION_BLOCKED_BY_GPT55_502", "created_at": "2026-06-06 12:01:00"},
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    panel = build_formula_gate_status("AGI route provider evolution", manifest_path=manifest)
+    assert panel["status"] == "WATCH"
+    assert "unresolved_manifest_gaps" in panel["missing_gates"]
+    assert panel["unresolved_gap_count"] >= 1
+    assert any(x["key"] == "latest_partial" for x in panel["unresolved_gap_keys"])
 
 
 def test_formula_gate_manifest_counts_pass_family_statuses(tmp_path: Path) -> None:
@@ -122,6 +141,7 @@ def test_render_formula_gate_status_is_human_readable(tmp_path: Path) -> None:
     assert "Agent_Evolve" in text
     assert "总纲1六维" in text
     assert "总纲2闭环" in text
+    assert "未闭环" in text
     assert TRUTHFUL_BOUNDARY in text
 
 

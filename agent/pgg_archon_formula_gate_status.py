@@ -96,6 +96,24 @@ def _load_manifest_summary(manifest_path: str | Path | None = None) -> dict[str,
     for _, v in latest_items:
         fam = status_family(v)
         status_counts[fam] = status_counts.get(fam, 0) + 1
+    unresolved_markers = [
+        "PARTIAL", "BLOCK", "ERROR", "FAIL", "HOLD", "DISABLED", "DEFAULT_OFF", "502",
+        "NO PROVIDER SUBSTITUTION", "ROUTE-ENFORCE REMAINS DISABLED", "EXECUTION_BLOCKED",
+    ]
+    unresolved_gap_keys: list[dict[str, str]] = []
+    for key, value in latest_items:
+        status = str(value.get("status") or "") if isinstance(value, dict) else ""
+        haystack = " ".join([
+            key,
+            status,
+            str(value.get("title") or "") if isinstance(value, dict) else "",
+            str(value.get("scope") or "") if isinstance(value, dict) else "",
+            str(value.get("boundary") or "") if isinstance(value, dict) else "",
+        ]).upper()
+        family = status_family(value)
+        if family in {"WATCH", "PARTIAL", "BLOCK_OR_ERROR", "UNKNOWN"} or any(marker in haystack for marker in unresolved_markers):
+            unresolved_gap_keys.append({"key": key, "status": status or family, "family": family})
+
     return {
         "present": True,
         "path": str(path),
@@ -105,6 +123,8 @@ def _load_manifest_summary(manifest_path: str | Path | None = None) -> dict[str,
         "latest_pass_count": len(latest_pass_keys),
         "latest_exact_pass_count": len(latest_exact_pass_keys),
         "latest_status_counts": status_counts,
+        "unresolved_gap_keys": unresolved_gap_keys,
+        "unresolved_gap_count": len(unresolved_gap_keys),
         "sort": "created_at/generated_at/timestamp fallback key",
     }
 
@@ -168,6 +188,10 @@ def build_formula_gate_status(
         "truth_boundary_present": evidence_gates["truth_boundary_present"],
     }
     missing = [k for k, v in required_evidence_gates.items() if not v]
+    unresolved_gap_count = int(manifest.get("unresolved_gap_count") or 0)
+    unresolved_sensitive_task = task_type in {"agi", "evolution", "system"} or any(k in (task or "").lower() for k in ["route", "router", "provider", "omniroute", "进化"])
+    if unresolved_sensitive_task and unresolved_gap_count:
+        missing.append("unresolved_manifest_gaps")
     status = "PASS" if explicit and manifest.get("present") and not missing else "WATCH"
     if not task.strip():
         status = "WATCH"
@@ -185,6 +209,8 @@ def build_formula_gate_status(
         "evidence_gates": evidence_gates,
         "missing_gates": sorted(set(missing)),
         "manifest_summary": manifest,
+        "unresolved_gap_count": unresolved_gap_count,
+        "unresolved_gap_keys": manifest.get("unresolved_gap_keys", []),
         "defect_reduction_focus": [
             "减少公式不可见导致的用户感知失败",
             "减少过度宣称：T5/full AGI/官方评测/法律正确性",
@@ -203,13 +229,17 @@ def render_formula_gate_status(status: dict[str, Any]) -> str:
     chain = " → ".join(stage["stage"] for stage in status.get("agent_evolve_chain", []))
     missing = status.get("missing_gates") or []
     goal = status.get("goal_formula_rule") or {}
+    unresolved = status.get("unresolved_gap_count", 0)
+    unresolved_keys = status.get("unresolved_gap_keys") or []
+    unresolved_preview = ", ".join(str(x.get("key", x)) for x in unresolved_keys[:3]) if unresolved_keys else "无"
     return "\n".join([
         "【公式门禁状态】",
         f"/goal：{goal.get('north_star', '总纲1')}；{goal.get('execution_chain', '总纲2')}",
         f"状态：{status.get('status')} | 任务类型：{status.get('task_type')} | 目标：{status.get('target_tier')}",
         f"总纲1六维：{', '.join(active) if active else '未激活'}",
         f"总纲2闭环：{chain}",
-        f"证据：Manifest={'有' if status.get('evidence_gates', {}).get('manifest_present') else '缺'}；latest PASS族={status.get('evidence_gates', {}).get('latest_pass_count', 0)}；exact PASS={status.get('evidence_gates', {}).get('latest_exact_pass_count', 0)}；缺口={missing or '无'}",
+        f"证据：Manifest={'有' if status.get('evidence_gates', {}).get('manifest_present') else '缺'}；latest PASS族={status.get('evidence_gates', {}).get('latest_pass_count', 0)}；exact PASS={status.get('evidence_gates', {}).get('latest_exact_pass_count', 0)}；未闭环={unresolved}；缺口={missing or '无'}",
+        f"未闭环预览：{unresolved_preview}",
         f"边界：{status.get('boundary')}",
     ])
 
