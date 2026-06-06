@@ -151,6 +151,38 @@ def test_route_enforce_canary_window_test_passes_rolls_back_and_blocks_leakage(m
     assert restored["mode"] == previous["mode"]
 
 
+def test_provider_substitution_core_fallback_counts_success_and_failure(monkeypatch, tmp_path) -> None:
+    monkeypatch.setattr(mod, "OMNIROUTE_SUBSTITUTION_EVENTS", tmp_path / "subst.jsonl")
+    monkeypatch.setattr(mod, "plan_provider_substitution_canary", lambda task, task_type="exact": {"allowed": True, "substitution_provider": "gpt55"})
+    monkeypatch.setattr(mod, "execute_omniroute_task", lambda *a, **k: {"success": False, "provider": "gpt55", "error": "registry failed"})
+    import run_agent
+
+    class GoodAgent:
+        def __init__(self, *args, **kwargs):
+            pass
+        def run_conversation(self, task):
+            return {"final_response": "PGG_V30_CANARY_OK"}
+
+    monkeypatch.setattr(run_agent, "AIAgent", GoodAgent)
+    good = mod.execute_provider_substitution_canary("Reply exactly: PGG_V30_CANARY_OK")
+    assert good["success"] is True
+    assert good["core_fallback_execution"]["participated"] is True
+    assert good["core_fallback_execution"]["http_status"] == 200
+
+    class BadAgent:
+        def __init__(self, *args, **kwargs):
+            pass
+        def run_conversation(self, task):
+            return {"final_response": "API call failed: HTTP 502 Bad Gateway"}
+
+    monkeypatch.setattr(run_agent, "AIAgent", BadAgent)
+    bad = mod.execute_provider_substitution_canary("Reply exactly: PGG_V30_CANARY_OK")
+    assert bad["success"] is False
+    assert bad["core_fallback_execution"]["participated"] is False
+    assert bad["core_fallback_execution"]["http_status"] == 0
+    assert "failure text" in bad["core_fallback_execution"]["error"]
+
+
 def test_route_policy_intent_classification_order_and_version() -> None:
     assert mod.OMNIROUTE_ROUTE_POLICY_VERSION == "v2.6-fresh-calibrated-window-20260606"
     assert mod._classify_route_intent(prompt="legal contract litigation review")["intent"] == "chinese_legal"

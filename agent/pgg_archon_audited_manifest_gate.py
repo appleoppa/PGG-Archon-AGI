@@ -168,7 +168,7 @@ def write_audited_manifest_entry(
     return result
 
 
-def default_promptfoo_claims(*, sample_count: int = 30, suite_label: str = "promptfoo official CLI smoke") -> list[MicroAuditClaim]:
+def default_promptfoo_claims(*, sample_count: int = 30, suite_label: str = "自建promptfoo CLI smoke（使用promptfoo官方CLI工具执行）") -> list[MicroAuditClaim]:
     """Build standard anti-overclaim MiMo claims for a promptfoo smoke suite.
 
     The old 30-suite helper remains as a compatibility wrapper below, but new

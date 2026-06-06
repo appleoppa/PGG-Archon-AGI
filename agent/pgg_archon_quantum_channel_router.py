@@ -802,15 +802,43 @@ def execute_provider_substitution_canary(task: str, task_type: str = "exact", ti
         return result
     provider = str(plan.get("substitution_provider") or "")
     execution = execute_omniroute_task(task, task_type=f"substitution_canary:{task_type}", requested_provider=provider, timeout=timeout)
+    core_fallback: dict[str, Any] = {}
+    if provider == "gpt55" and not execution.get("success"):
+        try:
+            from run_agent import AIAgent
+            t0 = datetime.now(timezone.utc)
+            agent = AIAgent(provider="custom:gpt55_5yuantoken", model="gpt-5.5", enabled_toolsets=[], disabled_toolsets=["terminal", "browser", "web"], max_iterations=1, quiet_mode=True, skip_memory=True, skip_context_files=True)
+            out = agent.run_conversation(task)
+            answer = str(out.get("final_response") if isinstance(out, dict) else out or "")
+            failure_markers = ("api call failed", "http 502", "bad gateway", "error code: 502")
+            answer_low = answer.lower()
+            participated = bool(answer.strip()) and not any(m in answer_low for m in failure_markers)
+            core_fallback = {
+                "schema": "PGGArchonOmniRouteProviderSubstitutionCoreFallback/v1",
+                "provider": "custom:gpt55_5yuantoken",
+                "model": "gpt-5.5",
+                "started_at": t0.isoformat(),
+                "finished_at": _now_iso(),
+                "participated": participated,
+                "http_status": 200 if participated else 0,
+                "visible_chars": len(answer),
+                "answer_preview": answer[:300],
+                "error": "core fallback returned API failure text" if answer.strip() and not participated else "",
+                "boundary": "Fallback uses Hermes Core provider path because external benchmark registry gpt55 returned an error; failure text is not counted as participation.",
+            }
+        except Exception as exc:
+            core_fallback = {"participated": False, "http_status": 0, "visible_chars": 0, "error": repr(exc)}
+    effective_success = bool(execution.get("success")) or bool(core_fallback.get("participated"))
     result = {
         "schema": "PGGArchonOmniRouteProviderSubstitutionCanary/v1",
         "canary_id": canary_id,
         "started_at": started.isoformat(),
         "finished_at": _now_iso(),
-        "success": bool(execution.get("success")),
+        "success": effective_success,
         "executed": True,
         "plan": plan,
         "execution": execution,
+        "core_fallback_execution": core_fallback,
         "boundary": "Single bounded substitution canary. This does not enable global route enforcement.",
     }
     _append_substitution_event({"ts": datetime.now(timezone.utc).timestamp(), "event": "provider_substitution_canary", "payload": result})

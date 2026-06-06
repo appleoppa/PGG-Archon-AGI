@@ -53,7 +53,7 @@ def test_build_promptfoo_report_validates_domain_total(tmp_path: Path) -> None:
 
 
 def test_promptfoo_claims_use_real_sample_count() -> None:
-    claims = default_promptfoo_claims(sample_count=50, suite_label="promptfoo official CLI smoke")
+    claims = default_promptfoo_claims(sample_count=50, suite_label="自建promptfoo CLI smoke（使用promptfoo官方CLI工具执行）")
     assert "50题" in claims[0].claim
     assert "50/50" in claims[0].claim
     assert "30/30" not in claims[0].claim

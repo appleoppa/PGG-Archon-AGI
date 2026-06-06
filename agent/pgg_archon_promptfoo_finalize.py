@@ -158,7 +158,7 @@ def finalize_promptfoo_suite(
         requested_status=requested_status,
         claims=default_promptfoo_claims(
             sample_count=report["sample_count"],
-            suite_label="promptfoo official CLI smoke",
+            suite_label="自建promptfoo CLI smoke（使用promptfoo官方CLI工具执行）",
         ),
         audit_output_dir=outdir / "audit_gate",
         call_mimo=call_mimo,
