@@ -34,9 +34,12 @@ OMNIROUTE_TASK_EXECUTION_EVENTS = HOME / ".hermes" / "data" / "omniroute_task_ex
 OMNIROUTE_MULTI_TASK_EVENTS = HOME / ".hermes" / "data" / "omniroute_multi_task_events.jsonl"
 OMNIROUTE_MIRROR_EVENTS = HOME / ".hermes" / "data" / "omniroute_core_mirror_events.jsonl"
 OMNIROUTE_PROVIDER_COOLDOWN = HOME / ".hermes" / "data" / "omniroute_provider_cooldown.json"
+OMNIROUTE_ENFORCE_CONFIG = HOME / ".hermes" / "data" / "omniroute_route_enforce_canary.json"
+OMNIROUTE_ENFORCE_EVENTS = HOME / ".hermes" / "data" / "omniroute_route_enforce_events.jsonl"
 OMNIROUTE_EVIDENCE_DIR = HOME / ".hermes" / "workspace" / "github_absorption" / "9router" / "analysis" / "evidence"
 OMNIROUTE_ROUTE_POLICY_VERSION = "v2.6-fresh-calibrated-window-20260606"
 OMNIROUTE_THIRD_PARTY_JUDGE_ALIASES = {"mimo", "mimo_v25_pro_auditor", "custom:mimo_v25_pro_auditor"}
+OMNIROUTE_HARD_DENIED_ENFORCE_INTENTS = {"chinese_legal", "audit_judge", "agi_architecture_coding"}
 
 
 def _is_third_party_judge_provider(name: str | None) -> bool:
@@ -233,6 +236,65 @@ def _append_route_call_event(event: dict[str, Any]) -> None:
             fh.write(json.dumps(event, ensure_ascii=False) + "\n")
     except Exception:
         pass
+
+
+def _append_route_enforce_event(event: dict[str, Any]) -> None:
+    try:
+        OMNIROUTE_ENFORCE_EVENTS.parent.mkdir(parents=True, exist_ok=True)
+        with OMNIROUTE_ENFORCE_EVENTS.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(event, ensure_ascii=False) + "\n")
+    except Exception:
+        pass
+
+
+def _default_route_enforce_config() -> dict[str, Any]:
+    return {
+        "schema": "PGGArchonOmniRouteEnforceCanaryConfig/v1",
+        "enabled": False,
+        "mode": "observe_only",
+        "allowed_intents": ["bounded_exact_or_math", "general"],
+        "denied_intents": sorted(OMNIROUTE_HARD_DENIED_ENFORCE_INTENTS),
+        "require_route_class_match_actual": True,
+        "require_policy_version": OMNIROUTE_ROUTE_POLICY_VERSION,
+        "rollback": "Set enabled=false or delete this file. Default is fail-open observe_only.",
+        "boundary": "Guarded canary scaffold only. Default-off; legal/audit/AGI denied.",
+    }
+
+
+def _sanitize_route_enforce_config(cfg: dict[str, Any]) -> dict[str, Any]:
+    """Preserve hard safety invariants even if config/API tries to weaken them."""
+    cfg = dict(cfg or {})
+    if cfg.get("mode") not in {"observe_only", "canary"}:
+        cfg["mode"] = "observe_only"
+    allowed = [str(x) for x in (cfg.get("allowed_intents") or []) if str(x) not in OMNIROUTE_HARD_DENIED_ENFORCE_INTENTS]
+    cfg["allowed_intents"] = sorted(set(allowed))
+    denied = set(str(x) for x in (cfg.get("denied_intents") or [])) | OMNIROUTE_HARD_DENIED_ENFORCE_INTENTS
+    cfg["denied_intents"] = sorted(denied)
+    cfg["hard_denied_intents"] = sorted(OMNIROUTE_HARD_DENIED_ENFORCE_INTENTS)
+    return cfg
+
+
+def read_route_enforce_canary_config() -> dict[str, Any]:
+    cfg = _default_route_enforce_config()
+    data = _read_json(OMNIROUTE_ENFORCE_CONFIG)
+    if isinstance(data, dict):
+        cfg.update(data)
+    return _sanitize_route_enforce_config(cfg)
+
+
+def write_route_enforce_canary_config(update: dict[str, Any]) -> dict[str, Any]:
+    cfg = read_route_enforce_canary_config()
+    if isinstance(update, dict):
+        for key in ["enabled", "mode", "allowed_intents", "denied_intents", "require_route_class_match_actual", "require_policy_version"]:
+            if key in update:
+                cfg[key] = update[key]
+    cfg = _sanitize_route_enforce_config(cfg)
+    cfg["updated_at"] = _now_iso()
+    OMNIROUTE_ENFORCE_CONFIG.parent.mkdir(parents=True, exist_ok=True)
+    tmp = OMNIROUTE_ENFORCE_CONFIG.with_suffix(".tmp")
+    tmp.write_text(json.dumps(cfg, ensure_ascii=False, indent=2), encoding="utf-8")
+    tmp.replace(OMNIROUTE_ENFORCE_CONFIG)
+    return cfg
 
 
 def _route_generation_id(dashboard: dict[str, Any], control: dict[str, Any]) -> str:
@@ -504,6 +566,109 @@ def _normalize_provider_identity(provider: str | None, model: str | None) -> dic
     }
 
 
+def evaluate_route_enforce_canary(route_suggestion: dict[str, Any], actual_provider: str = "", model: str = "") -> dict[str, Any]:
+    cfg = read_route_enforce_canary_config()
+    route_suggestion = route_suggestion if isinstance(route_suggestion, dict) else {}
+    route_policy_raw = route_suggestion.get("route_policy")
+    route_policy = route_policy_raw if isinstance(route_policy_raw, dict) else {}
+    intent = str(route_policy.get("intent") or "")
+    suggested_provider = str(route_suggestion.get("selected_provider") or "")
+    suggested_class = _normalize_provider_identity(suggested_provider, "").get("route_class", "")
+    actual_class = _normalize_provider_identity(actual_provider, model).get("route_class", "")
+    reasons: list[str] = []
+    enabled = bool(cfg.get("enabled"))
+    mode = str(cfg.get("mode") or "observe_only")
+    if not enabled:
+        reasons.append("config_disabled_default_off")
+    if mode not in {"observe_only", "canary"}:
+        reasons.append(f"unsupported_mode:{mode}")
+    if intent in set(cfg.get("denied_intents") or []):
+        reasons.append(f"intent_denied:{intent}")
+    if intent not in set(cfg.get("allowed_intents") or []):
+        reasons.append(f"intent_not_allowed:{intent or 'unknown'}")
+    req_ver = str(cfg.get("require_policy_version") or "")
+    if req_ver and str(route_suggestion.get("route_policy_version") or "") != req_ver:
+        reasons.append("policy_version_mismatch")
+    if cfg.get("require_route_class_match_actual", True) and suggested_class != actual_class:
+        reasons.append(f"route_class_mismatch:{suggested_class}->{actual_class}")
+    allowed = enabled and mode == "canary" and not reasons
+    decision = {
+        "schema": "PGGArchonOmniRouteEnforceDecision/v1",
+        "decided_at": _now_iso(),
+        "enabled": enabled,
+        "mode": mode,
+        "allowed": allowed,
+        "would_enforce": allowed,
+        "fail_open_passthrough": not allowed,
+        "suggested_provider": suggested_provider,
+        "actual_provider": actual_provider or "",
+        "suggested_route_class": suggested_class,
+        "actual_route_class": actual_class,
+        "intent": intent,
+        "reasons": reasons,
+        "boundary": "Default-off guarded canary. This function only evaluates and records; caller must separately implement any provider substitution.",
+    }
+    _append_route_enforce_event({"ts": datetime.now(timezone.utc).timestamp(), "event": "route_enforce_canary_decision", "payload": decision})
+    return decision
+
+
+def recent_route_enforce_events(limit: int = 20) -> list[dict[str, Any]]:
+    return _read_jsonl_tail(OMNIROUTE_ENFORCE_EVENTS, limit)
+
+
+def run_route_enforce_canary_selftest() -> dict[str, Any]:
+    previous = read_route_enforce_canary_config()
+    cases = [
+        ("exact", "Reply exactly: PGG_V28_EXACT", "custom:gpt55_5yuantoken", "gpt-5.5", True),
+        ("general", "general hello", "custom:gpt55_5yuantoken", "gpt-5.5", True),
+        ("legal", "中文法律合同诉讼法条", "custom:gpt55_5yuantoken", "gpt-5.5", False),
+        ("audit", "audit judge benchmark verdict", "custom:gpt55_5yuantoken", "gpt-5.5", False),
+        ("agi", "PGG Archon AGI Rust router evolution", "custom:gpt55_5yuantoken", "gpt-5.5", False),
+    ]
+    started_at = _now_iso()
+    results: list[dict[str, Any]] = []
+    passed = False
+    try:
+        write_route_enforce_canary_config({"enabled": True, "mode": "canary"})
+        for name, prompt, actual_provider, model, expected_allowed in cases:
+            suggestion = decide_omniroute_provider(task_type=name, prompt_preview=prompt)
+            decision = evaluate_route_enforce_canary(suggestion, actual_provider, model)
+            got = bool(decision.get("allowed"))
+            results.append({
+                "case": name,
+                "expected_allowed": expected_allowed,
+                "actual_allowed": got,
+                "passed": got == expected_allowed,
+                "intent": decision.get("intent"),
+                "suggested_provider": decision.get("suggested_provider"),
+                "actual_provider": decision.get("actual_provider"),
+                "suggested_route_class": decision.get("suggested_route_class"),
+                "actual_route_class": decision.get("actual_route_class"),
+                "reasons": decision.get("reasons", []),
+            })
+        passed = all(r["passed"] for r in results)
+        return {
+            "schema": "PGGArchonOmniRouteEnforceCanarySelfTest/v1",
+            "started_at": started_at,
+            "finished_at": _now_iso(),
+            "status": "PASS" if passed else "FAIL",
+            "passed": passed,
+            "results": results,
+            "rollback": "pending_finally",
+            "boundary": "Selftest toggles canary evaluation only; it does not substitute providers.",
+        }
+    finally:
+        write_route_enforce_canary_config({
+            "enabled": bool(previous.get("enabled", False)),
+            "mode": str(previous.get("mode") or "observe_only"),
+            "allowed_intents": previous.get("allowed_intents") or ["bounded_exact_or_math", "general"],
+            "denied_intents": previous.get("denied_intents") or ["chinese_legal", "audit_judge", "agi_architecture_coding"],
+            "require_route_class_match_actual": bool(previous.get("require_route_class_match_actual", True)),
+            "require_policy_version": previous.get("require_policy_version") or OMNIROUTE_ROUTE_POLICY_VERSION,
+        })
+        _append_route_enforce_event({"ts": datetime.now(timezone.utc).timestamp(), "event": "route_enforce_canary_selftest_rollback", "payload": {"restored_enabled": bool(previous.get("enabled", False)), "restored_mode": str(previous.get("mode") or "observe_only")}})
+
+
 def record_omniroute_core_mirror(
     *,
     user_message: Any,
@@ -536,6 +701,7 @@ def record_omniroute_core_mirror(
     actual_provider = provider or ""
     actual_identity = _normalize_provider_identity(actual_provider, model)
     suggested_identity = _normalize_provider_identity(suggested_provider, "")
+    enforce_decision = evaluate_route_enforce_canary(route_suggestion, actual_provider, model or "") if route_suggestion else {}
     preview_limit = int(os.getenv("PGG_OMNIROUTE_MIRROR_PREVIEW_CHARS", "120") or "120")
     payload = {
         "schema": "PGGArchonOmniRouteCoreMirror/v1",
@@ -557,6 +723,8 @@ def record_omniroute_core_mirror(
         "actual_route_class": actual_identity.get("route_class", ""),
         "suggestion_matches_actual": bool(suggested_provider and actual_provider and suggested_provider == actual_provider),
         "suggestion_route_class_matches_actual": bool(suggested_identity.get("route_class") and actual_identity.get("route_class") and suggested_identity.get("route_class") == actual_identity.get("route_class")),
+        "route_enforce_canary": enforce_decision,
+        "route_enforce_would_enforce": bool(enforce_decision.get("would_enforce")) if isinstance(enforce_decision, dict) else False,
         "user_sha256": hashlib.sha256(user_text.encode("utf-8")).hexdigest() if user_text else "",
         "user_preview": _redact_mirror_preview(user_text, preview_limit),
         "final_response_sha256": hashlib.sha256(final_response.encode("utf-8")).hexdigest() if final_response else "",

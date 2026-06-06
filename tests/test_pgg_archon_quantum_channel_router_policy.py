@@ -45,6 +45,96 @@ def test_provider_call_rejects_mimo_before_registry_call(monkeypatch) -> None:
     assert called["value"] is False
 
 
+def test_route_enforce_canary_default_off_and_denies_legal(monkeypatch, tmp_path) -> None:
+    monkeypatch.setattr(mod, "OMNIROUTE_ENFORCE_CONFIG", tmp_path / "enforce.json")
+    monkeypatch.setattr(mod, "OMNIROUTE_ENFORCE_EVENTS", tmp_path / "events.jsonl")
+    route = {
+        "selected_provider": "deepseek",
+        "route_policy_version": mod.OMNIROUTE_ROUTE_POLICY_VERSION,
+        "route_policy": {"intent": "chinese_legal"},
+    }
+    decision = mod.evaluate_route_enforce_canary(route, actual_provider="deepseek", model="deepseek-v4-flash")
+    assert decision["would_enforce"] is False
+    assert decision["fail_open_passthrough"] is True
+    assert "config_disabled_default_off" in decision["reasons"]
+    assert "intent_denied:chinese_legal" in decision["reasons"]
+    assert "intent_not_allowed:chinese_legal" in decision["reasons"]
+    assert "Default-off guarded canary" in decision["boundary"]
+    assert mod.recent_route_enforce_events(5)
+
+
+def test_route_enforce_canary_hard_denied_intents_are_immutable(monkeypatch, tmp_path) -> None:
+    monkeypatch.setattr(mod, "OMNIROUTE_ENFORCE_CONFIG", tmp_path / "enforce.json")
+    monkeypatch.setattr(mod, "OMNIROUTE_ENFORCE_EVENTS", tmp_path / "events.jsonl")
+    cfg = mod.write_route_enforce_canary_config({
+        "enabled": True,
+        "mode": "canary",
+        "allowed_intents": ["chinese_legal", "audit_judge", "agi_architecture_coding", "general"],
+        "denied_intents": [],
+    })
+    assert set(cfg["hard_denied_intents"]) == mod.OMNIROUTE_HARD_DENIED_ENFORCE_INTENTS
+    assert not (set(cfg["allowed_intents"]) & mod.OMNIROUTE_HARD_DENIED_ENFORCE_INTENTS)
+    for intent in sorted(mod.OMNIROUTE_HARD_DENIED_ENFORCE_INTENTS):
+        route = {
+            "selected_provider": "gpt55",
+            "route_policy_version": mod.OMNIROUTE_ROUTE_POLICY_VERSION,
+            "route_policy": {"intent": intent},
+        }
+        decision = mod.evaluate_route_enforce_canary(route, actual_provider="custom:gpt55_5yuantoken", model="gpt-5.5")
+        assert decision["would_enforce"] is False
+        assert decision["fail_open_passthrough"] is True
+        assert f"intent_denied:{intent}" in decision["reasons"]
+
+
+def test_route_enforce_canary_observe_only_policy_mismatch_and_bad_mode_block(monkeypatch, tmp_path) -> None:
+    monkeypatch.setattr(mod, "OMNIROUTE_ENFORCE_CONFIG", tmp_path / "enforce.json")
+    monkeypatch.setattr(mod, "OMNIROUTE_ENFORCE_EVENTS", tmp_path / "events.jsonl")
+    mod.write_route_enforce_canary_config({"enabled": True, "mode": "observe_only"})
+    route = {"selected_provider": "gpt55", "route_policy_version": mod.OMNIROUTE_ROUTE_POLICY_VERSION, "route_policy": {"intent": "general"}}
+    observe = mod.evaluate_route_enforce_canary(route, actual_provider="custom:gpt55_5yuantoken", model="gpt-5.5")
+    assert observe["would_enforce"] is False
+    assert observe["mode"] == "observe_only"
+    mod.write_route_enforce_canary_config({"enabled": True, "mode": "canary"})
+    bad_version = dict(route, route_policy_version="old")
+    mismatch = mod.evaluate_route_enforce_canary(bad_version, actual_provider="custom:gpt55_5yuantoken", model="gpt-5.5")
+    assert mismatch["would_enforce"] is False
+    assert "policy_version_mismatch" in mismatch["reasons"]
+    cfg = mod.write_route_enforce_canary_config({"mode": "unsafe_replace"})
+    assert cfg["mode"] == "observe_only"
+
+
+def test_route_enforce_canary_allows_only_enabled_safe_match(monkeypatch, tmp_path) -> None:
+    monkeypatch.setattr(mod, "OMNIROUTE_ENFORCE_CONFIG", tmp_path / "enforce.json")
+    monkeypatch.setattr(mod, "OMNIROUTE_ENFORCE_EVENTS", tmp_path / "events.jsonl")
+    cfg = mod.write_route_enforce_canary_config({"enabled": True, "mode": "canary"})
+    assert cfg["enabled"] is True
+    route = {
+        "selected_provider": "gpt55",
+        "route_policy_version": mod.OMNIROUTE_ROUTE_POLICY_VERSION,
+        "route_policy": {"intent": "general"},
+    }
+    decision = mod.evaluate_route_enforce_canary(route, actual_provider="custom:gpt55_5yuantoken", model="gpt-5.5")
+    assert decision["would_enforce"] is True
+    assert decision["reasons"] == []
+    mismatch = mod.evaluate_route_enforce_canary(route, actual_provider="deepseek", model="deepseek-v4-flash")
+    assert mismatch["would_enforce"] is False
+    assert any(r.startswith("route_class_mismatch") for r in mismatch["reasons"])
+
+
+def test_record_core_mirror_includes_route_enforce_canary(monkeypatch, tmp_path) -> None:
+    monkeypatch.setattr(mod, "OMNIROUTE_ENFORCE_CONFIG", tmp_path / "enforce.json")
+    monkeypatch.setattr(mod, "OMNIROUTE_ENFORCE_EVENTS", tmp_path / "events.jsonl")
+    monkeypatch.setattr(mod, "OMNIROUTE_MIRROR_EVENTS", tmp_path / "mirror.jsonl")
+    route = {
+        "selected_provider": "deepseek",
+        "route_policy_version": mod.OMNIROUTE_ROUTE_POLICY_VERSION,
+        "route_policy": {"intent": "chinese_legal"},
+    }
+    payload = mod.record_omniroute_core_mirror(user_message="法律任务", result={"final_response": "ok"}, provider="deepseek", model="deepseek-v4-flash", route_suggestion=route)
+    assert payload["route_enforce_would_enforce"] is False
+    assert payload["route_enforce_canary"]["schema"] == "PGGArchonOmniRouteEnforceDecision/v1"
+
+
 def test_route_policy_intent_classification_order_and_version() -> None:
     assert mod.OMNIROUTE_ROUTE_POLICY_VERSION == "v2.6-fresh-calibrated-window-20260606"
     assert mod._classify_route_intent(prompt="legal contract litigation review")["intent"] == "chinese_legal"

@@ -985,6 +985,15 @@ def _latest_omniroute_route_suggest_metrics() -> dict[str, Any]:
         return {"schema": "PGGArchonOmniRouteRouteSuggestMetrics/v1", "status": "error", "error": repr(exc)}
 
 
+def _latest_omniroute_route_enforce_canary() -> dict[str, Any]:
+    try:
+        from agent.pgg_archon_quantum_channel_router import read_route_enforce_canary_config, recent_route_enforce_events
+
+        return {"config": read_route_enforce_canary_config(), "recent_events": recent_route_enforce_events(20)}
+    except Exception as exc:
+        return {"config": {}, "recent_events": [], "error": repr(exc)}
+
+
 def _latest_omniroute_snapshot() -> dict:
     dashboard = _read_json_file(_OMNIROUTE_DASHBOARD_PATH)
     health = dashboard.get("provider_health_snapshot") if isinstance(dashboard, dict) else None
@@ -996,6 +1005,7 @@ def _latest_omniroute_snapshot() -> dict:
     evidence_package = _latest_omniroute_evidence_package()
     task_evidence_package = _latest_omniroute_task_evidence_package()
     route_suggest_metrics = _latest_omniroute_route_suggest_metrics()
+    route_enforce_canary = _latest_omniroute_route_enforce_canary()
     providers = []
     if isinstance(dashboard, dict):
         for card in dashboard.get("provider_cards", []) or []:
@@ -1035,6 +1045,7 @@ def _latest_omniroute_snapshot() -> dict:
         "evidence_package": evidence_package,
         "task_evidence_package": task_evidence_package,
         "route_suggest_metrics": route_suggest_metrics,
+        "route_enforce_canary": route_enforce_canary,
         "recent_events": _recent_omniroute_events(),
         "recent_mirror_events": _recent_omniroute_mirror_events(),
         "recent_route_events": _recent_route_call_events(),
@@ -1090,6 +1101,15 @@ class OmniRouteBridgeSubmitRequest(BaseModel):
     requested_provider: Optional[str] = None
     timeout: Optional[float] = None
     source: Optional[str] = "manual_bridge_submit"
+
+
+class OmniRouteEnforceConfigRequest(BaseModel):
+    enabled: Optional[bool] = None
+    mode: Optional[str] = None
+    allowed_intents: Optional[list[str]] = None
+    denied_intents: Optional[list[str]] = None
+    require_route_class_match_actual: Optional[bool] = None
+    require_policy_version: Optional[str] = None
 
 
 class OmniRouteMultiCallRequest(BaseModel):
@@ -1187,8 +1207,40 @@ async def execute_omniroute_multi_call_api(body: OmniRouteMultiCallRequest):
             {"task_id": result.get("task_id"), "successful_count": result.get("successful_count"), "consensus_status": result.get("consensus_status")},
         )
         return {"ok": True, "result": result, "snapshot": _latest_omniroute_snapshot()}
+    except HTTPException:
+        raise
     except Exception as exc:
         _write_omniroute_event("multi_task_execution_error", {"error": repr(exc)})
+        raise HTTPException(status_code=500, detail=repr(exc))
+
+
+@app.post("/api/omniroute/enforce/config")
+async def set_omniroute_enforce_config_api(body: OmniRouteEnforceConfigRequest):
+    try:
+        from agent.pgg_archon_quantum_channel_router import write_route_enforce_canary_config
+
+        update = {k: v for k, v in body.model_dump().items() if v is not None}
+        cfg = write_route_enforce_canary_config(update)
+        _write_omniroute_event("route_enforce_canary_config_updated", {"enabled": cfg.get("enabled"), "mode": cfg.get("mode")})
+        return {"ok": True, "config": cfg, "snapshot": _latest_omniroute_snapshot()}
+    except Exception as exc:
+        _write_omniroute_event("route_enforce_canary_config_error", {"error": repr(exc)})
+        raise HTTPException(status_code=500, detail=repr(exc))
+
+
+@app.post("/api/omniroute/enforce/selftest")
+async def run_omniroute_enforce_selftest_api():
+    try:
+        from agent.pgg_archon_quantum_channel_router import run_route_enforce_canary_selftest
+
+        result = run_route_enforce_canary_selftest()
+        out_path = Path.home() / ".hermes" / "workspace" / "github_absorption" / "9router" / "analysis" / "omniroute-v28-canary-selftest-latest.json"
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
+        _write_omniroute_event("route_enforce_canary_selftest", {"status": result.get("status"), "passed": result.get("passed"), "path": str(out_path)})
+        return {"ok": bool(result.get("passed")), "result": result, "path": str(out_path), "snapshot": _latest_omniroute_snapshot()}
+    except Exception as exc:
+        _write_omniroute_event("route_enforce_canary_selftest_error", {"error": repr(exc)})
         raise HTTPException(status_code=500, detail=repr(exc))
 
 
@@ -1241,6 +1293,8 @@ async def submit_omniroute_bridge_task_api(body: OmniRouteBridgeSubmitRequest):
             },
         )
         return {"ok": True, "bridge": bridge, "result": result, "snapshot": _latest_omniroute_snapshot()}
+    except HTTPException:
+        raise
     except Exception as exc:
         _write_omniroute_event("auto_evidence_bridge_error", {"error": repr(exc), "source": body.source or ""})
         raise HTTPException(status_code=500, detail=repr(exc))
@@ -1267,6 +1321,8 @@ async def execute_omniroute_main_task_api(body: OmniRouteTaskRequest):
             },
         )
         return {"ok": True, "result": result, "snapshot": _latest_omniroute_snapshot()}
+    except HTTPException:
+        raise
     except Exception as exc:
         _write_omniroute_event("main_task_execution_error", {"error": repr(exc)})
         raise HTTPException(status_code=500, detail=repr(exc))
@@ -1288,6 +1344,8 @@ async def execute_omniroute_task_api(body: OmniRouteTaskRequest):
             {"task_id": result.get("task_id"), "provider": result.get("provider"), "success": result.get("success")},
         )
         return {"ok": True, "result": result, "snapshot": _latest_omniroute_snapshot()}
+    except HTTPException:
+        raise
     except Exception as exc:
         _write_omniroute_event("task_execution_error", {"error": repr(exc)})
         raise HTTPException(status_code=500, detail=repr(exc))
@@ -1309,6 +1367,8 @@ async def call_omniroute_provider(body: OmniRouteProviderCallRequest):
             {"provider": result.get("provider"), "participated": result.get("participated"), "http_status": result.get("http_status")},
         )
         return {"ok": True, "result": result, "snapshot": _latest_omniroute_snapshot()}
+    except HTTPException:
+        raise
     except Exception as exc:
         _write_omniroute_event("provider_participation_error", {"error": repr(exc)})
         raise HTTPException(status_code=500, detail=repr(exc))
@@ -1325,6 +1385,8 @@ async def decide_omniroute_route(body: OmniRouteDecisionRequest):
         )
         _write_omniroute_event("route_decision_recorded", {"selected_provider": decision.get("selected_provider"), "source": decision.get("selected_source")})
         return {"ok": True, "decision": decision, "snapshot": _latest_omniroute_snapshot()}
+    except HTTPException:
+        raise
     except Exception as exc:
         _write_omniroute_event("route_decision_error", {"error": repr(exc)})
         raise HTTPException(status_code=500, detail=repr(exc))

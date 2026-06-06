@@ -7,6 +7,7 @@ from pathlib import Path
 from unittest.mock import patch, MagicMock
 
 import pytest
+import asyncio
 
 from hermes_cli.config import (
     reload_env,
@@ -32,6 +33,45 @@ def test_omniroute_web_validators_block_mimo_and_clamp_timeout():
         web_server._omniroute_validate_text("", field="task")
     with pytest.raises(HTTPException):
         web_server._omniroute_validate_text("x" * (web_server.OMNIROUTE_MAX_TASK_CHARS + 1), field="task")
+
+
+def test_omniroute_endpoint_mimo_rejections_remain_http_400(monkeypatch):
+    from fastapi import HTTPException
+    from hermes_cli import web_server
+
+    async def exercise():
+        cases = [
+            web_server.execute_omniroute_multi_call_api(web_server.OmniRouteMultiCallRequest(task="x", providers=["mimo"])),
+            web_server.set_omniroute_bridge_config_api(web_server.OmniRouteBridgeConfigRequest(enabled=True, requested_provider="mimo")),
+            web_server.execute_omniroute_main_task_api(web_server.OmniRouteTaskRequest(task="x", requested_provider="mimo")),
+            web_server.execute_omniroute_task_api(web_server.OmniRouteTaskRequest(task="x", requested_provider="mimo")),
+            web_server.call_omniroute_provider(web_server.OmniRouteProviderCallRequest(prompt="x", requested_provider="mimo")),
+            web_server.decide_omniroute_route(web_server.OmniRouteDecisionRequest(requested_provider="mimo")),
+        ]
+        for coro in cases:
+            with pytest.raises(HTTPException) as exc:
+                await coro
+            assert exc.value.status_code == 400
+    asyncio.run(exercise())
+
+
+def test_omniroute_route_enforce_canary_snapshot_and_config_api(monkeypatch, tmp_path):
+    from hermes_cli import web_server
+    from agent import pgg_archon_quantum_channel_router as router
+
+    monkeypatch.setattr(router, "OMNIROUTE_ENFORCE_CONFIG", tmp_path / "enforce.json")
+    monkeypatch.setattr(router, "OMNIROUTE_ENFORCE_EVENTS", tmp_path / "events.jsonl")
+    panel = web_server._latest_omniroute_route_enforce_canary()
+    assert panel["config"]["enabled"] is False
+    assert panel["recent_events"] == []
+    body = web_server.OmniRouteEnforceConfigRequest(enabled=True, mode="canary", allowed_intents=["general", "chinese_legal"], denied_intents=[])
+    update = {k: v for k, v in body.model_dump().items() if v is not None}
+    cfg = router.write_route_enforce_canary_config(update)
+    assert cfg["enabled"] is True
+    assert cfg["mode"] == "canary"
+    assert "chinese_legal" not in cfg["allowed_intents"]
+    assert "chinese_legal" in cfg["denied_intents"]
+    assert "Default is fail-open" in cfg["rollback"]
 
 
 def test_omniroute_route_suggest_metrics_exposes_post_policy_window(monkeypatch):
