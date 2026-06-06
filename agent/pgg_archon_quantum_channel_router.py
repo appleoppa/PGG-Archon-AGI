@@ -829,6 +829,63 @@ def execute_provider_substitution_canary(task: str, task_type: str = "exact", ti
     return result
 
 
+def run_provider_substitution_fallback_window(sample_count: int = 20, fallback_provider: str = "deepseek", timeout: float = 60.0) -> dict[str, Any]:
+    sample_count = max(2, min(int(sample_count or 20), 50))
+    started_at = _now_iso()
+    results: list[dict[str, Any]] = []
+    for i in range(sample_count):
+        case = "exact" if i % 2 == 0 else "general"
+        prompt = f"Reply exactly: PGG_V32_{case.upper()}_{i:03d}" if case == "exact" else f"Reply exactly: PGG_V32_GENERAL_{i:03d}"
+        item = execute_provider_substitution_canary(prompt, task_type=case, timeout=timeout, fallback_provider=fallback_provider)
+        ex = item.get("execution", {}) if isinstance(item, dict) else {}
+        fb = item.get("fallback_execution", {}) if isinstance(item, dict) else {}
+        results.append({
+            "index": i,
+            "case": case,
+            "success": bool(item.get("success")),
+            "same_class_success": bool(item.get("same_class_substitution_success")),
+            "fallback_success": bool(item.get("fallback_participation_success")),
+            "primary_provider": ex.get("provider"),
+            "primary_http": ex.get("http_status"),
+            "primary_participated": ex.get("participated"),
+            "fallback_provider": fb.get("provider"),
+            "fallback_http": fb.get("http_status"),
+            "fallback_participated": fb.get("participated"),
+            "cross_class_fallback": fb.get("cross_class_fallback"),
+            "answer_preview": fb.get("answer_preview") or ex.get("answer_preview"),
+        })
+    leakage = []
+    for case, prompt in [("legal", "中文法律合同诉讼法条"), ("audit", "audit judge benchmark verdict"), ("agi", "PGG Archon AGI Rust router evolution")]:
+        plan = plan_provider_substitution_canary(prompt, task_type=case)
+        leakage.append({"case": case, "allowed": bool(plan.get("allowed")), "provider": plan.get("substitution_provider"), "reasons": (plan.get("enforce_decision") or {}).get("reasons", [])})
+    n = len(results)
+    primary_success = sum(1 for r in results if r["same_class_success"])
+    fallback_success = sum(1 for r in results if r["fallback_success"])
+    total_success = sum(1 for r in results if r["success"])
+    leakage_count = sum(1 for r in leakage if r["allowed"])
+    passed = n == sample_count and total_success == n and fallback_success == n and primary_success == 0 and leakage_count == 0
+    summary = {
+        "schema": "PGGArchonOmniRouteProviderSubstitutionFallbackWindow/v1",
+        "started_at": started_at,
+        "finished_at": _now_iso(),
+        "sample_count": sample_count,
+        "status": "PASS" if passed else "FAIL",
+        "passed": passed,
+        "primary_success_count": primary_success,
+        "fallback_success_count": fallback_success,
+        "total_success_count": total_success,
+        "primary_http_502_count": sum(1 for r in results if r["primary_http"] == 502),
+        "cross_class_fallback_count": sum(1 for r in results if r["cross_class_fallback"]),
+        "leakage_count": leakage_count,
+        "leakage": leakage,
+        "results_head": results[:5],
+        "results_tail": results[-5:],
+        "boundary": "Fallback window proves callable fallback participation only; it is not GPT same-class substitution or global route-enforce.",
+    }
+    _append_substitution_event({"ts": datetime.now(timezone.utc).timestamp(), "event": "provider_substitution_fallback_window", "payload": summary})
+    return summary
+
+
 def record_omniroute_core_mirror(
     *,
     user_message: Any,

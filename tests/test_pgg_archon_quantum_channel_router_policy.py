@@ -173,6 +173,30 @@ def test_provider_substitution_fallback_is_cross_class_participation_not_same_cl
     assert calls == [("substitution_canary:exact", "gpt55"), ("substitution_canary_fallback:exact", "deepseek")]
 
 
+def test_provider_substitution_fallback_window_summarizes_cross_class(monkeypatch, tmp_path) -> None:
+    monkeypatch.setattr(mod, "OMNIROUTE_SUBSTITUTION_EVENTS", tmp_path / "subst.jsonl")
+    def fake_plan(task, task_type="exact"):
+        if task_type in mod.OMNIROUTE_HARD_DENIED_ENFORCE_INTENTS or task_type in {"legal", "audit", "agi"}:
+            return {"allowed": False, "substitution_provider": "", "enforce_decision": {"reasons": [f"intent_denied:{task_type}"]}}
+        return {"allowed": True, "substitution_provider": "gpt55", "enforce_decision": {"reasons": []}}
+
+    monkeypatch.setattr(mod, "plan_provider_substitution_canary", fake_plan)
+    monkeypatch.setattr(mod, "execute_provider_substitution_canary", lambda task, task_type="exact", timeout=60.0, fallback_provider="deepseek": {
+        "success": True,
+        "same_class_substitution_success": False,
+        "fallback_participation_success": True,
+        "execution": {"provider": "gpt55", "http_status": 502, "participated": False},
+        "fallback_execution": {"provider": fallback_provider, "http_status": 200, "participated": True, "cross_class_fallback": True, "answer_preview": "ok"},
+    })
+    summary = mod.run_provider_substitution_fallback_window(sample_count=1, fallback_provider="deepseek")
+    assert summary["sample_count"] == 2
+    assert summary["passed"] is True
+    assert summary["primary_success_count"] == 0
+    assert summary["fallback_success_count"] == 2
+    assert summary["cross_class_fallback_count"] == 2
+    assert "not GPT same-class substitution" in summary["boundary"]
+
+
 def test_route_policy_intent_classification_order_and_version() -> None:
     assert mod.OMNIROUTE_ROUTE_POLICY_VERSION == "v2.6-fresh-calibrated-window-20260606"
     assert mod._classify_route_intent(prompt="legal contract litigation review")["intent"] == "chinese_legal"

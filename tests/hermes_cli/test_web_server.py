@@ -47,6 +47,7 @@ def test_omniroute_endpoint_mimo_rejections_remain_http_400(monkeypatch):
             web_server.execute_omniroute_task_api(web_server.OmniRouteTaskRequest(task="x", requested_provider="mimo")),
             web_server.call_omniroute_provider(web_server.OmniRouteProviderCallRequest(prompt="x", requested_provider="mimo")),
             web_server.execute_omniroute_provider_substitution_canary_api(web_server.OmniRouteSubstitutionCanaryRequest(task="x", fallback_provider="mimo")),
+            web_server.execute_omniroute_provider_substitution_fallback_window_api(web_server.OmniRouteFallbackWindowRequest(fallback_provider="mimo")),
             web_server.decide_omniroute_route(web_server.OmniRouteDecisionRequest(requested_provider="mimo")),
         ]
         for coro in cases:
@@ -113,6 +114,22 @@ def test_omniroute_substitution_plan_and_execute_apis_are_bounded(monkeypatch, t
     assert result["ok"] is False
     assert result["result"]["executed"] is False
     assert "No provider call" in result["result"]["boundary"]
+
+
+def test_omniroute_substitution_fallback_window_api_is_bounded(monkeypatch, tmp_path):
+    from hermes_cli import web_server
+    from agent import pgg_archon_quantum_channel_router as router
+
+    monkeypatch.setattr(web_server.Path, "home", staticmethod(lambda: tmp_path))
+
+    def fake_window(sample_count=20, fallback_provider="deepseek", timeout=60.0):
+        return {"schema": "PGGArchonOmniRouteProviderSubstitutionFallbackWindow/v1", "passed": True, "sample_count": 2, "fallback_success_count": 2, "primary_success_count": 0, "boundary": "Fallback window proves callable fallback participation only; it is not GPT same-class substitution or global route-enforce."}
+
+    monkeypatch.setattr(router, "run_provider_substitution_fallback_window", fake_window)
+    result = asyncio.run(web_server.execute_omniroute_provider_substitution_fallback_window_api(web_server.OmniRouteFallbackWindowRequest(sample_count=1, fallback_provider="deepseek")))
+    assert result["ok"] is True
+    assert result["result"]["primary_success_count"] == 0
+    assert "not GPT same-class substitution" in result["result"]["boundary"]
 
 
 def test_omniroute_substitution_endpoints_keep_validation_http_400():

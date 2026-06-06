@@ -993,6 +993,8 @@ def _latest_omniroute_route_enforce_canary() -> dict[str, Any]:
         latest = _read_json_file(latest_path) if latest_path.exists() else {}
         subst_latest_path = Path.home() / ".hermes" / "workspace" / "github_absorption" / "9router" / "analysis" / "omniroute-v30-provider-substitution-canary-latest.json"
         subst_latest = _read_json_file(subst_latest_path) if subst_latest_path.exists() else {}
+        fallback_window_path = Path.home() / ".hermes" / "workspace" / "github_absorption" / "9router" / "analysis" / "omniroute-v32-fallback-window-latest.json"
+        fallback_window = _read_json_file(fallback_window_path) if fallback_window_path.exists() else {}
         return {
             "config": read_route_enforce_canary_config(),
             "recent_events": recent_route_enforce_events(20),
@@ -1001,6 +1003,8 @@ def _latest_omniroute_route_enforce_canary() -> dict[str, Any]:
             "recent_substitution_events": recent_provider_substitution_events(20),
             "latest_substitution_canary": subst_latest,
             "latest_substitution_canary_path": str(subst_latest_path),
+            "latest_fallback_window": fallback_window,
+            "latest_fallback_window_path": str(fallback_window_path),
         }
     except Exception as exc:
         return {"config": {}, "recent_events": [], "error": repr(exc)}
@@ -1131,6 +1135,12 @@ class OmniRouteEnforceWindowTestRequest(BaseModel):
 class OmniRouteSubstitutionCanaryRequest(BaseModel):
     task: str = "Reply exactly: PGG_V30_CANARY_OK"
     task_type: Optional[str] = "exact"
+    timeout: Optional[float] = 60.0
+    fallback_provider: Optional[str] = "deepseek"
+
+
+class OmniRouteFallbackWindowRequest(BaseModel):
+    sample_count: Optional[int] = 20
     timeout: Optional[float] = 60.0
     fallback_provider: Optional[str] = "deepseek"
 
@@ -1313,6 +1323,24 @@ async def execute_omniroute_provider_substitution_canary_api(body: OmniRouteSubs
         raise
     except Exception as exc:
         _write_omniroute_event("provider_substitution_canary_error", {"error": repr(exc)})
+        raise HTTPException(status_code=500, detail=repr(exc))
+
+
+@app.post("/api/omniroute/substitution/fallback-window")
+async def execute_omniroute_provider_substitution_fallback_window_api(body: OmniRouteFallbackWindowRequest):
+    try:
+        from agent.pgg_archon_quantum_channel_router import run_provider_substitution_fallback_window
+
+        result = run_provider_substitution_fallback_window(sample_count=int(body.sample_count or 20), fallback_provider=_omniroute_validate_requested_provider(body.fallback_provider or "deepseek"), timeout=_omniroute_clamp_timeout(body.timeout, 60.0))
+        out_path = Path.home() / ".hermes" / "workspace" / "github_absorption" / "9router" / "analysis" / "omniroute-v32-fallback-window-latest.json"
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
+        _write_omniroute_event("provider_substitution_fallback_window", {"status": result.get("status"), "sample_count": result.get("sample_count"), "fallback_success_count": result.get("fallback_success_count"), "path": str(out_path)})
+        return {"ok": bool(result.get("passed")), "result": result, "path": str(out_path), "snapshot": _latest_omniroute_snapshot()}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        _write_omniroute_event("provider_substitution_fallback_window_error", {"error": repr(exc)})
         raise HTTPException(status_code=500, detail=repr(exc))
 
 
