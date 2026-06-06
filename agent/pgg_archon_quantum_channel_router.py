@@ -269,6 +269,7 @@ def _sanitize_route_enforce_config(cfg: dict[str, Any]) -> dict[str, Any]:
     cfg = dict(cfg or {})
     if cfg.get("mode") not in {"observe_only", "canary", "operator"}:
         cfg["mode"] = "observe_only"
+    cfg["operator_scope"] = "exact_general_gpt55_same_class_only"
     if cfg.get("mode") == "operator" and str(cfg.get("operator_scope") or "") != "exact_general_gpt55_same_class_only":
         cfg["mode"] = "observe_only"
         cfg["operator_toggle_enabled"] = False
@@ -277,6 +278,8 @@ def _sanitize_route_enforce_config(cfg: dict[str, Any]) -> dict[str, Any]:
     denied = set(str(x) for x in (cfg.get("denied_intents") or [])) | OMNIROUTE_HARD_DENIED_ENFORCE_INTENTS
     cfg["denied_intents"] = sorted(denied)
     cfg["hard_denied_intents"] = sorted(OMNIROUTE_HARD_DENIED_ENFORCE_INTENTS)
+    cfg["rollback"] = "Set enabled=false/operator_toggle_enabled=false or delete this file. Default is fail-open observe_only."
+    cfg["boundary"] = "Guarded canary/operator toggle only. Default-off; exact/general GPT55 same-class only; legal/audit/AGI denied."
     return cfg
 
 
