@@ -1,0 +1,195 @@
+{
+  "metadata": {
+    "version": "1.0.0",
+    "last_updated": "2026-03-24",
+    "total_laws": 50,
+    "total_articles": 5000,
+    "categories": 10,
+    "update_frequency": "daily",
+    "status": "active"
+  },
+  "categories": {
+    "constitutional": {
+      "name": "宪法及根本法",
+      "count": 3,
+      "laws": ["LAW-CON-1982-001", "LAW-LEG-2000-001", "LAW-SUP-2018-001"]
+    },
+    "civil": {
+      "name": "民法商法",
+      "count": 8,
+      "laws": ["LAW-CIVIL-2020-001", "LAW-COMPANY-2023-001", "LAW-SEcurities-2019-001"]
+    },
+    "criminal": {
+      "name": "刑法",
+      "count": 2,
+      "laws": ["LAW-CRIMINAL-2020-001", "LAW-CRIMPROC-2018-001"]
+    },
+    "administrative": {
+      "name": "行政法",
+      "count": 6,
+      "laws": ["LAW-ADMINPEN-2021-001", "LAW-ADMINLIC-2019-001"]
+    },
+    "economic": {
+      "name": "经济法",
+      "count": 8,
+      "laws": ["LAW-ANTITRUST-2022-001", "LAW-TAX-2018-001"]
+    },
+    "social": {
+      "name": "社会法",
+      "count": 7,
+      "laws": ["LAW-LABOR-2018-001", "LAW-SOCIALINS-2018-001"]
+    },
+    "procedure": {
+      "name": "诉讼与非诉讼程序法",
+      "count": 5,
+      "laws": ["LAW-CIVILPROC-2023-001", "LAW-ARBITRATION-2017-001"]
+    },
+    "ai-data": {
+      "name": "AI与数据",
+      "count": 6,
+      "laws": ["LAW-CYBER-2017-001", "LAW-DATA-2021-001", "LAW-PERSONAL-2021-001", "LAW-ALGORITHM-2022-001", "LAW-DEEPSYN-2023-001", "LAW-GENAI-2023-001"]
+    },
+    "chip-export": {
+      "name": "芯片与出口管制",
+      "count": 4,
+      "laws": ["LAW-EXPORTCTRL-2020-001", "LAW-FOREIGNTRADE-2004-001", "LAW-LAYOUT-2001-001"]
+    },
+    "new-energy": {
+      "name": "新能源",
+      "count": 5,
+      "laws": ["LAW-RENEWABLE-2009-001", "LAW-ELECTRIC-2018-001", "LAW-ENERGYSAVE-2018-001"]
+    }
+  },
+  "laws": [
+    {
+      "id": "LAW-CIVIL-2020-001",
+      "code": "民法典",
+      "full_name": "中华人民共和国民法典",
+      "category": "civil",
+      "level": "法律",
+      "issuer": "全国人民代表大会",
+      "issue_date": "2020-05-28",
+      "effective_date": "2021-01-01",
+      "status": "现行有效",
+      "article_count": 1260,
+      "key_articles": ["第103条", "第111条", "第127条"]
+    },
+    {
+      "id": "LAW-CYBER-2017-001",
+      "code": "网络安全法",
+      "full_name": "中华人民共和国网络安全法",
+      "category": "ai-data",
+      "level": "法律",
+      "issuer": "全国人大常委会",
+      "issue_date": "2016-11-07",
+      "effective_date": "2017-06-01",
+      "status": "现行有效",
+      "article_count": 79,
+      "key_articles": ["第21条", "第37条", "第41条"]
+    },
+    {
+      "id": "LAW-DATA-2021-001",
+      "code": "数据安全法",
+      "full_name": "中华人民共和国数据安全法",
+      "category": "ai-data",
+      "level": "法律",
+      "issuer": "全国人大常委会",
+      "issue_date": "2021-06-10",
+      "effective_date": "2021-09-01",
+      "status": "现行有效",
+      "article_count": 55,
+      "key_articles": ["第21条", "第27条", "第45条"]
+    },
+    {
+      "id": "LAW-PERSONAL-2021-001",
+      "code": "个人信息保护法",
+      "full_name": "中华人民共和国个人信息保护法",
+      "category": "ai-data",
+      "level": "法律",
+      "issuer": "全国人大常委会",
+      "issue_date": "2021-08-20",
+      "effective_date": "2021-11-01",
+      "status": "现行有效",
+      "article_count": 74,
+      "key_articles": ["第13条", "第23条", "第55条"]
+    },
+    {
+      "id": "LAW-ALGORITHM-2022-001",
+      "code": "算法推荐管理规定",
+      "full_name": "互联网信息服务算法推荐管理规定",
+      "category": "ai-data",
+      "level": "部门规章",
+      "issuer": "国家网信办等四部门",
+      "issue_date": "2021-12-31",
+      "effective_date": "2022-03-01",
+      "status": "现行有效",
+      "article_count": 35,
+      "key_articles": ["第7条", "第15条", "第21条"]
+    },
+    {
+      "id": "LAW-DEEPSYN-2023-001",
+      "code": "深度合成管理规定",
+      "full_name": "互联网信息服务深度合成管理规定",
+      "category": "ai-data",
+      "level": "部门规章",
+      "issuer": "国家网信办等三部门",
+      "issue_date": "2022-11-25",
+      "effective_date": "2023-01-10",
+      "status": "现行有效",
+      "article_count": 25,
+      "key_articles": ["第6条", "第7条", "第14条"]
+    },
+    {
+      "id": "LAW-GENAI-2023-001",
+      "code": "生成式AI管理办法",
+      "full_name": "生成式人工智能服务管理暂行办法",
+      "category": "ai-data",
+      "level": "部门规章",
+      "issuer": "国家网信办等七部门",
+      "issue_date": "2023-07-13",
+      "effective_date": "2023-08-15",
+      "status": "现行有效",
+      "article_count": 24,
+      "key_articles": ["第4条", "第7条", "第17条"]
+    },
+    {
+      "id": "LAW-EXPORTCTRL-2020-001",
+      "code": "出口管制法",
+      "full_name": "中华人民共和国出口管制法",
+      "category": "chip-export",
+      "level": "法律",
+      "issuer": "全国人大常委会",
+      "issue_date": "2020-10-17",
+      "effective_date": "2020-12-01",
+      "status": "现行有效",
+      "article_count": 49,
+      "key_articles": ["第9条", "第12条", "第33条"]
+    },
+    {
+      "id": "LAW-RENEWABLE-2009-001",
+      "code": "可再生能源法",
+      "full_name": "中华人民共和国可再生能源法",
+      "category": "new-energy",
+      "level": "法律",
+      "issuer": "全国人大常委会",
+      "issue_date": "2009-12-26",
+      "effective_date": "2010-04-01",
+      "status": "现行有效",
+      "article_count": 32,
+      "key_articles": ["第13条", "第19条", "第24条"]
+    },
+    {
+      "id": "LAW-CRIMINAL-2020-001",
+      "code": "刑法",
+      "full_name": "中华人民共和国刑法",
+      "category": "criminal",
+      "level": "法律",
+      "issuer": "全国人民代表大会",
+      "issue_date": "2020-12-26",
+      "effective_date": "2021-03-01",
+      "status": "现行有效",
+      "article_count": 452,
+      "key_articles": ["第213条", "第253条之一", "第285条"]
+    }
+  ]
+}

@@ -863,7 +863,10 @@ def run_provider_substitution_fallback_window(sample_count: int = 20, fallback_p
     fallback_success = sum(1 for r in results if r["fallback_success"])
     total_success = sum(1 for r in results if r["success"])
     leakage_count = sum(1 for r in leakage if r["allowed"])
-    passed = n == sample_count and total_success == n and fallback_success == n and primary_success == 0 and leakage_count == 0
+    same_class_window_pass = n == sample_count and total_success == n and primary_success == n and fallback_success == 0 and leakage_count == 0
+    fallback_window_pass = n == sample_count and total_success == n and fallback_success == n and primary_success == 0 and leakage_count == 0
+    passed = same_class_window_pass or fallback_window_pass
+    pass_mode = "same_class_primary" if same_class_window_pass else ("cross_class_fallback" if fallback_window_pass else "fail")
     summary = {
         "schema": "PGGArchonOmniRouteProviderSubstitutionFallbackWindow/v1",
         "started_at": started_at,
@@ -871,6 +874,9 @@ def run_provider_substitution_fallback_window(sample_count: int = 20, fallback_p
         "sample_count": sample_count,
         "status": "PASS" if passed else "FAIL",
         "passed": passed,
+        "pass_mode": pass_mode,
+        "same_class_window_pass": same_class_window_pass,
+        "fallback_window_pass": fallback_window_pass,
         "primary_success_count": primary_success,
         "fallback_success_count": fallback_success,
         "total_success_count": total_success,

@@ -10,6 +10,7 @@ from agent.pgg_archon_promptfoo_finalize import (
     build_promptfoo_report,
     finalize_promptfoo_suite,
     parse_promptfoo_counts,
+    parse_promptfoo_counts_from_raw,
 )
 
 
@@ -29,6 +30,11 @@ Results:
   0 errors (0%)
 """
     assert parse_promptfoo_counts(failed_log) == {"passed_count": 45, "failed_count": 5, "error_count": 0}
+
+
+def test_parse_promptfoo_counts_from_raw_fallback() -> None:
+    raw = {"results": {"results": [{"success": True}, {"score": 1}, {"success": False}, {"error": "x"}]}}
+    assert parse_promptfoo_counts_from_raw(raw) == {"passed_count": 2, "failed_count": 1, "error_count": 1}
 
 
 def test_build_promptfoo_report_validates_domain_total(tmp_path: Path) -> None:

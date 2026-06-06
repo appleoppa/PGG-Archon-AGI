@@ -1,0 +1,11 @@
+{
+  "owner": "sealawyer2026",
+  "slug": "skill-law-database",
+  "displayName": "法律法规库底座",
+  "latest": {
+    "version": "1.0.0",
+    "publishedAt": 1774367526975,
+    "commit": "https://github.com/openclaw/skills/commit/b1fc6d07ca374d4c6c55cb92dfaf4f58fcb7eba6"
+  },
+  "history": []
+}

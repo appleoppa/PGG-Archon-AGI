@@ -1,0 +1,19 @@
+# Minimal Hermes config overlay template for portable restore.
+# Merge manually with `hermes config` or your current ~/.hermes/config.yaml.
+# Do not put real API keys here; use environment variables.
+
+profile: default
+pgg_archon:
+  evolution_manifest: ~/.hermes/data/EVOLUTION_MANIFEST.json
+  portable_restore_version: 1
+providers:
+  gpt55_5yuantoken:
+    base_url: https://chuangagent.eu.cc/v1
+    model: gpt-5.5
+    key_env: GPT55_5YUANTOKEN_API_KEY
+    api_mode: codex_responses
+  claude_opus46_5yuantoken:
+    base_url: https://chuangagent.eu.cc/v1
+    model: claude-opus-4-6
+    key_env: CLAUDE_OPUS47_5YUANTOKEN_API_KEY
+    api_mode: codex_responses

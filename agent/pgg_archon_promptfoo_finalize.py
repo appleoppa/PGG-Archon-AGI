@@ -44,6 +44,31 @@ def parse_promptfoo_counts(log_text: str) -> dict[str, int]:
     return {"passed_count": passed, "failed_count": failed, "error_count": errors}
 
 
+def parse_promptfoo_counts_from_raw(raw_obj: dict[str, Any]) -> dict[str, int]:
+    """Fallback for launchd/postcheck runs when a shared promptfoo log is stale or truncated.
+
+    This still uses promptfoo's raw JSON artifact, not invented counts. A result
+    is passed only when promptfoo marked it successful or gave score==1.
+    """
+    rows = raw_obj.get("results", {}).get("results") if isinstance(raw_obj.get("results"), dict) else None
+    if not isinstance(rows, list):
+        raise ValueError("Promptfoo raw output missing results.results list")
+    passed = 0
+    failed = 0
+    errors = 0
+    for row in rows:
+        if not isinstance(row, dict):
+            errors += 1
+            continue
+        if row.get("success") is True or row.get("score") == 1:
+            passed += 1
+        elif row.get("error") or row.get("failureReason"):
+            errors += 1
+        else:
+            failed += 1
+    return {"passed_count": passed, "failed_count": failed, "error_count": errors}
+
+
 def load_promptfoo_raw(path: str | Path) -> dict[str, Any]:
     p = Path(path).expanduser()
     try:
@@ -75,7 +100,12 @@ def build_promptfoo_report(
         if not p.exists():
             raise FileNotFoundError(str(p))
     raw_obj = load_promptfoo_raw(raw_path)
-    counts = parse_promptfoo_counts(log_path.read_text(encoding="utf-8", errors="replace"))
+    try:
+        counts = parse_promptfoo_counts(log_path.read_text(encoding="utf-8", errors="replace"))
+        counts_source = "promptfoo_cli_log"
+    except ValueError:
+        counts = parse_promptfoo_counts_from_raw(raw_obj)
+        counts_source = "promptfoo_raw_json_fallback"
     sample_count = sum(counts.values())
     if domains and sum(domains.values()) != sample_count:
         raise ValueError(f"domains total {sum(domains.values())} != sample_count {sample_count}")
@@ -100,7 +130,8 @@ def build_promptfoo_report(
         "domains": domains,
         **counts,
         "exit_code": 0 if counts["error_count"] == 0 else 100,
-        "metric": "promptfoo assertions pass/fail/error counts from CLI log",
+        "metric": "promptfoo assertions pass/fail/error counts from CLI log or raw JSON fallback",
+        "counts_source": counts_source,
         "raw_result_path": str(raw_path),
         "raw_result_sha256": sha256_file(raw_path),
         "run_log_path": str(log_path),

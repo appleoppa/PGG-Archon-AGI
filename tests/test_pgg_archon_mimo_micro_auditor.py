@@ -4,11 +4,12 @@ import json
 from pathlib import Path
 
 from agent.pgg_archon_mimo_micro_auditor import (
+    BOUNDARY,
     MicroAuditClaim,
     MicroAuditResult,
-    BOUNDARY,
     deterministic_boundary_check,
     parse_json_candidate,
+    resolve_hermes_cli,
     run_micro_audits,
 )
 
@@ -23,6 +24,11 @@ def test_deterministic_boundary_check_flags_obvious_overclaim() -> None:
     result = deterministic_boundary_check(claim)
     assert result["status"] == "WATCH"
     assert result["hits"]
+
+
+def test_resolve_hermes_cli_uses_absolute_candidate() -> None:
+    resolved = resolve_hermes_cli()
+    assert resolved == "hermes" or Path(resolved).exists()
 
 
 def test_run_micro_audits_retries_unparsed_once(tmp_path: Path, monkeypatch) -> None:

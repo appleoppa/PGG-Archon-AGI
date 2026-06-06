@@ -1,0 +1,1052 @@
+{
+  "duplicate_names": [],
+  "generated_at": "2026-05-26T16:14:22.452722+00:00",
+  "items": [
+    {
+      "activity_count": 0,
+      "archive_requires_review": false,
+      "delete_allowed": false,
+      "issues": [
+        "no_recorded_activity"
+      ],
+      "name": "Market Research",
+      "path": "/Users/appleoppa/.hermes/skills/market-research-1.0.0/SKILL.md",
+      "pinned": false,
+      "score": 100,
+      "stale_candidate": false,
+      "state": "active"
+    },
+    {
+      "activity_count": 39,
+      "archive_requires_review": false,
+      "delete_allowed": false,
+      "issues": [],
+      "name": "agent-cms",
+      "path": "/Users/appleoppa/.hermes/skills/agent-cms/SKILL.md",
+      "pinned": false,
+      "score": 100,
+      "stale_candidate": false,
+      "state": "active"
+    },
+    {
+      "activity_count": 50,
+      "archive_requires_review": false,
+      "delete_allowed": false,
+      "issues": [],
+      "name": "agent-operational-governance",
+      "path": "/Users/appleoppa/.hermes/skills/general/agent-operational-governance/SKILL.md",
+      "pinned": false,
+      "score": 100,
+      "stale_candidate": false,
+      "state": "active"
+    },
+    {
+      "activity_count": 0,
+      "archive_requires_review": false,
+      "delete_allowed": false,
+      "issues": [
+        "no_recorded_activity"
+      ],
+      "name": "agentic-rl-five-layer",
+      "path": "/Users/appleoppa/.hermes/skills/workflow/agentic-rl-five-layer/SKILL.md",
+      "pinned": false,
+      "score": 100,
+      "stale_candidate": false,
+      "state": "active"
+    },
+    {
+      "activity_count": 0,
+      "archive_requires_review": false,
+      "delete_allowed": false,
+      "issues": [
+        "no_recorded_activity"
+      ],
+      "name": "apex-book-to-skill",
+      "path": "/Users/appleoppa/.hermes/skills/workflow/apex-book-to-skill/SKILL.md",
+      "pinned": false,
+      "score": 100,
+      "stale_candidate": false,
+      "state": "active"
+    },
+    {
+      "activity_count": 119,
+      "archive_requires_review": false,
+      "delete_allowed": false,
+      "issues": [],
+      "name": "apex-hermes-evolution-engine",
+      "path": "/Users/appleoppa/.hermes/skills/workflow/apex-hermes-evolution-engine/SKILL.md",
+      "pinned": false,
+      "score": 100,
+      "stale_candidate": false,
+      "state": "active"
+    },
+    {
+      "activity_count": 0,
+      "archive_requires_review": false,
+      "delete_allowed": false,
+      "issues": [
+        "no_recorded_activity"
+      ],
+      "name": "apex-runtimeos-ecc",
+      "path": "/Users/appleoppa/.hermes/skills/workflow/apex-runtimeos-ecc/SKILL.md",
+      "pinned": false,
+      "score": 100,
+      "stale_candidate": false,
+      "state": "active"
+    },
+    {
+      "activity_count": 79,
+      "archive_requires_review": false,
+      "delete_allowed": false,
+      "issues": [],
+      "name": "apex-sequence-logic",
+      "path": "/Users/appleoppa/.hermes/skills/apex-sequence-logic/SKILL.md",
+      "pinned": false,
+      "score": 100,
+      "stale_candidate": false,
+      "state": "active"
+    },
+    {
+      "activity_count": 0,
+      "archive_requires_review": false,
+      "delete_allowed": false,
+      "issues": [
+        "no_recorded_activity"
+      ],
+      "name": "apex-swarm-master-formula",
+      "path": "/Users/appleoppa/.hermes/skills/workflow/apex-swarm-master-formula/SKILL.md",
+      "pinned": false,
+      "score": 100,
+      "stale_candidate": false,
+      "state": "active"
+    },
+    {
+      "activity_count": 0,
+      "archive_requires_review": false,
+      "delete_allowed": false,
+      "issues": [
+        "no_recorded_activity"
+      ],
+      "name": "apikey-image-gen",
+      "path": "/Users/appleoppa/.hermes/skills/apikey-image-gen/SKILL.md",
+      "pinned": false,
+      "score": 100,
+      "stale_candidate": false,
+      "state": "active"
+    },
+    {
+      "activity_count": 0,
+      "archive_requires_review": false,
+      "delete_allowed": false,
+      "issues": [
+        "no_recorded_activity"
+      ],
+      "name": "apple-bankruptcy",
+      "path": "/Users/appleoppa/.hermes/skills/apple-bankruptcy-1.0.0/SKILL.md",
+      "pinned": false,
+      "score": 100,
+      "stale_candidate": false,
+      "state": "active"
+    },
+    {
+      "activity_count": 8,
+      "archive_requires_review": false,
+      "delete_allowed": false,
+      "issues": [],
+      "name": "apple-civil-litigation",
+      "path": "/Users/appleoppa/.hermes/skills/apple-civil-litigation-1.0.0/SKILL.md",
+      "pinned": false,
+      "score": 100,
+      "stale_candidate": false,
+      "state": "active"
+    },
+    {
+      "activity_count": 0,
+      "archive_requires_review": false,
+      "delete_allowed": false,
+      "issues": [
+        "no_recorded_activity"
+      ],
+      "name": "apple-corporate-law",
+      "path": "/Users/appleoppa/.hermes/skills/apple-corporate-law-1.0.0/SKILL.md",
+      "pinned": false,
+      "score": 100,
+      "stale_candidate": false,
+      "state": "active"
+    },
+    {
+      "activity_count": 0,
+      "archive_requires_review": false,
+      "delete_allowed": false,
+      "issues": [
+        "no_recorded_activity"
+      ],
+      "name": "apple-criminal-defense",
+      "path": "/Users/appleoppa/.hermes/skills/apple-criminal-defense-1.0.0/SKILL.md",
+      "pinned": false,
+      "score": 100,
+      "stale_candidate": false,
+      "state": "active"
+    },
+    {
+      "activity_count": 95,
+      "archive_requires_review": false,
+      "delete_allowed": false,
+      "issues": [],
+      "name": "apple-hub-orchestrator",
+      "path": "/Users/appleoppa/.hermes/skills/apple-hub-orchestrator/SKILL.md",
+      "pinned": false,
+      "score": 100,
+      "stale_candidate": false,
+      "state": "active"
+    },
+    {
+      "activity_count": 2,
+      "archive_requires_review": false,
+      "delete_allowed": false,
+      "issues": [],
+      "name": "apple-inspection-team",
+      "path": "/Users/appleoppa/.hermes/skills/apple-inspection-team-1.0.0/SKILL.md",
+      "pinned": false,
+      "score": 100,
+      "stale_candidate": false,
+      "state": "active"
+    },
+    {
+      "activity_count": 16,
+      "archive_requires_review": false,
+      "delete_allowed": false,
+      "issues": [],
+      "name": "apple-lawyer-suite",
+      "path": "/Users/appleoppa/.hermes/skills/apple-lawyer-suite-1.0.0/SKILL.md",
+      "pinned": false,
+      "score": 100,
+      "stale_candidate": false,
+      "state": "active"
+    },
+    {
+      "activity_count": 8,
+      "archive_requires_review": false,
+      "delete_allowed": false,
+      "issues": [],
+      "name": "apple-legal-polish",
+      "path": "/Users/appleoppa/.hermes/skills/apple-legal-polish-1.0.0/SKILL.md",
+      "pinned": false,
+      "score": 100,
+      "stale_candidate": false,
+      "state": "active"
+    },
+    {
+      "activity_count": 4,
+      "archive_requires_review": false,
+      "delete_allowed": false,
+      "issues": [],
+      "name": "apple-legal-research",
+      "path": "/Users/appleoppa/.hermes/skills/apple-legal-research-1.0.0/SKILL.md",
+      "pinned": false,
+      "score": 100,
+      "stale_candidate": false,
+      "state": "active"
+    },
+    {
+      "activity_count": 4,
+      "archive_requires_review": false,
+      "delete_allowed": false,
+      "issues": [],
+      "name": "apple-litigation-strategy",
+      "path": "/Users/appleoppa/.hermes/skills/apple-litigation-strategy-1.0.0/SKILL.md",
+      "pinned": false,
+      "score": 100,
+      "stale_candidate": false,
+      "state": "active"
+    },
+    {
+      "activity_count": 0,
+      "archive_requires_review": false,
+      "delete_allowed": false,
+      "issues": [
+        "no_recorded_activity"
+      ],
+      "name": "apple-ma-law",
+      "path": "/Users/appleoppa/.hermes/skills/apple-ma-law-1.0.0/SKILL.md",
+      "pinned": false,
+      "score": 100,
+      "stale_candidate": false,
+      "state": "active"
+    },
+    {
+      "activity_count": 0,
+      "archive_requires_review": false,
+      "delete_allowed": false,
+      "issues": [
+        "no_recorded_activity"
+      ],
+      "name": "apple-realestate-dev-law",
+      "path": "/Users/appleoppa/.hermes/skills/apple-realestate-dev-law-1.0.0/SKILL.md",
+      "pinned": false,
+      "score": 100,
+      "stale_candidate": false,
+      "state": "active"
+    },
+    {
+      "activity_count": 0,
+      "archive_requires_review": false,
+      "delete_allowed": false,
+      "issues": [
+        "no_recorded_activity"
+      ],
+      "name": "arxiv",
+      "path": "/Users/appleoppa/.hermes/skills/arxiv/SKILL.md",
+      "pinned": false,
+      "score": 100,
+      "stale_candidate": false,
+      "state": "active"
+    },
+    {
+      "activity_count": 0,
+      "archive_requires_review": false,
+      "delete_allowed": false,
+      "issues": [
+        "no_recorded_activity"
+      ],
+      "name": "baoyu-article-illustrator",
+      "path": "/Users/appleoppa/.hermes/skills/creative/baoyu-article-illustrator/SKILL.md",
+      "pinned": false,
+      "score": 100,
+      "stale_candidate": false,
+      "state": "active"
+    },
+    {
+      "activity_count": 0,
+      "archive_requires_review": false,
+      "delete_allowed": false,
+      "issues": [
+        "no_recorded_activity"
+      ],
+      "name": "brainstorming",
+      "path": "/Users/appleoppa/.hermes/skills/brainstorming-0.1.0/SKILL.md",
+      "pinned": false,
+      "score": 100,
+      "stale_candidate": false,
+      "state": "active"
+    },
+    {
+      "activity_count": 0,
+      "archive_requires_review": false,
+      "delete_allowed": false,
+      "issues": [
+        "no_recorded_activity"
+      ],
+      "name": "china-company-search-fengniao-en",
+      "path": "/Users/appleoppa/.hermes/skills/china-company-search-1.0.0/SKILL.md",
+      "pinned": false,
+      "score": 100,
+      "stale_candidate": false,
+      "state": "active"
+    },
+    {
+      "activity_count": 4,
+      "archive_requires_review": false,
+      "delete_allowed": false,
+      "issues": [],
+      "name": "clawdefender",
+      "path": "/Users/appleoppa/.hermes/skills/clawdefender-1/SKILL.md",
+      "pinned": false,
+      "score": 100,
+      "stale_candidate": false,
+      "state": "active"
+    },
+    {
+      "activity_count": 12,
+      "archive_requires_review": false,
+      "delete_allowed": false,
+      "issues": [],
+      "name": "dept-audit-team",
+      "path": "/Users/appleoppa/.hermes/skills/audit-team/SKILL.md",
+      "pinned": false,
+      "score": 100,
+      "stale_candidate": false,
+      "state": "active"
+    },
+    {
+      "activity_count": 18,
+      "archive_requires_review": false,
+      "delete_allowed": false,
+      "issues": [],
+      "name": "dept-case-simulation",
+      "path": "/Users/appleoppa/.hermes/skills/case-simulation/SKILL.md",
+      "pinned": false,
+      "score": 100,
+      "stale_candidate": false,
+      "state": "active"
+    },
+    {
+      "activity_count": 14,
+      "archive_requires_review": false,
+      "delete_allowed": false,
+      "issues": [],
+      "name": "dept-civil-litigation",
+      "path": "/Users/appleoppa/.hermes/skills/civil-litigation/SKILL.md",
+      "pinned": false,
+      "score": 100,
+      "stale_candidate": false,
+      "state": "active"
+    },
+    {
+      "activity_count": 2,
+      "archive_requires_review": false,
+      "delete_allowed": false,
+      "issues": [],
+      "name": "dept-criminal-defense",
+      "path": "/Users/appleoppa/.hermes/skills/criminal-defense/SKILL.md",
+      "pinned": false,
+      "score": 100,
+      "stale_candidate": false,
+      "state": "active"
+    },
+    {
+      "activity_count": 0,
+      "archive_requires_review": false,
+      "delete_allowed": false,
+      "issues": [
+        "no_recorded_activity"
+      ],
+      "name": "dept-enforcement",
+      "path": "/Users/appleoppa/.hermes/skills/enforcement/SKILL.md",
+      "pinned": false,
+      "score": 100,
+      "stale_candidate": false,
+      "state": "active"
+    },
+    {
+      "activity_count": 13,
+      "archive_requires_review": false,
+      "delete_allowed": false,
+      "issues": [],
+      "name": "dept-evidence-management",
+      "path": "/Users/appleoppa/.hermes/skills/dept-evidence-management/SKILL.md",
+      "pinned": false,
+      "score": 100,
+      "stale_candidate": false,
+      "state": "active"
+    },
+    {
+      "activity_count": 8,
+      "archive_requires_review": false,
+      "delete_allowed": false,
+      "issues": [],
+      "name": "dept-inspection-team",
+      "path": "/Users/appleoppa/.hermes/skills/inspection-team/SKILL.md",
+      "pinned": false,
+      "score": 100,
+      "stale_candidate": false,
+      "state": "active"
+    },
+    {
+      "activity_count": 2,
+      "archive_requires_review": false,
+      "delete_allowed": false,
+      "issues": [],
+      "name": "dept-knowledge-center",
+      "path": "/Users/appleoppa/.hermes/skills/knowledge-center/SKILL.md",
+      "pinned": false,
+      "score": 100,
+      "stale_candidate": false,
+      "state": "active"
+    },
+    {
+      "activity_count": 2,
+      "archive_requires_review": false,
+      "delete_allowed": false,
+      "issues": [],
+      "name": "dept-legal-advisor",
+      "path": "/Users/appleoppa/.hermes/skills/legal-advisor/SKILL.md",
+      "pinned": false,
+      "score": 100,
+      "stale_candidate": false,
+      "state": "active"
+    },
+    {
+      "activity_count": 14,
+      "archive_requires_review": false,
+      "delete_allowed": false,
+      "issues": [],
+      "name": "dept-legal-support",
+      "path": "/Users/appleoppa/.hermes/skills/legal-support/SKILL.md",
+      "pinned": false,
+      "score": 100,
+      "stale_candidate": false,
+      "state": "active"
+    },
+    {
+      "activity_count": 2,
+      "archive_requires_review": false,
+      "delete_allowed": false,
+      "issues": [],
+      "name": "dept-non-litigation",
+      "path": "/Users/appleoppa/.hermes/skills/non-litigation/SKILL.md",
+      "pinned": false,
+      "score": 100,
+      "stale_candidate": false,
+      "state": "active"
+    },
+    {
+      "activity_count": 4,
+      "archive_requires_review": false,
+      "delete_allowed": false,
+      "issues": [],
+      "name": "dept-sports-master",
+      "path": "/Users/appleoppa/.hermes/skills/sports-master/SKILL.md",
+      "pinned": false,
+      "score": 100,
+      "stale_candidate": false,
+      "state": "active"
+    },
+    {
+      "activity_count": 54,
+      "archive_requires_review": false,
+      "delete_allowed": false,
+      "issues": [],
+      "name": "evolution-systems-governance",
+      "path": "/Users/appleoppa/.hermes/skills/workflow/evolution-systems-governance/SKILL.md",
+      "pinned": false,
+      "score": 100,
+      "stale_candidate": false,
+      "state": "active"
+    },
+    {
+      "activity_count": 0,
+      "archive_requires_review": false,
+      "delete_allowed": false,
+      "issues": [
+        "no_recorded_activity"
+      ],
+      "name": "excalidraw",
+      "path": "/Users/appleoppa/.hermes/skills/excalidraw/SKILL.md",
+      "pinned": false,
+      "score": 100,
+      "stale_candidate": false,
+      "state": "active"
+    },
+    {
+      "activity_count": 0,
+      "archive_requires_review": false,
+      "delete_allowed": false,
+      "issues": [
+        "no_recorded_activity"
+      ],
+      "name": "full-toolcall-integration",
+      "path": "/Users/appleoppa/.hermes/skills/workflow/full-toolcall-integration/SKILL.md",
+      "pinned": false,
+      "score": 100,
+      "stale_candidate": false,
+      "state": "active"
+    },
+    {
+      "activity_count": 0,
+      "archive_requires_review": false,
+      "delete_allowed": false,
+      "issues": [
+        "no_recorded_activity"
+      ],
+      "name": "grok-image-to-video",
+      "path": "/Users/appleoppa/.hermes/skills/grok-image-to-video/SKILL.md",
+      "pinned": false,
+      "score": 100,
+      "stale_candidate": false,
+      "state": "active"
+    },
+    {
+      "activity_count": 0,
+      "archive_requires_review": false,
+      "delete_allowed": false,
+      "issues": [
+        "no_recorded_activity"
+      ],
+      "name": "hermes-agent",
+      "path": "/Users/appleoppa/.hermes/skills/hermes-agent/SKILL.md",
+      "pinned": false,
+      "score": 100,
+      "stale_candidate": false,
+      "state": "active"
+    },
+    {
+      "activity_count": 0,
+      "archive_requires_review": false,
+      "delete_allowed": false,
+      "issues": [
+        "no_recorded_activity"
+      ],
+      "name": "hermes-agent-skill-authoring",
+      "path": "/Users/appleoppa/.hermes/skills/hermes-agent-skill-authoring/SKILL.md",
+      "pinned": false,
+      "score": 100,
+      "stale_candidate": false,
+      "state": "active"
+    },
+    {
+      "activity_count": 117,
+      "archive_requires_review": false,
+      "delete_allowed": false,
+      "issues": [],
+      "name": "hermes-evolution",
+      "path": "/Users/appleoppa/.hermes/skills/hermes-evolution/SKILL.md",
+      "pinned": false,
+      "score": 100,
+      "stale_candidate": false,
+      "state": "active"
+    },
+    {
+      "activity_count": 0,
+      "archive_requires_review": false,
+      "delete_allowed": false,
+      "issues": [
+        "no_recorded_activity"
+      ],
+      "name": "hermes-s6-container-supervision",
+      "path": "/Users/appleoppa/.hermes/skills/software-development/hermes-s6-container-supervision/SKILL.md",
+      "pinned": false,
+      "score": 100,
+      "stale_candidate": false,
+      "state": "active"
+    },
+    {
+      "activity_count": 78,
+      "archive_requires_review": false,
+      "delete_allowed": false,
+      "issues": [],
+      "name": "hermes-web-ui-reconnect-fix",
+      "path": "/Users/appleoppa/.hermes/skills/hermes/hermes-web-ui-reconnect-fix/SKILL.md",
+      "pinned": false,
+      "score": 100,
+      "stale_candidate": false,
+      "state": "active"
+    },
+    {
+      "activity_count": 0,
+      "archive_requires_review": false,
+      "delete_allowed": false,
+      "issues": [
+        "no_recorded_activity"
+      ],
+      "name": "humanizer",
+      "path": "/Users/appleoppa/.hermes/skills/humanizer/SKILL.md",
+      "pinned": false,
+      "score": 100,
+      "stale_candidate": false,
+      "state": "active"
+    },
+    {
+      "activity_count": 0,
+      "archive_requires_review": false,
+      "delete_allowed": false,
+      "issues": [
+        "no_recorded_activity"
+      ],
+      "name": "hyperframes",
+      "path": "/Users/appleoppa/.hermes/skills/hyperframes/SKILL.md",
+      "pinned": false,
+      "score": 100,
+      "stale_candidate": false,
+      "state": "active"
+    },
+    {
+      "activity_count": 0,
+      "archive_requires_review": false,
+      "delete_allowed": false,
+      "issues": [
+        "no_recorded_activity"
+      ],
+      "name": "kanban-codex-lane",
+      "path": "/Users/appleoppa/.hermes/skills/autonomous-ai-agents/kanban-codex-lane/SKILL.md",
+      "pinned": false,
+      "score": 100,
+      "stale_candidate": false,
+      "state": "active"
+    },
+    {
+      "activity_count": 57,
+      "archive_requires_review": false,
+      "delete_allowed": false,
+      "issues": [],
+      "name": "llm-provider-diagnosis",
+      "path": "/Users/appleoppa/.hermes/skills/hermes/llm-provider-diagnosis/SKILL.md",
+      "pinned": false,
+      "score": 100,
+      "stale_candidate": false,
+      "state": "active"
+    },
+    {
+      "activity_count": 0,
+      "archive_requires_review": false,
+      "delete_allowed": false,
+      "issues": [
+        "no_recorded_activity"
+      ],
+      "name": "llm-wiki",
+      "path": "/Users/appleoppa/.hermes/skills/llm-wiki/SKILL.md",
+      "pinned": false,
+      "score": 100,
+      "stale_candidate": false,
+      "state": "active"
+    },
+    {
+      "activity_count": 0,
+      "archive_requires_review": false,
+      "delete_allowed": false,
+      "issues": [
+        "no_recorded_activity"
+      ],
+      "name": "maps",
+      "path": "/Users/appleoppa/.hermes/skills/maps/SKILL.md",
+      "pinned": false,
+      "score": 100,
+      "stale_candidate": false,
+      "state": "active"
+    },
+    {
+      "activity_count": 0,
+      "archive_requires_review": false,
+      "delete_allowed": false,
+      "issues": [
+        "no_recorded_activity"
+      ],
+      "name": "markdown-viewer",
+      "path": "/Users/appleoppa/.hermes/skills/markdown-viewer/SKILL.md",
+      "pinned": false,
+      "score": 100,
+      "stale_candidate": false,
+      "state": "active"
+    },
+    {
+      "activity_count": 163,
+      "archive_requires_review": false,
+      "delete_allowed": false,
+      "issues": [],
+      "name": "multi-pass-deep-analysis",
+      "path": "/Users/appleoppa/.hermes/skills/multi-pass-deep-analysis/SKILL.md",
+      "pinned": false,
+      "score": 100,
+      "stale_candidate": false,
+      "state": "active"
+    },
+    {
+      "activity_count": 0,
+      "archive_requires_review": false,
+      "delete_allowed": false,
+      "issues": [
+        "no_recorded_activity"
+      ],
+      "name": "nano-pdf",
+      "path": "/Users/appleoppa/.hermes/skills/nano-pdf/SKILL.md",
+      "pinned": false,
+      "score": 100,
+      "stale_candidate": false,
+      "state": "active"
+    },
+    {
+      "activity_count": 0,
+      "archive_requires_review": false,
+      "delete_allowed": false,
+      "issues": [
+        "no_recorded_activity"
+      ],
+      "name": "ocr-and-documents",
+      "path": "/Users/appleoppa/.hermes/skills/ocr-and-documents/SKILL.md",
+      "pinned": false,
+      "score": 100,
+      "stale_candidate": false,
+      "state": "active"
+    },
+    {
+      "activity_count": 2,
+      "archive_requires_review": false,
+      "delete_allowed": false,
+      "issues": [],
+      "name": "pdf",
+      "path": "/Users/appleoppa/.hermes/skills/pdf/SKILL.md",
+      "pinned": false,
+      "score": 100,
+      "stale_candidate": false,
+      "state": "active"
+    },
+    {
+      "activity_count": 0,
+      "archive_requires_review": false,
+      "delete_allowed": false,
+      "issues": [
+        "no_recorded_activity"
+      ],
+      "name": "plan",
+      "path": "/Users/appleoppa/.hermes/skills/plan/SKILL.md",
+      "pinned": false,
+      "score": 100,
+      "stale_candidate": false,
+      "state": "active"
+    },
+    {
+      "activity_count": 0,
+      "archive_requires_review": false,
+      "delete_allowed": false,
+      "issues": [
+        "no_recorded_activity"
+      ],
+      "name": "powerpoint",
+      "path": "/Users/appleoppa/.hermes/skills/powerpoint/SKILL.md",
+      "pinned": false,
+      "score": 100,
+      "stale_candidate": false,
+      "state": "active"
+    },
+    {
+      "activity_count": 91,
+      "archive_requires_review": false,
+      "delete_allowed": false,
+      "issues": [],
+      "name": "quantum-channel-router",
+      "path": "/Users/appleoppa/.hermes/skills/quantum-channel-router/SKILL.md",
+      "pinned": false,
+      "score": 100,
+      "stale_candidate": false,
+      "state": "active"
+    },
+    {
+      "activity_count": 0,
+      "archive_requires_review": false,
+      "delete_allowed": false,
+      "issues": [
+        "no_recorded_activity"
+      ],
+      "name": "remotion",
+      "path": "/Users/appleoppa/.hermes/skills/remotion/SKILL.md",
+      "pinned": false,
+      "score": 100,
+      "stale_candidate": false,
+      "state": "active"
+    },
+    {
+      "activity_count": 21,
+      "archive_requires_review": false,
+      "delete_allowed": false,
+      "issues": [],
+      "name": "rust-core-module-development",
+      "path": "/Users/appleoppa/.hermes/skills/rust-core-module-development/SKILL.md",
+      "pinned": false,
+      "score": 100,
+      "stale_candidate": false,
+      "state": "active"
+    },
+    {
+      "activity_count": 39,
+      "archive_requires_review": false,
+      "delete_allowed": false,
+      "issues": [],
+      "name": "search-skillbank",
+      "path": "/Users/appleoppa/.hermes/skills/search-skillbank/SKILL.md",
+      "pinned": false,
+      "score": 100,
+      "stale_candidate": false,
+      "state": "active"
+    },
+    {
+      "activity_count": 4,
+      "archive_requires_review": false,
+      "delete_allowed": false,
+      "issues": [],
+      "name": "self-reflection",
+      "path": "/Users/appleoppa/.hermes/skills/agent-self-reflection-1.0.0/SKILL.md",
+      "pinned": false,
+      "score": 100,
+      "stale_candidate": false,
+      "state": "active"
+    },
+    {
+      "activity_count": 6,
+      "archive_requires_review": false,
+      "delete_allowed": false,
+      "issues": [],
+      "name": "session-logs",
+      "path": "/Users/appleoppa/.hermes/skills/session-logs-1.0.0/SKILL.md",
+      "pinned": false,
+      "score": 100,
+      "stale_candidate": false,
+      "state": "active"
+    },
+    {
+      "activity_count": 19,
+      "archive_requires_review": false,
+      "delete_allowed": false,
+      "issues": [],
+      "name": "skill-creator",
+      "path": "/Users/appleoppa/.hermes/skills/skill-creator/SKILL.md",
+      "pinned": false,
+      "score": 100,
+      "stale_candidate": false,
+      "state": "active"
+    },
+    {
+      "activity_count": 13,
+      "archive_requires_review": false,
+      "delete_allowed": false,
+      "issues": [],
+      "name": "skill-extraction-workflow",
+      "path": "/Users/appleoppa/.hermes/skills/skill-extraction-workflow/SKILL.md",
+      "pinned": false,
+      "score": 100,
+      "stale_candidate": false,
+      "state": "active"
+    },
+    {
+      "activity_count": 0,
+      "archive_requires_review": false,
+      "delete_allowed": false,
+      "issues": [
+        "no_recorded_activity"
+      ],
+      "name": "skill-law-database",
+      "path": "/Users/appleoppa/.hermes/skills/skill-law-database-1.0.0/SKILL.md",
+      "pinned": false,
+      "score": 100,
+      "stale_candidate": false,
+      "state": "active"
+    },
+    {
+      "activity_count": 11,
+      "archive_requires_review": false,
+      "delete_allowed": false,
+      "issues": [],
+      "name": "skill-vetter",
+      "path": "/Users/appleoppa/.hermes/skills/skill-vetter/SKILL.md",
+      "pinned": false,
+      "score": 100,
+      "stale_candidate": false,
+      "state": "active"
+    },
+    {
+      "activity_count": 0,
+      "archive_requires_review": false,
+      "delete_allowed": false,
+      "issues": [
+        "no_recorded_activity"
+      ],
+      "name": "subagent-driven-development",
+      "path": "/Users/appleoppa/.hermes/skills/subagent-driven-development/SKILL.md",
+      "pinned": false,
+      "score": 100,
+      "stale_candidate": false,
+      "state": "active"
+    },
+    {
+      "activity_count": 16,
+      "archive_requires_review": false,
+      "delete_allowed": false,
+      "issues": [],
+      "name": "super-evolution-9",
+      "path": "/Users/appleoppa/.hermes/skills/workflow/super-evolution-9/SKILL.md",
+      "pinned": false,
+      "score": 100,
+      "stale_candidate": false,
+      "state": "active"
+    },
+    {
+      "activity_count": 0,
+      "archive_requires_review": false,
+      "delete_allowed": false,
+      "issues": [
+        "no_recorded_activity"
+      ],
+      "name": "tiangong-four-core",
+      "path": "/Users/appleoppa/.hermes/skills/workflow/tiangong-four-core/SKILL.md",
+      "pinned": false,
+      "score": 100,
+      "stale_candidate": false,
+      "state": "active"
+    },
+    {
+      "activity_count": 0,
+      "archive_requires_review": false,
+      "delete_allowed": false,
+      "issues": [
+        "no_recorded_activity"
+      ],
+      "name": "token-hygiene-super-evolution-6",
+      "path": "/Users/appleoppa/.hermes/skills/workflow/token-hygiene-super-evolution-6/SKILL.md",
+      "pinned": false,
+      "score": 100,
+      "stale_candidate": false,
+      "state": "active"
+    },
+    {
+      "activity_count": 2,
+      "archive_requires_review": false,
+      "delete_allowed": false,
+      "issues": [],
+      "name": "web-scraping",
+      "path": "/Users/appleoppa/.hermes/skills/web-scraping/SKILL.md",
+      "pinned": false,
+      "score": 100,
+      "stale_candidate": false,
+      "state": "active"
+    },
+    {
+      "activity_count": 14,
+      "archive_requires_review": false,
+      "delete_allowed": false,
+      "issues": [],
+      "name": "web-search-engine",
+      "path": "/Users/appleoppa/.hermes/skills/web-search-engine-1.0.0/SKILL.md",
+      "pinned": false,
+      "score": 100,
+      "stale_candidate": false,
+      "state": "active"
+    },
+    {
+      "activity_count": 0,
+      "archive_requires_review": false,
+      "delete_allowed": false,
+      "issues": [
+        "no_recorded_activity"
+      ],
+      "name": "writing-plans",
+      "path": "/Users/appleoppa/.hermes/skills/writing-plans/SKILL.md",
+      "pinned": false,
+      "score": 100,
+      "stale_candidate": false,
+      "state": "active"
+    },
+    {
+      "activity_count": 0,
+      "archive_requires_review": false,
+      "delete_allowed": false,
+      "issues": [
+        "no_recorded_activity"
+      ],
+      "name": "xurl",
+      "path": "/Users/appleoppa/.hermes/skills/xurl/SKILL.md",
+      "pinned": false,
+      "score": 100,
+      "stale_candidate": false,
+      "state": "active"
+    },
+    {
+      "activity_count": 0,
+      "archive_requires_review": false,
+      "delete_allowed": false,
+      "issues": [
+        "no_recorded_activity"
+      ],
+      "name": "yuanbao",
+      "path": "/Users/appleoppa/.hermes/skills/yuanbao/SKILL.md",
+      "pinned": false,
+      "score": 100,
+      "stale_candidate": false,
+      "state": "active"
+    }
+  ],
+  "rules": {
+    "delete_allowed": false,
+    "stale_formula": "low_score + evidence + review; score alone never deletes"
+  },
+  "skill_count": 80,
+  "stale_candidates": 0
+}

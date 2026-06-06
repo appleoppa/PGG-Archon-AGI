@@ -1,0 +1,77 @@
+/* APEX Native Typography Governance — reusable CSS tokens */
+:root {
+  /* Matte warm paper and low-desaturated ink */
+  --apex-paper: #faf7f1;
+  --apex-paper-soft: #f5efe5;
+  --apex-ink: #24211d;
+  --apex-ink-muted: #6f675d;
+  --apex-accent: #9b7a43;
+  --apex-accent-soft: #d8c29a;
+  --apex-line: rgba(80, 68, 52, 0.18);
+
+  /* Dual multilingual serif architecture */
+  --apex-font-latin: "Cormorant Garamond", "EB Garamond", Georgia, "Times New Roman", serif;
+  --apex-font-cjk: "Noto Serif SC", "Source Han Serif SC", "Songti SC", STSong, serif;
+  --apex-font-body: var(--apex-font-cjk), var(--apex-font-latin);
+
+  /* Golden-ratio responsive page margin */
+  --apex-margin-inline: clamp(22px, 6.18vw, 72px);
+  --apex-margin-block: clamp(28px, 7.64vw, 96px);
+  --apex-content-width: 78ch;
+
+  /* Vertical rhythm */
+  --apex-line-height: 1.66;
+  --apex-para-gap: 0.92em;
+  --apex-section-gap: 2.35em;
+}
+
+.apex-document {
+  max-width: var(--apex-content-width);
+  margin: var(--apex-margin-block) auto;
+  padding: clamp(24px, 5vw, 64px) var(--apex-margin-inline);
+  color: var(--apex-ink);
+  background: radial-gradient(circle at top left, #fffaf2 0, var(--apex-paper) 42%, #f3eadc 100%);
+  font-family: var(--apex-font-body);
+  font-kerning: normal;
+  font-variant-ligatures: common-ligatures;
+  line-height: var(--apex-line-height);
+  letter-spacing: 0.01em;
+}
+
+.apex-document h1,
+.apex-document h2 {
+  font-family: var(--apex-font-latin), var(--apex-font-cjk);
+  letter-spacing: -0.015em;
+  line-height: 1.12;
+  margin: 0 0 0.72em;
+  background: linear-gradient(100deg, #1f1b16 0%, #806238 52%, #b59a62 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.apex-document h1 { font-size: clamp(2.1rem, 5.2vw, 4.4rem); }
+.apex-document h2 { font-size: clamp(1.45rem, 3vw, 2.25rem); margin-top: var(--apex-section-gap); }
+.apex-document h3 { font-size: 1.18rem; margin-top: 1.85em; color: var(--apex-ink); }
+.apex-document p { margin: 0 0 var(--apex-para-gap); }
+.apex-document blockquote {
+  margin: 1.4em 0;
+  padding: 1em 1.18em;
+  border-left: 3px solid var(--apex-accent);
+  background: rgba(255, 250, 242, 0.72);
+  color: var(--apex-ink-muted);
+}
+.apex-document ul,
+.apex-document ol { padding-left: 1.45em; margin: 0.85em 0 1.15em; }
+.apex-document li + li { margin-top: 0.38em; }
+.apex-document hr {
+  border: 0;
+  height: 1px;
+  margin: 2.25em 0;
+  background: linear-gradient(90deg, transparent, var(--apex-line), var(--apex-accent-soft), var(--apex-line), transparent);
+}
+.apex-document code,
+.apex-document pre {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  letter-spacing: 0;
+}

@@ -1,0 +1,9 @@
+{
+  "last_report_path": "/Users/appleoppa/.hermes/logs/curator/20260530-130722",
+  "last_run_at": "2026-05-30T13:07:22.378533+00:00",
+  "last_run_duration_seconds": 235.902492,
+  "last_run_summary": "auto: no changes; llm: Completed umbrella-building pass over all 3 agent-created, unpinned candidates.\n\nProcessed clusters:\n\n- **Hermes runtime/config cluster**\n  - Cluster members: `llm-provider-diagnosis`, `hermes-gateway-profile-hygiene`\n  - Created new class-…\narchived 2 skill(s):\n  • hermes-gateway-profile-hygiene — pruned (stale)\n  • llm-provider-diagnosis — pruned (stale)\nfull report: hermes curator status",
+  "last_run_summary_shown_at": "2026-05-30T13:07:22.378533+00:00",
+  "paused": false,
+  "run_count": 2
+}

@@ -13,6 +13,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import re
 import subprocess
 import time
@@ -95,6 +96,27 @@ def build_prompt(*, claim: MicroAuditClaim, artifact_path: str, artifact_sha256:
     ) % (claim.audit_name, artifact_path, artifact_sha256, claim.claim, claim.expected_boundary)
 
 
+def resolve_hermes_cli() -> str:
+    """Resolve Hermes CLI for launchd/background environments with sparse PATH."""
+    env_path = os.environ.get("HERMES_CLI")
+    candidates = [
+        env_path,
+        "/Users/appleoppa/.local/bin/hermes",
+        "/Users/appleoppa/.hermes/hermes-agent/venv/bin/hermes",
+        "/usr/local/bin/hermes",
+        "/opt/homebrew/bin/hermes",
+        "hermes",
+    ]
+    for item in candidates:
+        if not item:
+            continue
+        if item == "hermes":
+            return item
+        if Path(item).exists() and os.access(item, os.X_OK):
+            return item
+    return "hermes"
+
+
 def deterministic_boundary_check(claim: MicroAuditClaim) -> dict[str, Any]:
     """Local no-LLM guard for obviously unsafe overclaims.
 
@@ -138,7 +160,7 @@ def run_one_mimo_audit(
     t0 = time.time()
     try:
         p = subprocess.run(
-            ["hermes", "-z", prompt, "--provider", f"custom:{provider}", "--model", model],
+            [resolve_hermes_cli(), "-z", prompt, "--provider", f"custom:{provider}", "--model", model],
             text=True,
             capture_output=True,
             timeout=timeout,

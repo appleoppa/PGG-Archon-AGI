@@ -1,0 +1,7 @@
+{
+  "gene_count": 0,
+  "generated_at": "2026-05-26T16:14:22.453443+00:00",
+  "genes": [],
+  "loop": "skill -> gene -> fitness -> skill_update_candidate -> validation",
+  "mutation_policy": "report-only by default; no skill rewrite without explicit patch + validation"
+}
