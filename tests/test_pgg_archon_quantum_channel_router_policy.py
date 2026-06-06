@@ -45,6 +45,21 @@ def test_provider_call_rejects_mimo_before_registry_call(monkeypatch) -> None:
     assert called["value"] is False
 
 
+def test_route_policy_version_is_emitted_in_decision_and_mirror(monkeypatch, tmp_path) -> None:
+    monkeypatch.setattr(mod, "OMNIROUTE_ROUTE_CALL_EVENTS", tmp_path / "route_events.jsonl")
+    monkeypatch.setattr(mod, "OMNIROUTE_MIRROR_EVENTS", tmp_path / "mirror_events.jsonl")
+    decision = mod.decide_omniroute_provider(task_type="general", prompt_preview="hello")
+    assert decision["route_policy_version"] == mod.OMNIROUTE_ROUTE_POLICY_VERSION
+    mod.record_omniroute_core_mirror(
+        user_message="hello",
+        result={"final_response": "ok", "completed": True, "api_calls": 1},
+        provider="deepseek",
+        model="m",
+        route_suggestion=decision,
+    )
+    assert mod.OMNIROUTE_ROUTE_POLICY_VERSION in (tmp_path / "mirror_events.jsonl").read_text(encoding="utf-8")
+
+
 def test_multi_provider_explicit_mimo_is_recorded_failed_not_called(monkeypatch) -> None:
     import agent.pgg_archon_external_benchmark_provider_run as registry
     monkeypatch.setattr(registry, "PROVIDERS", [Provider("deepseek"), Provider("mimo")])

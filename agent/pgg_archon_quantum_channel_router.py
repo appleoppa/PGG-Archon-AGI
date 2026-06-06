@@ -35,6 +35,7 @@ OMNIROUTE_MULTI_TASK_EVENTS = HOME / ".hermes" / "data" / "omniroute_multi_task_
 OMNIROUTE_MIRROR_EVENTS = HOME / ".hermes" / "data" / "omniroute_core_mirror_events.jsonl"
 OMNIROUTE_PROVIDER_COOLDOWN = HOME / ".hermes" / "data" / "omniroute_provider_cooldown.json"
 OMNIROUTE_EVIDENCE_DIR = HOME / ".hermes" / "workspace" / "github_absorption" / "9router" / "analysis" / "evidence"
+OMNIROUTE_ROUTE_POLICY_VERSION = "v2.5-task-intent-policy-20260606"
 OMNIROUTE_THIRD_PARTY_JUDGE_ALIASES = {"mimo", "mimo_v25_pro_auditor", "custom:mimo_v25_pro_auditor"}
 
 
@@ -348,6 +349,7 @@ def decide_omniroute_provider(task_type: str = "general", requested_provider: st
     )
     payload = asdict(decision)
     payload["route_policy"] = route_policy
+    payload["route_policy_version"] = OMNIROUTE_ROUTE_POLICY_VERSION
     payload["prompt_preview_sha256"] = __import__("hashlib").sha256((prompt_preview or "").encode("utf-8")).hexdigest() if prompt_preview else ""
     payload["policy_boundary"] = "Policy suggestion only; no provider mutation unless a later guarded enforce mode is explicitly enabled."
     _append_route_call_event({"ts": datetime.now(timezone.utc).timestamp(), "event": "route_decision", "payload": payload})
@@ -401,9 +403,11 @@ def recent_omniroute_mirror_events(limit: int = 20) -> list[dict[str, Any]]:
     return _read_jsonl_tail(OMNIROUTE_MIRROR_EVENTS, limit)
 
 
-def omniroute_route_suggest_metrics(limit: int = 200) -> dict[str, Any]:
+def omniroute_route_suggest_metrics(limit: int = 200, policy_version: str | None = None) -> dict[str, Any]:
     events = recent_omniroute_mirror_events(limit)
     payloads = [e.get("payload", {}) for e in events if isinstance(e, dict)]
+    if policy_version:
+        payloads = [p for p in payloads if p.get("route_policy_version") == policy_version]
     suggested = [p for p in payloads if p.get("suggested_provider") or p.get("suggestion_error")]
     exact_matches = [p for p in suggested if p.get("suggestion_matches_actual")]
     class_matches = [p for p in suggested if p.get("suggestion_route_class_matches_actual")]
@@ -439,6 +443,8 @@ def omniroute_route_suggest_metrics(limit: int = 200) -> dict[str, Any]:
     return {
         "schema": "PGGArchonOmniRouteRouteSuggestMetrics/v1",
         "limit": limit,
+        "policy_version_filter": policy_version or "",
+        "route_policy_version_current": OMNIROUTE_ROUTE_POLICY_VERSION,
         "total_mirror_events": len(payloads),
         "suggested_events": n,
         "exact_match_count": len(exact_matches),
@@ -540,6 +546,7 @@ def record_omniroute_core_mirror(
         "model": model or "",
         "platform": platform or "",
         "route_suggestion": route_suggestion,
+        "route_policy_version": route_suggestion.get("route_policy_version", ""),
         "suggestion_latency_ms": route_suggestion.get("suggestion_latency_ms"),
         "suggestion_error": route_suggestion.get("suggestion_error", ""),
         "suggested_provider": suggested_provider,
