@@ -188,7 +188,20 @@ def finalize_promptfoo_suite(
     }
     closure_path = outdir / f"{suite_id}_finalize_closure.json"
     closure_path.write_text(json.dumps(closure, ensure_ascii=False, indent=2), encoding="utf-8")
-    return {"report": report, "gate": gate, "closure_path": str(closure_path), "closure_sha256": sha256_file(closure_path)}
+    closure_sha = sha256_file(closure_path)
+    # Settlement readback: the audited manifest gate writes before the closure
+    # exists, so finalize must append closure evidence afterwards. This keeps
+    # Manifest, report, audit summary and closure cross-linked for Rust gates.
+    manifest = Path(manifest_path).expanduser()
+    if manifest.exists():
+        data = json.loads(manifest.read_text(encoding="utf-8"))
+        entry = data.get(manifest_key)
+        if isinstance(entry, dict):
+            entry["closure_path"] = str(closure_path)
+            entry["closure_sha256"] = closure_sha
+            data[manifest_key] = entry
+            manifest.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    return {"report": report, "gate": gate, "closure_path": str(closure_path), "closure_sha256": closure_sha}
 
 
 def _parse_domains(text: str) -> dict[str, int]:

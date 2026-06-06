@@ -87,7 +87,7 @@ def parse_json_candidate(text: str) -> dict[str, Any] | None:
 def build_prompt(*, claim: MicroAuditClaim, artifact_path: str, artifact_sha256: str) -> str:
     return (
         "你是MiMo，只做独立第三方审计/benchmark judge，不参与处理、编码或任务求解。"
-        "极短JSON输出: "
+        "极短STRICT JSON输出，不要Markdown代码块；reason只能一句话，禁止双引号、换行、反斜杠: "
         "{\"audit_name\":\"%s\",\"audit_verdict\":\"PASS|WATCH|BLOCKED\",\"reason\":\"一句话\"}\n"
         "artifact=%s sha256=%s\n"
         "待审计声明: %s\n"
@@ -172,6 +172,7 @@ def run_micro_audits(
     output_dir: str | Path,
     timeout: int = 45,
     call_mimo: bool = True,
+    retry_unparsed_once: bool = True,
 ) -> MicroAuditSummary:
     artifact = Path(artifact_path).expanduser()
     if not artifact.exists():
@@ -184,7 +185,26 @@ def run_micro_audits(
         pre = deterministic_boundary_check(claim)
         (out / f"{claim.audit_name}.precheck.json").write_text(json.dumps(pre, ensure_ascii=False, indent=2), encoding="utf-8")
         if call_mimo:
-            results.append(run_one_mimo_audit(claim=claim, artifact_path=str(artifact), artifact_sha256=artifact_sha, output_dir=out, timeout=timeout))
+            result = run_one_mimo_audit(claim=claim, artifact_path=str(artifact), artifact_sha256=artifact_sha, output_dir=out, timeout=timeout)
+            if retry_unparsed_once and result.status in {"OK_UNPARSED", "UNAVAILABLE_TIMEOUT", "ERROR"}:
+                retry_dir = out / "targeted_retry"
+                retry = run_one_mimo_audit(
+                    claim=claim,
+                    artifact_path=str(artifact),
+                    artifact_sha256=artifact_sha,
+                    output_dir=retry_dir,
+                    timeout=max(timeout, 60),
+                )
+                if retry.status == "OK_PARSED" and retry.audit_verdict in {"PASS", "WATCH", "BLOCKED"}:
+                    result = MicroAuditResult(
+                        retry.audit_name,
+                        retry.status,
+                        retry.audit_verdict,
+                        f"targeted_retry: {retry.reason}",
+                        retry.duration_s,
+                        retry.raw_path,
+                    )
+            results.append(result)
         else:
             results.append(
                 MicroAuditResult(

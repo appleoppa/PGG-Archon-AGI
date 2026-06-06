@@ -5,6 +5,7 @@ from pathlib import Path
 
 from agent.pgg_archon_mimo_micro_auditor import (
     MicroAuditClaim,
+    MicroAuditResult,
     BOUNDARY,
     deterministic_boundary_check,
     parse_json_candidate,
@@ -22,6 +23,27 @@ def test_deterministic_boundary_check_flags_obvious_overclaim() -> None:
     result = deterministic_boundary_check(claim)
     assert result["status"] == "WATCH"
     assert result["hits"]
+
+
+def test_run_micro_audits_retries_unparsed_once(tmp_path: Path, monkeypatch) -> None:
+    artifact = tmp_path / "artifact.json"
+    artifact.write_text(json.dumps({"ok": True}), encoding="utf-8")
+    claim = MicroAuditClaim("boundary", "50题自建smoke真实运行", "不可称官方完整分数")
+    calls = []
+
+    def fake_run_one_mimo_audit(**kwargs):
+        calls.append(kwargs["output_dir"])
+        if len(calls) == 1:
+            return MicroAuditResult("boundary", "OK_UNPARSED", None, "markdown fence", 0.1, str(tmp_path / "raw1.json"))
+        return MicroAuditResult("boundary", "OK_PARSED", "PASS", "strict json", 0.2, str(tmp_path / "raw2.json"))
+
+    monkeypatch.setattr("agent.pgg_archon_mimo_micro_auditor.run_one_mimo_audit", fake_run_one_mimo_audit)
+    summary = run_micro_audits(artifact_path=artifact, claims=[claim], output_dir=tmp_path / "audit", call_mimo=True)
+    assert len(calls) == 2
+    assert "targeted_retry" in str(calls[1])
+    assert summary.results[0]["status"] == "OK_PARSED"
+    assert summary.results[0]["audit_verdict"] == "PASS"
+    assert summary.results[0]["reason"].startswith("targeted_retry:")
 
 
 def test_run_micro_audits_no_mimo_writes_summary(tmp_path: Path) -> None:
