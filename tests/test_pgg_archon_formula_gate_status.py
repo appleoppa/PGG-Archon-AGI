@@ -34,6 +34,7 @@ def test_formula_gate_status_has_six_dimensions_and_no_t5_claim(tmp_path: Path) 
     assert "Agent_Evolve" in panel["goal_formula_rule"]["execution_chain"]
     assert "not full AGI" in panel["boundary"]
     assert panel["manifest_summary"]["latest_pass_count"] == 1
+    assert panel["manifest_summary"]["latest_exact_pass_count"] == 1
 
 
 def test_formula_gate_status_watch_when_task_empty(tmp_path: Path) -> None:
@@ -61,6 +62,26 @@ def test_formula_gate_manifest_missing_or_malformed_is_watch(tmp_path: Path) -> 
     bad_panel = build_formula_gate_status("AGI 进化任务", manifest_path=bad)
     assert bad_panel["status"] == "WATCH"
     assert bad_panel["manifest_summary"]["latest_pass_keys"] == []
+
+
+def test_formula_gate_manifest_counts_pass_family_statuses(tmp_path: Path) -> None:
+    manifest = tmp_path / "EVOLUTION_MANIFEST.json"
+    manifest.write_text(
+        json.dumps(
+            {
+                "latest_exact": {"status": "PASS", "created_at": "2026-06-06 12:00:00"},
+                "latest_family": {"status": "PASS_SCAFFOLD_DEFAULT_OFF", "created_at": "2026-06-06 12:01:00"},
+                "latest_watch": {"status": "WATCH", "created_at": "2026-06-06 12:02:00"},
+                "latest_partial": {"status": "PARTIAL_SCAFFOLD", "created_at": "2026-06-06 12:03:00"},
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    panel = build_formula_gate_status("AGI 进化任务", manifest_path=manifest)
+    assert panel["manifest_summary"]["latest_pass_count"] == 2
+    assert panel["manifest_summary"]["latest_exact_pass_count"] == 1
+    assert panel["manifest_summary"]["latest_status_counts"] == {"PASS": 1, "PASS_FAMILY": 1, "WATCH": 1, "PARTIAL": 1}
 
 
 def test_formula_gate_manifest_latest_uses_timestamp_sort(tmp_path: Path) -> None:

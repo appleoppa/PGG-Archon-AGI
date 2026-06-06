@@ -76,13 +76,35 @@ def _load_manifest_summary(manifest_path: str | Path | None = None) -> dict[str,
 
     latest_items = sorted(((k, v) for k, v in data.items() if k.startswith("latest_")), key=sort_key)[-12:]
     latest_keys = [k for k, _ in latest_items]
-    latest_pass_keys = [k for k, v in latest_items if isinstance(v, dict) and v.get("status") == "PASS"]
+    def status_family(value: Any) -> str:
+        status = str(value.get("status") or "") if isinstance(value, dict) else ""
+        if status == "PASS":
+            return "PASS"
+        if status.startswith("PASS_"):
+            return "PASS_FAMILY"
+        if status.startswith("WATCH"):
+            return "WATCH"
+        if status.startswith("PARTIAL"):
+            return "PARTIAL"
+        if status.startswith("BLOCK") or status.startswith("FAIL") or status.startswith("ERROR"):
+            return "BLOCK_OR_ERROR"
+        return "UNKNOWN"
+
+    latest_pass_keys = [k for k, v in latest_items if status_family(v) in {"PASS", "PASS_FAMILY"}]
+    latest_exact_pass_keys = [k for k, v in latest_items if status_family(v) == "PASS"]
+    status_counts: dict[str, int] = {}
+    for _, v in latest_items:
+        fam = status_family(v)
+        status_counts[fam] = status_counts.get(fam, 0) + 1
     return {
         "present": True,
         "path": str(path),
         "latest_keys": latest_keys,
         "latest_pass_keys": latest_pass_keys,
+        "latest_exact_pass_keys": latest_exact_pass_keys,
         "latest_pass_count": len(latest_pass_keys),
+        "latest_exact_pass_count": len(latest_exact_pass_keys),
+        "latest_status_counts": status_counts,
         "sort": "created_at/generated_at/timestamp fallback key",
     }
 
@@ -135,6 +157,7 @@ def build_formula_gate_status(
     evidence_gates = {
         "manifest_present": bool(manifest.get("present")),
         "latest_pass_count": manifest.get("latest_pass_count", 0),
+        "latest_exact_pass_count": manifest.get("latest_exact_pass_count", 0),
         "explicit_formula_gate": explicit,
         "truth_boundary_present": True,
     }
@@ -180,7 +203,7 @@ def render_formula_gate_status(status: dict[str, Any]) -> str:
         f"状态：{status.get('status')} | 任务类型：{status.get('task_type')} | 目标：{status.get('target_tier')}",
         f"总纲1六维：{', '.join(active) if active else '未激活'}",
         f"总纲2闭环：{chain}",
-        f"证据：Manifest={'有' if status.get('evidence_gates', {}).get('manifest_present') else '缺'}；latest PASS={status.get('evidence_gates', {}).get('latest_pass_count', 0)}；缺口={missing or '无'}",
+        f"证据：Manifest={'有' if status.get('evidence_gates', {}).get('manifest_present') else '缺'}；latest PASS族={status.get('evidence_gates', {}).get('latest_pass_count', 0)}；exact PASS={status.get('evidence_gates', {}).get('latest_exact_pass_count', 0)}；缺口={missing or '无'}",
         f"边界：{status.get('boundary')}",
     ])
 
