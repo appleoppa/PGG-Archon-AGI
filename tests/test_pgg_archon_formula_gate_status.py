@@ -145,6 +145,38 @@ def test_formula_gate_separates_policy_boundaries_from_active_gaps(tmp_path: Pat
     assert panel["manifest_summary"]["resolved_or_policy_count"] == 3
 
 
+def test_formula_gate_completed_verified_and_no_new_queue_are_not_active_gaps(tmp_path: Path) -> None:
+    manifest = tmp_path / "EVOLUTION_MANIFEST.json"
+    manifest.write_text(
+        json.dumps(
+            {
+                "latest_completed": {
+                    "status": "completed_verified",
+                    "timestamp": "2026-06-07T00:00:00Z",
+                    "boundary": "Read-only dashboard aggregation only; no full AGI proof.",
+                },
+                "latest_pass_mentions_blocked_in_boundary": {
+                    "status": "PASS_EVIDENCE_PACK_REPLAY_VERIFIER_LANDED",
+                    "timestamp": "2026-06-07T00:01:00Z",
+                    "boundary": "Replay verifier is read-only. It does not clear BLOCKED or execute remediation.",
+                },
+                "latest_no_new_queue": {
+                    "status": "WATCH_NO_NEW_QUEUE",
+                    "timestamp": "2026-06-07T00:02:00Z",
+                    "boundary": "LIGHT read-only autorun; no new queue is an empty-run boundary.",
+                },
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    panel = build_formula_gate_status("AGI 进化任务", manifest_path=manifest)
+    assert panel["status"] == "PASS"
+    assert panel["unresolved_gap_count"] == 0
+    assert panel["manifest_summary"]["latest_pass_count"] == 2
+    assert panel["manifest_summary"]["resolved_or_policy_count"] >= 1
+
+
 def test_formula_gate_lifecycle_superseded_gap_not_counted_active(tmp_path: Path) -> None:
     manifest = tmp_path / "EVOLUTION_MANIFEST.json"
     manifest.write_text(

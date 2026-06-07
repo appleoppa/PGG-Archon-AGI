@@ -101,15 +101,16 @@ def _load_manifest_summary(manifest_path: str | Path | None = None) -> dict[str,
     latest_keys = [k for k, _ in latest_items]
     def status_family(value: Any) -> str:
         status = str(value.get("status") or "") if isinstance(value, dict) else ""
+        status_upper = status.upper()
         if status == "PASS":
             return "PASS"
-        if status.startswith("PASS_"):
+        if status_upper.startswith("PASS_") or status_upper.startswith("COMPLETED_VERIFIED"):
             return "PASS_FAMILY"
-        if status.startswith("WATCH"):
+        if status_upper.startswith("WATCH"):
             return "WATCH"
-        if status.startswith("PARTIAL"):
+        if status_upper.startswith("PARTIAL"):
             return "PARTIAL"
-        if status.startswith("BLOCK") or status.startswith("FAIL") or status.startswith("ERROR"):
+        if status_upper.startswith("BLOCK") or status_upper.startswith("FAIL") or status_upper.startswith("ERROR"):
             return "BLOCK_OR_ERROR"
         return "UNKNOWN"
 
@@ -139,21 +140,27 @@ def _load_manifest_summary(manifest_path: str | Path | None = None) -> dict[str,
     for key, value in latest_items:
         status = str(value.get("status") or "") if isinstance(value, dict) else ""
         family = status_family(value)
-        haystack = " ".join([
+        status_haystack = " ".join([
             key,
             status,
             str(value.get("title") or "") if isinstance(value, dict) else "",
             str(value.get("scope") or "") if isinstance(value, dict) else "",
-            str(value.get("boundary") or "") if isinstance(value, dict) else "",
             str(value.get("note") or "") if isinstance(value, dict) else "",
         ]).upper()
-        is_policy_boundary = family in {"PASS", "PASS_FAMILY"} and any(marker in haystack for marker in [
-            "DEFAULT_OFF", "DEFAULT-OFF", "OPTIONAL", "MANUAL RUN", "MANUAL/PIPELINE",
-            "ROLLBACK", "GLOBAL ROUTE-ENFORCE DISABLED", "NOT GLOBAL ROUTE-ENFORCE",
-            "POLICY BOUNDARY", "NOT RUNTIME TAKEOVER", "ERROR_RECORDED",
-        ])
+        boundary_haystack = str(value.get("boundary") or "").upper() if isinstance(value, dict) else ""
+        haystack = f"{status_haystack} {boundary_haystack}"
+        is_policy_boundary = (
+            family in {"PASS", "PASS_FAMILY"}
+            and any(marker in haystack for marker in [
+                "DEFAULT_OFF", "DEFAULT-OFF", "OPTIONAL", "MANUAL RUN", "MANUAL/PIPELINE",
+                "ROLLBACK", "GLOBAL ROUTE-ENFORCE DISABLED", "NOT GLOBAL ROUTE-ENFORCE",
+                "POLICY BOUNDARY", "NOT RUNTIME TAKEOVER", "ERROR_RECORDED",
+            ])
+        ) or "NO_NEW_QUEUE" in status_haystack
         is_resolved_by_lifecycle = key in resolved_gap_keys
-        is_active_gap = family in {"WATCH", "PARTIAL", "BLOCK_OR_ERROR", "UNKNOWN"} or any(marker in haystack for marker in active_unresolved_markers)
+        is_active_gap = family in {"WATCH", "PARTIAL", "BLOCK_OR_ERROR", "UNKNOWN"} or (
+            family not in {"PASS", "PASS_FAMILY"} and any(marker in status_haystack for marker in active_unresolved_markers)
+        )
         if is_active_gap and not (is_resolved_by_lifecycle or is_policy_boundary):
             unresolved_gap_keys.append({"key": key, "status": status or family, "family": family})
         elif is_active_gap or is_policy_boundary or is_resolved_by_lifecycle:
