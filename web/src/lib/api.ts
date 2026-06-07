@@ -1197,6 +1197,45 @@ export interface PlatformStatus {
   updated_at: string;
 }
 
+export interface ApexDeltaEGateRuntimeStatus {
+  schema?: string;
+  status?: string;
+  manifest_status?: string;
+  manifest_key_present?: boolean;
+  light_manifest_status?: string;
+  light_manifest_key_present?: boolean;
+  latest_ledger?: {
+    status?: string;
+    gate_state?: string;
+    gate_score?: number;
+    audit_hash?: string;
+    summary_sha256?: string;
+    timestamp?: string;
+    run_dir?: string;
+    error?: string;
+  };
+  cli?: { path?: string; exists?: boolean };
+  autorun?: { path?: string; exists?: boolean };
+  launchd?: {
+    exit?: number;
+    registered?: boolean;
+    active?: boolean;
+    last_exit_code?: string | null;
+    runs?: string | null;
+    label?: string;
+  };
+  boundary?: string;
+}
+
+export interface PGGRuntimeStatus {
+  schema?: string;
+  available?: boolean;
+  apex_delta_e_gate?: ApexDeltaEGateRuntimeStatus | null;
+  known_gaps?: string[];
+  boundary?: string;
+  error?: string;
+}
+
 export interface StatusResponse {
   active_sessions: number;
   /** Phase 7: ``true`` when the dashboard's OAuth gate is engaged
@@ -1219,6 +1258,7 @@ export interface StatusResponse {
   gateway_updated_at: string | null;
   hermes_home: string;
   latest_config_version: number;
+  pgg_runtime?: PGGRuntimeStatus;
   release_date: string;
   version: string;
 }

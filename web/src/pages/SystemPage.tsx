@@ -444,6 +444,9 @@ export default function SystemPage() {
   }
 
   const gatewayRunning = status?.gateway_running;
+  const apexDeltaE = status?.pgg_runtime?.apex_delta_e_gate;
+  const apexLedger = apexDeltaE?.latest_ledger;
+  const apexPass = apexDeltaE?.status === "PASS";
   const validEvents = hooks?.valid_events?.length
     ? hooks.valid_events
     : HOOK_EVENTS_FALLBACK;
@@ -731,6 +734,73 @@ export default function SystemPage() {
                 </span>
               )}
             </div>
+          </CardContent>
+        </Card>
+      </section>
+
+      {/* ── PGG Runtime / Super Evolution 13 ───────────────────────── */}
+      <section className="flex flex-col gap-3">
+        <H2 variant="sm" className="flex items-center gap-2 text-muted-foreground">
+          <Activity className="h-4 w-4" /> PGG 进化运行态
+        </H2>
+        <Card>
+          <CardContent className="flex flex-col gap-4 py-4">
+            <div className="flex flex-wrap items-center gap-3">
+              <Badge tone={apexPass ? "success" : apexDeltaE ? "warning" : "secondary"}>
+                {apexPass ? "PASS" : apexDeltaE ? "WATCH" : "未接入"}
+              </Badge>
+              <div>
+                <div className="text-sm font-medium text-foreground">
+                  超级进化13 · APEX ΔE 门禁
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  Rust/PyO3 门禁 + LIGHT 巡检 + runtime dashboard + /goal 公式面板
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-y-3 gap-x-6 text-sm border-t border-border pt-3">
+              <div>
+                <div className="text-xs uppercase tracking-wider text-muted-foreground">
+                  门禁状态
+                </div>
+                <div>{apexLedger?.gate_state ?? "—"}</div>
+              </div>
+              <div>
+                <div className="text-xs uppercase tracking-wider text-muted-foreground">
+                  分数
+                </div>
+                <div>{typeof apexLedger?.gate_score === "number" ? apexLedger.gate_score.toFixed(2) : "—"}</div>
+              </div>
+              <div>
+                <div className="text-xs uppercase tracking-wider text-muted-foreground">
+                  自动巡检
+                </div>
+                <div>
+                  {apexDeltaE?.launchd?.registered ? "已安装" : "未安装"}
+                  {apexDeltaE?.launchd?.last_exit_code ? ` · exit ${apexDeltaE.launchd.last_exit_code}` : ""}
+                </div>
+              </div>
+              <div>
+                <div className="text-xs uppercase tracking-wider text-muted-foreground">
+                  固定入口
+                </div>
+                <div>{apexDeltaE?.cli?.exists ? "已安装" : "缺失"}</div>
+              </div>
+            </div>
+
+            <details className="text-xs text-muted-foreground border-t border-border pt-3">
+              <summary className="cursor-pointer text-foreground">
+                查看技术详情
+              </summary>
+              <div className="mt-2 grid gap-1 font-mono break-all">
+                <div>schema: {apexDeltaE?.schema ?? "—"}</div>
+                <div>audit: {apexLedger?.audit_hash ?? "—"}</div>
+                <div>summary: {apexLedger?.summary_sha256 ?? "—"}</div>
+                <div>label: {apexDeltaE?.launchd?.label ?? "—"}</div>
+                <div>boundary: {apexDeltaE?.boundary ?? status?.pgg_runtime?.boundary ?? "—"}</div>
+              </div>
+            </details>
           </CardContent>
         </Card>
       </section>
