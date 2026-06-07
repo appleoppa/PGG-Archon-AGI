@@ -19,6 +19,8 @@ def test_cmmi_runs() -> None:
     assert p.name == "cmmi"
     assert p.status in {"ABSENT", "SKELETON", "PARTIAL", "ACTIVE"}
     assert "audit_trail_lines" in p.probes
+    assert "rust_cmmi_gate" in p.probes
+    assert "rust_cmmi_gate_status" in p.probes
 
 
 def test_apex_doc_standard_runs() -> None:
