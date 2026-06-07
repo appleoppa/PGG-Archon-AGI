@@ -1,0 +1,17 @@
+[package]
+name = "hermes-pgg-apex-delta-e-gate"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "hermes_pgg_apex_delta_e_gate"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+pyo3 = { version = "0.20", features = ["abi3-py311"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+sha2 = "0.10"
+
+[dev-dependencies]
+proptest = "1.6"

@@ -35,6 +35,7 @@ def test_formula_gate_status_has_six_dimensions_and_no_t5_claim(tmp_path: Path) 
     assert "not full AGI" in panel["boundary"]
     assert panel["manifest_summary"]["latest_pass_count"] == 1
     assert panel["manifest_summary"]["latest_exact_pass_count"] == 1
+    assert panel["manifest_summary"]["apex_delta_e_gate"]["schema"] == "SuperEvolution13ApexDeltaEFormulaPanelSummary/v1"
 
 
 def test_formula_gate_status_watch_when_task_empty(tmp_path: Path) -> None:

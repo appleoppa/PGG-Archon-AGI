@@ -23,6 +23,7 @@ class AutonomousEvolutionStatus:
     genedb_gene_347: dict[str, Any]
     cron_job: dict[str, Any]
     rust_watcher: dict[str, Any]
+    apex_delta_e_gate: dict[str, Any]
     latest_readiness_package: dict[str, Any]
     event_ledger_summary: dict[str, Any]
     known_gaps: list[str]
@@ -89,6 +90,70 @@ def _rust_watcher_status() -> dict[str, Any]:
         return {"error": repr(exc), "label": "ai.hermes.evol-watcher"}
 
 
+def _launchd_label_status(label: str) -> dict[str, Any]:
+    """Return compact launchd status for read-only dashboard display."""
+    try:
+        proc = subprocess.run(["launchctl", "print", f"gui/501/{label}"], text=True, capture_output=True, timeout=10)
+        out = proc.stdout + proc.stderr
+        last_exit = None
+        runs = None
+        for line in out.splitlines():
+            stripped = line.strip()
+            if stripped.startswith("last exit code ="):
+                last_exit = stripped.split("=", 1)[1].strip()
+            elif stripped.startswith("runs ="):
+                runs = stripped.split("=", 1)[1].strip()
+        return {
+            "exit": proc.returncode,
+            "registered": proc.returncode == 0,
+            "active": proc.returncode == 0 and "state = running" in out,
+            "last_exit_code": last_exit,
+            "runs": runs,
+            "label": label,
+        }
+    except Exception as exc:  # noqa: BLE001
+        return {"error": repr(exc), "label": label}
+
+
+def _apex_delta_e_gate_status(home: Path, manifest: dict[str, Any]) -> dict[str, Any]:
+    """Aggregate Super Evolution 13 APEX ΔE gate state for runtime dashboard.
+
+    Boundary: read-only file/launchd status aggregation; no gate execution,
+    provider calls, network, or mutations.
+    """
+    manifest_entry = manifest.get("latest_super_evolution13_apex_delta_e_gate_landing", {}) if isinstance(manifest, dict) else {}
+    light_entry = manifest.get("latest_super_evolution13_apex_delta_e_light_autorun_launchd_landing", {}) if isinstance(manifest, dict) else {}
+    latest_ledger = _latest_jsonl(home / ".hermes/data/pgg_apex_delta_e_autorun_ledger.jsonl")
+    cli_path = home / ".hermes/bin/pgg_apex_delta_e_gate"
+    autorun_path = home / ".hermes/bin/pgg-apex-delta-e-autorun"
+    launchd = _launchd_label_status("ai.hermes.pgg-apex-delta-e-light")
+    status = "PASS" if latest_ledger.get("status") == "PASS" and latest_ledger.get("gate_state") == "PASS_BOUNDED_APEX_DELTA_E_GATE" else "WATCH"
+    if not cli_path.exists() or not autorun_path.exists():
+        status = "WATCH"
+    return {
+        "schema": "PGGApexDeltaEGateRuntimeStatus/v1",
+        "status": status,
+        "manifest_status": manifest_entry.get("status"),
+        "manifest_key_present": bool(manifest_entry),
+        "light_manifest_status": light_entry.get("status"),
+        "light_manifest_key_present": bool(light_entry),
+        "latest_ledger": {
+            "status": latest_ledger.get("status"),
+            "gate_state": latest_ledger.get("gate_state"),
+            "gate_score": latest_ledger.get("gate_score"),
+            "audit_hash": latest_ledger.get("audit_hash"),
+            "summary_sha256": latest_ledger.get("summary_sha256"),
+            "timestamp": latest_ledger.get("timestamp"),
+            "run_dir": latest_ledger.get("run_dir"),
+            "error": latest_ledger.get("error"),
+        },
+        "cli": {"path": str(cli_path), "exists": cli_path.exists()},
+        "autorun": {"path": str(autorun_path), "exists": autorun_path.exists()},
+        "launchd": launchd,
+        "boundary": "Read-only runtime dashboard card; no gate execution, no provider calls, no crawling, no code mutation, no scheduler/security mutation, no full AGI proof.",
+    }
+
+
 def _latest_readiness(base: Path) -> dict[str, Any]:
     files = sorted(base.expanduser().glob("**/promotion_readiness_package.json"), key=lambda p: p.stat().st_mtime, reverse=True)
     if not files:
@@ -137,6 +202,7 @@ def build_status(*, home: str | Path | None = None) -> AutonomousEvolutionStatus
     cron = _cron_job(h / ".hermes/cron/jobs.json", str(loop_cap.get("cron_job_id") or "c0fad245e325"))
     readiness = _latest_readiness(h / ".hermes/workspace/evolution/autonomous_loop")
     event_summary = _event_ledger_summary(h / ".hermes/data/pgg-background-evolution/autonomous_events.jsonl")
+    apex_delta_e = _apex_delta_e_gate_status(h, manifest if isinstance(manifest, dict) else {})
     known_gaps = []
     if readiness.get("status") != "READY_FOR_MAIN_PATCH_OR_GENE_CANDIDATE_REVIEW":
         known_gaps.append("latest promotion readiness package is not READY")
@@ -148,6 +214,8 @@ def build_status(*, home: str | Path | None = None) -> AutonomousEvolutionStatus
         known_gaps.append("gene_id=347 is not promoted")
     if event_summary.get("status") != "PASS":
         known_gaps.append("autonomous event ledger has no readable events")
+    if apex_delta_e.get("status") != "PASS":
+        known_gaps.append("Super Evolution 13 APEX ΔE gate runtime card is not PASS")
     if "Claude" not in json.dumps(manifest, ensure_ascii=False) and True:
         known_gaps.append("Claude provider health remains externally unresolved unless separately verified")
     return AutonomousEvolutionStatus(
@@ -165,6 +233,7 @@ def build_status(*, home: str | Path | None = None) -> AutonomousEvolutionStatus
         genedb_gene_347=gene,
         cron_job=cron,
         rust_watcher=_rust_watcher_status(),
+        apex_delta_e_gate=apex_delta_e,
         latest_readiness_package=readiness,
         event_ledger_summary=event_summary,
         known_gaps=known_gaps,

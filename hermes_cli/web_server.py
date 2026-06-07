@@ -1747,6 +1747,27 @@ async def get_status():
         # Module not importable yet (early startup) — leave as [].
         pass
 
+    pgg_runtime = {
+        "schema": "PGGRuntimeStatusApi/v1",
+        "available": False,
+        "apex_delta_e_gate": None,
+        "boundary": "Read-only API status summary; no gate execution, no provider calls, no crawling, no mutations.",
+    }
+    try:
+        from agent.pgg_archon_autonomous_status import build_status as _build_pgg_status
+
+        pgg_status = _build_pgg_status().to_json_dict()
+        pgg_runtime.update(
+            {
+                "available": True,
+                "schema": "PGGRuntimeStatusApi/v1",
+                "apex_delta_e_gate": pgg_status.get("apex_delta_e_gate"),
+                "known_gaps": pgg_status.get("known_gaps", []),
+            }
+        )
+    except Exception as exc:
+        pgg_runtime["error"] = repr(exc)
+
     return {
         "version": __version__,
         "release_date": __release_date__,
@@ -1765,6 +1786,7 @@ async def get_status():
         "active_sessions": active_sessions,
         "auth_required": auth_required,
         "auth_providers": auth_providers,
+        "pgg_runtime": pgg_runtime,
     }
 
 

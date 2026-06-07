@@ -58,6 +58,29 @@ class FormulaGateDimension:
     check: str
 
 
+def _apex_delta_e_manifest_summary(data: dict[str, Any]) -> dict[str, Any]:
+    gate = data.get("latest_super_evolution13_apex_delta_e_gate_landing", {}) if isinstance(data, dict) else {}
+    light = data.get("latest_super_evolution13_apex_delta_e_light_autorun_launchd_landing", {}) if isinstance(data, dict) else {}
+    dashboard = data.get("latest_super_evolution13_apex_delta_e_runtime_dashboard_integration", {}) if isinstance(data, dict) else {}
+    gate_verification = gate.get("verification", {}) if isinstance(gate, dict) else {}
+    light_verification = light.get("verification", {}) if isinstance(light, dict) else {}
+    dashboard_verification = dashboard.get("verification", {}) if isinstance(dashboard, dict) else {}
+    return {
+        "schema": "SuperEvolution13ApexDeltaEFormulaPanelSummary/v1",
+        "gate_manifest_status": gate.get("status") if isinstance(gate, dict) else None,
+        "light_manifest_status": light.get("status") if isinstance(light, dict) else None,
+        "dashboard_manifest_status": dashboard.get("status") if isinstance(dashboard, dict) else None,
+        "gate_state": gate_verification.get("gate_state") or dashboard_verification.get("gate_state"),
+        "gate_score": gate_verification.get("gate_score"),
+        "cli_entrypoint": gate_verification.get("fixed_cli_entrypoint"),
+        "light_launchd_label": light_verification.get("light_launchd_label"),
+        "dashboard_card_status": dashboard_verification.get("card_status"),
+        "dashboard_smoke_sha256": dashboard_verification.get("dashboard_smoke_sha256"),
+        "status": "PASS" if dashboard_verification.get("card_status") == "PASS" and (gate_verification.get("gate_state") or dashboard_verification.get("gate_state")) == "PASS_BOUNDED_APEX_DELTA_E_GATE" else "WATCH",
+        "boundary": "Formula panel summary only; does not execute gate and does not prove full AGI/self-awareness/official benchmark.",
+    }
+
+
 def _load_manifest_summary(manifest_path: str | Path | None = None) -> dict[str, Any]:
     path = Path(manifest_path).expanduser() if manifest_path else Path.home() / ".hermes" / "data" / "EVOLUTION_MANIFEST.json"
     if not path.exists():
@@ -140,6 +163,7 @@ def _load_manifest_summary(manifest_path: str | Path | None = None) -> dict[str,
     return {
         "present": True,
         "path": str(path),
+        "apex_delta_e_gate": _apex_delta_e_manifest_summary(data),
         "latest_keys": latest_keys,
         "latest_pass_keys": latest_pass_keys,
         "latest_exact_pass_keys": latest_exact_pass_keys,
@@ -257,6 +281,8 @@ def render_formula_gate_status(status: dict[str, Any]) -> str:
     unresolved = status.get("unresolved_gap_count", 0)
     unresolved_keys = status.get("unresolved_gap_keys") or []
     unresolved_preview = ", ".join(str(x.get("key", x)) for x in unresolved_keys[:3]) if unresolved_keys else "无"
+    apex = (status.get("manifest_summary") or {}).get("apex_delta_e_gate") or {}
+    apex_line = f"超级进化13/APEX ΔE：{apex.get('status', 'UNKNOWN')}；gate={apex.get('gate_state') or '无'}；dashboard={apex.get('dashboard_card_status') or '无'}"
     return "\n".join([
         "【公式门禁状态】",
         f"/goal：{goal.get('north_star', '总纲1')}；{goal.get('execution_chain', '总纲2')}",
@@ -264,6 +290,7 @@ def render_formula_gate_status(status: dict[str, Any]) -> str:
         f"总纲1六维：{', '.join(active) if active else '未激活'}",
         f"总纲2闭环：{chain}",
         f"证据：Manifest={'有' if status.get('evidence_gates', {}).get('manifest_present') else '缺'}；latest PASS族={status.get('evidence_gates', {}).get('latest_pass_count', 0)}；exact PASS={status.get('evidence_gates', {}).get('latest_exact_pass_count', 0)}；未闭环={unresolved}；已分类边界={status.get('manifest_summary', {}).get('resolved_or_policy_count', 0)}；缺口={missing or '无'}",
+        apex_line,
         f"未闭环预览：{unresolved_preview}",
         f"边界：{status.get('boundary')}",
     ])

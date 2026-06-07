@@ -92,7 +92,7 @@ def test_status_preserves_existing_fields(loopback_client):
         "config_version", "latest_config_version", "gateway_running",
         "gateway_pid", "gateway_health_url", "gateway_state",
         "gateway_platforms", "gateway_exit_reason", "gateway_updated_at",
-        "active_sessions", "auth_required", "auth_providers",
+        "active_sessions", "auth_required", "auth_providers", "pgg_runtime",
     }
     missing = expected_keys - set(body.keys())
     assert not missing, f"/api/status dropped fields: {missing}"
