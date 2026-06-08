@@ -22,14 +22,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from aiohttp import web
-from aiohttp.test_utils import AioHTTPTestCase, TestClient, TestServer
+from aiohttp.test_utils import TestClient, TestServer
 
 from gateway.config import GatewayConfig, Platform, PlatformConfig
 from gateway.platforms.api_server import (
     APIServerAdapter,
     ResponseStore,
     _IdempotencyCache,
-    _CORS_HEADERS,
     _derive_chat_session_id,
     check_api_server_requirements,
     cors_middleware,
@@ -413,14 +412,8 @@ def _create_app(adapter: APIServerAdapter) -> web.Application:
     app.router.add_get("/v1/health", adapter._handle_health)
     app.router.add_get("/v1/models", adapter._handle_models)
     app.router.add_get("/v1/capabilities", adapter._handle_capabilities)
-    app.router.add_get("/v1/pgg-archon/audit-summary", adapter._handle_apex_runtimeos_audit_summary)
-    app.router.add_get("/v1/pgg-archon/dashboard", adapter._handle_apex_runtimeos_dashboard)
-    app.router.add_get("/v1/pgg-archon/autonomy-status", adapter._handle_apex_runtimeos_autonomy_status)
-    app.router.add_post("/v1/pgg-archon/case-workflow-entry", adapter._handle_pgg_archon_case_workflow_entry)
-    app.router.add_get("/v1/apex-runtimeos/audit-summary", adapter._handle_apex_runtimeos_audit_summary)
-    app.router.add_get("/v1/apex-runtimeos/dashboard", adapter._handle_apex_runtimeos_dashboard)
-    app.router.add_get("/v1/apex-runtimeos/autonomy-status", adapter._handle_apex_runtimeos_autonomy_status)
-    app.router.add_post("/v1/apex-runtimeos/case-workflow-entry", adapter._handle_pgg_archon_case_workflow_entry)
+    app.router.add_get("/v1/skills", adapter._handle_skills)
+    app.router.add_get("/v1/toolsets", adapter._handle_toolsets)
     app.router.add_post("/v1/chat/completions", adapter._handle_chat_completions)
     app.router.add_post("/v1/responses", adapter._handle_responses)
     app.router.add_get("/v1/responses/{response_id}", adapter._handle_get_response)
@@ -505,6 +498,20 @@ class TestHealthEndpoint:
             assert data["platform"] == "hermes-agent"
 
     @pytest.mark.asyncio
+    async def test_health_reports_version(self, adapter):
+        """GET /health must expose a non-empty version so orchestrators (e.g.
+        AgentOS) can read the gateway version without scraping. Regression
+        guard for the missing-version gap."""
+        app = _create_app(adapter)
+        async with TestClient(TestServer(app)) as cli:
+            resp = await cli.get("/health")
+            assert resp.status == 200
+            data = await resp.json()
+            assert "version" in data
+            assert isinstance(data["version"], str)
+            assert data["version"] != ""
+
+    @pytest.mark.asyncio
     async def test_v1_health_alias_returns_ok(self, adapter):
         """GET /v1/health should return the same response as /health."""
         app = _create_app(adapter)
@@ -514,6 +521,7 @@ class TestHealthEndpoint:
             data = await resp.json()
             assert data["status"] == "ok"
             assert data["platform"] == "hermes-agent"
+            assert data.get("version")
 
 
 # ---------------------------------------------------------------------------
@@ -663,28 +671,10 @@ class TestCapabilitiesEndpoint:
             assert data["features"]["chat_completions"] is True
             assert data["features"]["run_status"] is True
             assert data["features"]["run_events_sse"] is True
-            assert data["features"]["pgg_archon_audit_summary"] is True
-            assert data["features"]["pgg_archon_dashboard"] is True
-            assert data["features"]["pgg_archon_autonomy_status"] is True
-            assert data["features"]["pgg_archon_case_workflow_entry"] is True
-            assert data["features"]["apex_runtimeos_audit_summary"] is True
-            assert data["features"]["apex_runtimeos_dashboard"] is True
-            assert data["features"]["apex_runtimeos_autonomy_status"] is True
-            assert data["features"]["apex_runtimeos_case_workflow_entry"] is True
             assert data["features"]["session_continuity_header"] == "X-Hermes-Session-Id"
             assert data["endpoints"]["run_status"]["path"] == "/v1/runs/{run_id}"
-            assert data["endpoints"]["pgg_archon_audit_summary"]["path"] == "/v1/pgg-archon/audit-summary"
-            assert data["endpoints"]["pgg_archon_dashboard"]["path"] == "/v1/pgg-archon/dashboard"
-            assert data["endpoints"]["pgg_archon_autonomy_status"]["path"] == "/v1/pgg-archon/autonomy-status"
-            assert data["endpoints"]["pgg_archon_case_workflow_entry"]["path"] == "/v1/pgg-archon/case-workflow-entry"
-            assert data["endpoints"]["apex_runtimeos_audit_summary"]["path"] == "/v1/apex-runtimeos/audit-summary"
-            assert data["endpoints"]["apex_runtimeos_audit_summary"]["alias_of"] == "pgg_archon_audit_summary"
-            assert data["endpoints"]["apex_runtimeos_dashboard"]["path"] == "/v1/apex-runtimeos/dashboard"
-            assert data["endpoints"]["apex_runtimeos_dashboard"]["alias_of"] == "pgg_archon_dashboard"
-            assert data["endpoints"]["apex_runtimeos_autonomy_status"]["path"] == "/v1/apex-runtimeos/autonomy-status"
-            assert data["endpoints"]["apex_runtimeos_autonomy_status"]["alias_of"] == "pgg_archon_autonomy_status"
-            assert data["endpoints"]["apex_runtimeos_case_workflow_entry"]["path"] == "/v1/apex-runtimeos/case-workflow-entry"
-            assert data["endpoints"]["apex_runtimeos_case_workflow_entry"]["alias_of"] == "pgg_archon_case_workflow_entry"
+            assert data["endpoints"]["skills"] == {"method": "GET", "path": "/v1/skills"}
+            assert data["endpoints"]["toolsets"] == {"method": "GET", "path": "/v1/toolsets"}
 
     @pytest.mark.asyncio
     async def test_capabilities_requires_auth_when_key_configured(self, auth_adapter):
@@ -702,217 +692,157 @@ class TestCapabilitiesEndpoint:
             assert data["auth"]["required"] is True
 
 
-class TestApexRuntimeOSAuditSummaryEndpoint:
-    @pytest.mark.asyncio
-    async def test_audit_summary_returns_aggregate_only(self, adapter, tmp_path, monkeypatch):
-        audit_path = tmp_path / "audit.jsonl"
-        monkeypatch.setenv("APEX_RUNTIMEOS_AUDIT_PATH", str(audit_path))
-        audit_path.write_text(
-            json.dumps({
-                "schema": "ApexRuntimeOSCheckpointAudit/v1",
-                "stage": "pre_api_request",
-                "session_id": "s1",
-                "checkpoint": {
-                    "blocking": False,
-                    "results": {
-                        "router": {"status": "PASS", "elapsed_ms": 1.5, "output": {"model": "m1"}}
-                    },
-                },
-            }) + "\nnot-json\n",
-            encoding="utf-8",
-        )
-        app = _create_app(adapter)
-        async with TestClient(TestServer(app)) as cli:
-            resp = await cli.get("/v1/pgg-archon/audit-summary?limit=10")
-            assert resp.status == 200
-            data = await resp.json()
-            assert data["object"] == "hermes.pgg_archon.audit_summary"
-            assert data["status"] == "ok"
-            summary = data["summary"]
-            assert summary["records"] == 1
-            assert summary["bad_lines"] == 1
-            assert "autonomy" in summary
-            assert summary["autonomy"]["schema"] == "ApexRuntimeOSAutonomyStatus/v1"
-            assert summary["organs"]["router"]["status"]["PASS"] == 1
-            raw = json.dumps(data)
-            assert str(audit_path) not in raw
-            assert "prompt" not in raw
-            assert "messages" not in raw
+# ---------------------------------------------------------------------------
+# /v1/skills and /v1/toolsets endpoints
+# ---------------------------------------------------------------------------
 
-            legacy_resp = await cli.get("/v1/apex-runtimeos/audit-summary?limit=10")
-            assert legacy_resp.status == 200
-            legacy_data = await legacy_resp.json()
-            assert legacy_data["object"] == "hermes.apex_runtimeos.audit_summary"
+
+class TestSkillsEndpoint:
+    @pytest.mark.asyncio
+    async def test_skills_returns_list_envelope(self, adapter):
+        fake_skills = [
+            {"name": "github", "description": "GitHub workflow skill", "category": "github"},
+            {"name": "ascii-art", "description": "ASCII art generation", "category": "creative"},
+        ]
+        with patch(
+            "tools.skills_tool._find_all_skills",
+            return_value=list(fake_skills),
+        ):
+            app = _create_app(adapter)
+            async with TestClient(TestServer(app)) as cli:
+                resp = await cli.get("/v1/skills")
+                assert resp.status == 200
+                data = await resp.json()
+                assert data["object"] == "list"
+                names = sorted(s["name"] for s in data["data"])
+                assert names == ["ascii-art", "github"]
+                for entry in data["data"]:
+                    assert set(entry.keys()) >= {"name", "description", "category"}
 
     @pytest.mark.asyncio
-    async def test_audit_summary_requires_auth_when_key_configured(self, auth_adapter):
-        app = _create_app(auth_adapter)
-        async with TestClient(TestServer(app)) as cli:
-            resp = await cli.get("/v1/apex-runtimeos/audit-summary")
-            assert resp.status == 401
-            authed = await cli.get(
-                "/v1/apex-runtimeos/audit-summary",
-                headers={"Authorization": "Bearer sk-secret"},
-            )
-            assert authed.status == 200
+    async def test_skills_handles_enumeration_failure(self, adapter):
+        with patch(
+            "tools.skills_tool._find_all_skills",
+            side_effect=RuntimeError("boom"),
+        ):
+            app = _create_app(adapter)
+            async with TestClient(TestServer(app)) as cli:
+                resp = await cli.get("/v1/skills")
+                assert resp.status == 500
+                data = await resp.json()
+                assert "error" in data
 
     @pytest.mark.asyncio
-    async def test_audit_summary_rejects_invalid_limit(self, adapter):
-        app = _create_app(adapter)
-        async with TestClient(TestServer(app)) as cli:
-            resp = await cli.get("/v1/apex-runtimeos/audit-summary?limit=bad")
-            assert resp.status == 400
+    async def test_skills_requires_auth_when_key_configured(self, auth_adapter):
+        with patch("tools.skills_tool._find_all_skills", return_value=[]):
+            app = _create_app(auth_adapter)
+            async with TestClient(TestServer(app)) as cli:
+                resp = await cli.get("/v1/skills")
+                assert resp.status == 401
+
+                authed = await cli.get(
+                    "/v1/skills",
+                    headers={"Authorization": "Bearer sk-secret"},
+                )
+                assert authed.status == 200
+
+
+class TestToolsetsEndpoint:
+    @pytest.mark.asyncio
+    async def test_toolsets_returns_resolved_tools(self, adapter):
+        fake_toolsets = [
+            ("default", "Default Tools", "Core tools"),
+            ("web", "Web Tools", "Search and extract"),
+        ]
+        with patch(
+            "hermes_cli.tools_config._get_effective_configurable_toolsets",
+            return_value=fake_toolsets,
+        ), patch(
+            "hermes_cli.tools_config._get_platform_tools",
+            return_value={"default"},
+        ), patch(
+            "hermes_cli.tools_config._toolset_has_keys",
+            return_value=True,
+        ), patch(
+            "toolsets.resolve_toolset",
+            side_effect=lambda name: {
+                "default": ["terminal", "read_file"],
+                "web": ["web_search"],
+            }[name],
+        ):
+            app = _create_app(adapter)
+            async with TestClient(TestServer(app)) as cli:
+                resp = await cli.get("/v1/toolsets")
+                assert resp.status == 200
+                data = await resp.json()
+                assert data["object"] == "list"
+                assert data["platform"] == "api_server"
+                by_name = {ts["name"]: ts for ts in data["data"]}
+                assert by_name["default"]["enabled"] is True
+                assert by_name["default"]["tools"] == ["read_file", "terminal"]
+                assert by_name["web"]["enabled"] is False
+                assert by_name["web"]["tools"] == ["web_search"]
+                assert by_name["default"]["configured"] is True
 
     @pytest.mark.asyncio
-    async def test_dashboard_renders_health_card_without_sensitive_fields(self, adapter, tmp_path, monkeypatch):
-        audit_path = tmp_path / "audit.jsonl"
-        monkeypatch.setenv("APEX_RUNTIMEOS_AUDIT_PATH", str(audit_path))
-        audit_path.write_text(
-            json.dumps({
-                "schema": "ApexRuntimeOSCheckpointAudit/v1",
-                "stage": "pre_api_request",
-                "session_id": "s1",
-                "checkpoint": {
-                    "blocking": False,
-                    "results": {
-                        "planner": {"status": "PASS", "elapsed_ms": 3.0, "output": {"model": "m1"}}
-                    },
-                },
-            }) + "\n",
-            encoding="utf-8",
-        )
-        app = _create_app(adapter)
-        async with TestClient(TestServer(app)) as cli:
-            resp = await cli.get("/v1/pgg-archon/dashboard?limit=10")
-            assert resp.status == 200
-            assert resp.content_type == "text/html"
-            text = await resp.text()
-            assert "PGG Archon AGI 体征卡片" in text
-            assert "有效记录" in text
-            assert "Autonomy" in text
-            assert "稳定候选" in text
-            assert "待回滚" in text
-            assert "cron_dryrun" in text
-            assert "health_report" in text
-            assert "planner" in text
-            assert str(audit_path) not in text
-            assert "prompt" not in text
-            assert "messages" not in text
-            assert "token" not in text.lower()
-            assert "REVIEW" in text or "WATCH" in text or "OK" in text
+    async def test_toolsets_handles_resolution_failure_per_toolset(self, adapter):
+        """If one toolset fails to resolve, others still appear with empty tools."""
+        fake_toolsets = [
+            ("broken", "Broken", "fails"),
+            ("ok", "OK", "works"),
+        ]
+
+        def _resolve(name):
+            if name == "broken":
+                raise RuntimeError("nope")
+            return ["some_tool"]
+
+        with patch(
+            "hermes_cli.tools_config._get_effective_configurable_toolsets",
+            return_value=fake_toolsets,
+        ), patch(
+            "hermes_cli.tools_config._get_platform_tools",
+            return_value=set(),
+        ), patch(
+            "hermes_cli.tools_config._toolset_has_keys",
+            return_value=False,
+        ), patch(
+            "toolsets.resolve_toolset",
+            side_effect=_resolve,
+        ):
+            app = _create_app(adapter)
+            async with TestClient(TestServer(app)) as cli:
+                resp = await cli.get("/v1/toolsets")
+                assert resp.status == 200
+                data = await resp.json()
+                by_name = {ts["name"]: ts for ts in data["data"]}
+                assert by_name["broken"]["tools"] == []
+                assert by_name["ok"]["tools"] == ["some_tool"]
 
     @pytest.mark.asyncio
-    async def test_dashboard_requires_auth_when_key_configured(self, auth_adapter):
-        app = _create_app(auth_adapter)
-        async with TestClient(TestServer(app)) as cli:
-            resp = await cli.get("/v1/apex-runtimeos/dashboard")
-            assert resp.status == 401
-            authed = await cli.get(
-                "/v1/apex-runtimeos/dashboard",
-                headers={"Authorization": "Bearer sk-secret"},
-            )
-            assert authed.status == 200
+    async def test_toolsets_requires_auth_when_key_configured(self, auth_adapter):
+        with patch(
+            "hermes_cli.tools_config._get_effective_configurable_toolsets",
+            return_value=[],
+        ), patch(
+            "hermes_cli.tools_config._get_platform_tools",
+            return_value=set(),
+        ):
+            app = _create_app(auth_adapter)
+            async with TestClient(TestServer(app)) as cli:
+                resp = await cli.get("/v1/toolsets")
+                assert resp.status == 401
 
-    @pytest.mark.asyncio
-    async def test_autonomy_status_endpoint_returns_aggregate_only(self, adapter, tmp_path, monkeypatch):
-        out_dir = tmp_path / "autowrites"
-        monkeypatch.setenv("APEX_RUNTIMEOS_AUTOWRITE_DIR", str(out_dir))
-        candidates = out_dir / "candidates.jsonl"
-        promotions = out_dir / "promotions.jsonl"
-        out_dir.mkdir(parents=True)
-        candidates.write_text(
-            json.dumps({
-                "schema": "ApexRuntimeOSAutoWriteCandidate/v1",
-                "promotion_required": True,
-                "items": [{"code": "planner_context_heavy", "severity": "warn", "actions": ["compress_context"]}],
-            }) + "\n" +
-            json.dumps({
-                "schema": "ApexRuntimeOSAutoWriteCandidate/v1",
-                "promotion_required": True,
-                "items": [{"code": "planner_context_heavy", "severity": "warn", "actions": ["compress_context"]}],
-            }) + "\n",
-            encoding="utf-8",
-        )
-        promotions.write_text(
-            json.dumps({
-                "schema": "ApexRuntimeOSPromotion/v1",
-                "target": "memory",
-                "content_hash": "abc123",
-                "success": True,
-                "rollback_status": "pending",
-                "rollback": {"old_text": "secret old text"},
-            }) + "\n",
-            encoding="utf-8",
-        )
-        app = _create_app(adapter)
-        async with TestClient(TestServer(app)) as cli:
-            resp = await cli.get("/v1/pgg-archon/autonomy-status?limit=10&min_occurrences=2")
-            assert resp.status == 200
-            data = await resp.json()
-            assert data["object"] == "hermes.pgg_archon.autonomy_status"
-            autonomy = data["autonomy"]
-            assert autonomy["schema"] == "ApexRuntimeOSAutonomyStatus/v1"
-            assert autonomy["stable_ready_count"] == 1
-            assert autonomy["promotion_count"] == 1
-            assert autonomy["pending_rollbacks"] == 1
-            assert "cron_dryrun" in autonomy
-            assert "repair_enabled" in autonomy["cron_dryrun"]
-            assert autonomy["health_report"]["schema"] == "ApexRuntimeOSHealthReport/v1"
-            raw = json.dumps(data)
-            assert str(out_dir) not in raw
-            assert "secret old text" not in raw
-            assert "prompt" not in raw
-            assert "messages" not in raw
-
-            legacy_resp = await cli.get("/v1/apex-runtimeos/autonomy-status?limit=10&min_occurrences=2")
-            assert legacy_resp.status == 200
-            legacy_data = await legacy_resp.json()
-            assert legacy_data["object"] == "hermes.apex_runtimeos.autonomy_status"
+                authed = await cli.get(
+                    "/v1/toolsets",
+                    headers={"Authorization": "Bearer sk-secret"},
+                )
+                assert authed.status == 200
 
 
-
-class TestPggArchonCaseWorkflowEntryEndpoint:
-    @pytest.mark.asyncio
-    async def test_case_workflow_entry_blocks_start_shortcut_and_returns_actions(self, adapter):
-        app = _create_app(adapter)
-        async with TestClient(TestServer(app)) as cli:
-            resp = await cli.post(
-                "/v1/pgg-archon/case-workflow-entry",
-                json={"user_instruction": "读取材料，启动办案程序。", "case_state": {}},
-            )
-            assert resp.status == 409
-            data = await resp.json()
-            assert data["object"] == "hermes.pgg_archon.case_workflow_entry"
-            plan = data["plan"]
-            assert plan["schema"] == "PGGCaseWorkflowEntryPlan/v1"
-            assert plan["status"] == "ACTION_REQUIRED"
-            assert plan["preflight"]["status"] == "BLOCK"
-            assert plan["allows_external_delivery"] is False
-            assert "request_case_management_numbering" in {item["action"] for item in plan["actions"]}
-
-    @pytest.mark.asyncio
-    async def test_case_workflow_entry_allows_clean_legacy_alias(self, adapter):
-        app = _create_app(adapter)
-        async with TestClient(TestServer(app)) as cli:
-            resp = await cli.post(
-                "/v1/apex-runtimeos/case-workflow-entry",
-                json={
-                    "instruction": "开始办案",
-                    "case_state": {
-                        "formal_workflow_started": True,
-                        "case_id": "PGG-FW-20260528-002",
-                        "case_id_generated_by": "案件管理中心",
-                        "evidence_gate_status": "PASS",
-                        "internal_report_generated": True,
-                        "intended_output": "内部预分析",
-                    },
-                },
-            )
-            assert resp.status == 200
-            data = await resp.json()
-            assert data["object"] == "hermes.apex_runtimeos.case_workflow_entry"
-            assert data["plan"]["preflight"]["status"] == "PASS"
-            assert data["plan"]["allows_external_delivery"] is True
+# ---------------------------------------------------------------------------
+# /v1/chat/completions endpoint
+# ---------------------------------------------------------------------------
 
 
 class TestChatCompletionsEndpoint:
