@@ -71,6 +71,8 @@ mini-swe-agent/
 .nix-stamps/
 result
 website/static/api/skills-index.json
+website/static/api/skills.json
+rust_modules/**/target/
 models-dev-upstream/
 hermes_cli/tui_dist/*
 hermes_cli/scripts/

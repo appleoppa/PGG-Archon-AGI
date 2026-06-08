@@ -1,0 +1,100 @@
+{
+  "schema": "PGGHermesPreUpgradeProtection/v1",
+  "generated_at": "2026-06-08T10:12:17.930633+00:00",
+  "purpose": "Protect evolved PGG/Hermes source before local hermes update; exclude tokens, config.yaml, data ledgers, binaries, target, generated skills.json.",
+  "repo": "/Users/appleoppa/.hermes/hermes-agent",
+  "head": "7afdb1b5123f689a8f53f36017e2bdd82a394832",
+  "private_default": "54aec2e7b14655e6746259bbc2d2c7369f2a4185",
+  "included_files": [
+    {
+      "path": ".gitignore",
+      "sha256": "0696e609d55b9497d535bb8385c9c52dc04fe121ad92b1166a9d934297137f6f",
+      "bytes": 1384
+    },
+    {
+      "path": "agent/pgg_apex_commit_discipline_gate.py",
+      "sha256": "589110c733e2a565adf2c8b19fccd9889c13c21dcbc1595eb98551b3df92884e",
+      "bytes": 9288
+    },
+    {
+      "path": "agent/pgg_archon_autonomy_controller.py",
+      "sha256": "2283cc7eb49885739f14f1576b7adaf34afe5296ff0f71b846ba937164b0fd12",
+      "bytes": 36904
+    },
+    {
+      "path": "agent/pgg_production_readiness_gate.py",
+      "sha256": "e77de3343ed7df42632ac358ef9bf8d09c346e5f76cad9e442f41ac410611741",
+      "bytes": 3578
+    },
+    {
+      "path": "agent/pgg_skillflow_advisor.py",
+      "sha256": "c7939181cabde0ed18a01d39ad793b582107ded66cdc9b38be437a99067e2e78",
+      "bytes": 1091
+    },
+    {
+      "path": "agent/pgg_skillflow_live_window_gate.py",
+      "sha256": "8672fd5f9cf312460e3574ce8d84d8f49d8dd97e3eee833f9f6e4a139df4ea1d",
+      "bytes": 7985
+    },
+    {
+      "path": "agent/pgg_skillflow_readiness_gate.py",
+      "sha256": "72f5bc6174248b75eecf816e87ebc6b70354468bf8f4f9aa960efcd130ba1634",
+      "bytes": 3845
+    },
+    {
+      "path": "agent/pgg_github_evolution_pipeline.py",
+      "sha256": "6d9a2f0bda35b766cbeef0a11e1ad8c4a76e0f3244ec641724f885fddc9c3bed",
+      "bytes": 13630
+    },
+    {
+      "path": "tests/test_pgg_github_evolution_pipeline.py",
+      "sha256": "c76196466d2bc18f7372758700319612ab2142338aa1362e153b9184e96896ca",
+      "bytes": 2657
+    },
+    {
+      "path": "rust_modules/hermes_pgg_cmmi_industrial_gate/Cargo.toml",
+      "sha256": "c7138659180b19a7eaf34f79b26c6ecbf5c73d5f8a6cca2d2e56d2abd23b0e45",
+      "bytes": 317
+    },
+    {
+      "path": "rust_modules/hermes_pgg_cmmi_industrial_gate/Cargo.lock",
+      "sha256": "597a3c377b4c4a2cbfa4fd668f1b66992f11dc27cc2f4be3f1c978ccf48eae5a",
+      "bytes": 9908
+    },
+    {
+      "path": "rust_modules/hermes_pgg_cmmi_industrial_gate/src/lib.rs",
+      "sha256": "04f3694dac6ffc6e3bb1440cbe5bb473fa80d360fe3292139d39505d9a9da741",
+      "bytes": 13346
+    }
+  ],
+  "missing_candidates": [],
+  "excluded_by_policy": [
+    "~/.hermes/.env",
+    "~/.hermes/config.yaml",
+    "~/.hermes/auth.json",
+    "~/.hermes/data/* raw ledgers",
+    "website/static/api/skills.json",
+    "apps/",
+    "rust_modules/**/target",
+    "*.dylib/*.so binaries",
+    "__pycache__",
+    ".DS_Store"
+  ],
+  "local_runtime_to_recreate_after_upgrade": [
+    "~/.hermes/bin/hermes-evolve",
+    "~/.hermes/bin/pgg-github-cli-mcp-self-evolution-runner",
+    "~/Library/LaunchAgents/ai.hermes.pgg-github-cli-mcp-self-evolution.plist",
+    "~/.hermes/config/evolution-pipeline.yaml"
+  ],
+  "status_preview": [
+    " M .gitignore",
+    "?? agent/pgg_production_readiness_gate.py",
+    "?? agent/pgg_skillflow_advisor.py",
+    "?? agent/pgg_skillflow_live_window_gate.py",
+    "?? agent/pgg_skillflow_readiness_gate.py",
+    "?? apps/",
+    "?? rust_modules/hermes_apex_delta_g",
+    "?? website/static/api/skills-meta.json"
+  ],
+  "boundary": "Private GitHub protection point only; not public origin; no credentials; no auto-merge daemon; no hermes update executed."
+}
