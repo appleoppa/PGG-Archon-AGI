@@ -156,21 +156,36 @@ def check_python_hash_sidecars(root: Path, limit: int = 200) -> dict[str, Any]:
 
 def evaluate(repo: str | Path, *, messages: list[str] | None = None, skill_root: str | Path | None = None, python_root: str | Path | None = None) -> dict[str, Any]:
     repo_path = Path(repo).expanduser()
-    msg_rows = messages if messages is not None else _git_messages(repo_path)
+    explicit_messages = messages is not None
+    msg_rows = messages if explicit_messages else _git_messages(repo_path)
     commit = check_commit_messages(msg_rows)
+    if not explicit_messages:
+        commit["status"] = "OBSERVE_HISTORY_ONLY"
+        commit["boundary"] = (
+            "Historical commit messages are diagnostic only in pre-commit. "
+            "Current commit message enforcement belongs to the commit-msg hook."
+        )
     skills = check_skill_frontmatter(Path(skill_root).expanduser() if skill_root else Path.home() / ".hermes/skills")
     pyhash = check_python_hash_sidecars(Path(python_root).expanduser() if python_root else repo_path / "agent")
     checks: list[str] = []
     gaps: list[str] = []
-    if commit["status"] == "PASS": checks.append("commit_entropy_keywords_present")
-    else: gaps.append("commit_entropy_keywords_insufficient")
+    if explicit_messages:
+        if commit["status"] == "PASS": checks.append("commit_entropy_keywords_present")
+        else: gaps.append("commit_entropy_keywords_insufficient")
+    else:
+        checks.append("commit_history_observed_only")
     if skills["status"] == "PASS": checks.append("skill_frontmatter_valid")
     else: gaps.append("skill_frontmatter_watch")
     if pyhash["status"] == "PASS": checks.append("python_hash_sidecars_valid")
     else: gaps.append("python_hash_sidecars_observe_only")
-    # Weight sidecars lightly because they are optional observe-first.
-    score = round(commit["ratio"] * 35 + skills["ratio"] * 45 + min(pyhash["coverage"], 1.0) * 10 + (10 if pyhash["status"] == "PASS" else 0), 2)
-    status = "PASS_COMMIT_DISCIPLINE_OBSERVE_GATE" if score >= 85 and len(gaps) <= 1 else ("WATCH_COMMIT_DISCIPLINE_OBSERVE_GATE" if score >= 50 else "BLOCKED_COMMIT_DISCIPLINE_INSUFFICIENT")
+    # Weight sidecars lightly because they are optional observe-first. In pre-commit
+    # mode (no explicit --message), historical commit entropy is not a blocking input.
+    commit_score = commit["ratio"] * 35 if explicit_messages else 35
+    score = round(commit_score + skills["ratio"] * 45 + min(pyhash["coverage"], 1.0) * 10 + (10 if pyhash["status"] == "PASS" else 0), 2)
+    if explicit_messages:
+        status = "PASS_COMMIT_DISCIPLINE_OBSERVE_GATE" if score >= 85 and len(gaps) <= 1 else ("WATCH_COMMIT_DISCIPLINE_OBSERVE_GATE" if score >= 50 else "BLOCKED_COMMIT_DISCIPLINE_INSUFFICIENT")
+    else:
+        status = "PASS_COMMIT_DISCIPLINE_OBSERVE_GATE" if skills["status"] == "PASS" else "WATCH_COMMIT_DISCIPLINE_OBSERVE_GATE"
     return asdict(CommitDisciplineResult(
         schema="PGGApexCommitDisciplineGate/v1",
         generated_at=datetime.now(timezone.utc).isoformat(),
