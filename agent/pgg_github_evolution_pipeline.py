@@ -73,6 +73,21 @@ def _github_source_readable(gh: CommandResult) -> bool:
     return remote.exit == 0 and bool(remote.stdout.strip())
 
 
+def _github_auth_status(gh: CommandResult) -> str:
+    """Classify GitHub CLI auth without treating auth as required for read-only status.
+
+    The pipeline can still be PASS when local/read-only source discovery works,
+    but exposing this WATCH prevents a bounded PASS from being mistaken for
+    authenticated GitHub write/PR readiness.
+    """
+    if gh.exit == 0:
+        return "PASS_GH_CLI_AUTH_READABLE"
+    stderr = (gh.stderr or "").lower()
+    if "requires authentication" in stderr or "gh auth login" in stderr or "http 401" in stderr:
+        return "WATCH_GH_CLI_AUTH_REQUIRED"
+    return "WATCH_GH_CLI_UNREADABLE"
+
+
 def _read_yaml_like_config(path: Path = DEFAULT_CONFIG) -> dict[str, Any]:
     if not path.exists():
         return {}
@@ -204,6 +219,7 @@ def build_status(*, repo_root: Path = DEFAULT_REPO) -> dict[str, Any]:
         "config": ensure,
         "launchd_probe": launchd.to_json_dict(),
         "github_probe": gh.to_json_dict(),
+        "github_auth_status": _github_auth_status(gh),
         "self_status": {"status": self_status.get("status"), "checks": self_status.get("checks"), "blockers": self_status.get("blockers"), "latest": self_status.get("_latest_path")},
         "git": git_state,
         "write_mode": "scoped_bot_branch_pr_enabled" if checks.get("scoped_bot_branch_pr_enabled") else "read_only_or_blocked",

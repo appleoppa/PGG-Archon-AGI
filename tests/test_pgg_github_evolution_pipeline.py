@@ -44,6 +44,42 @@ def test_github_source_readable_falls_back_to_local_git_remote(tmp_path: Path, m
     assert pipe._github_source_readable(stale_gh) is True
 
 
+def test_github_auth_status_exposes_watch_without_secret() -> None:
+    stale_gh = pipe.CommandResult(["gh", "repo", "view"], 1, "", "HTTP 401: Requires authentication")
+    assert pipe._github_auth_status(stale_gh) == "WATCH_GH_CLI_AUTH_REQUIRED"
+    assert pipe._github_auth_status(pipe.CommandResult(["gh", "repo", "view"], 0, "{}", "")) == "PASS_GH_CLI_AUTH_READABLE"
+
+
+def test_status_reports_github_auth_watch_separately(tmp_path: Path, monkeypatch) -> None:
+    cfg = tmp_path / "evolution-pipeline.yaml"
+    monkeypatch.setattr(pipe, "DEFAULT_CONFIG", cfg)
+    monkeypatch.setattr(pipe, "_load_self_status", lambda: {"status": "PASS", "checks": {
+        "hermes_cli_available": True,
+        "mcp_hermes_studio_enabled": True,
+        "commit_discipline_hooks_installed": True,
+        "unified_formula_latest_present": True,
+    }, "blockers": []})
+    monkeypatch.setattr(pipe, "_git_state", lambda repo_root: {"repo_root": str(repo_root), "head": "h", "branch": "b", "status_short": "", "remote": ""})
+
+    def fake_run(cmd, cwd=None, timeout=30):
+        joined = " ".join(cmd)
+        if "launchctl" in joined:
+            return pipe.CommandResult(list(cmd), 0, "last exit code = 0", "")
+        if cmd[:3] == ["gh", "repo", "view"]:
+            return pipe.CommandResult(list(cmd), 1, "", "HTTP 401: Requires authentication")
+        if cmd[:2] == ["git", "ls-remote"]:
+            return pipe.CommandResult(list(cmd), 0, "abc123\tHEAD\n", "")
+        return pipe.CommandResult(list(cmd), 0, "", "")
+
+    source_repo = tmp_path / ".hermes" / "workspace" / "github" / "z-dashen"
+    source_repo.mkdir(parents=True)
+    monkeypatch.setattr(pipe, "DEFAULT_HOME", tmp_path)
+    monkeypatch.setattr(pipe, "_run", fake_run)
+    result = pipe.build_status(repo_root=tmp_path)
+    assert result["github_auth_status"] == "WATCH_GH_CLI_AUTH_REQUIRED"
+    assert result["checks"]["github_source_readable"] is True
+
+
 def test_review_package_writes_file(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(pipe, "build_status", lambda repo_root: {"status": "PASS_GITHUB_EVOLUTION_PIPELINE_BOUNDED", "blockers": []})
     monkeypatch.setattr(pipe, "discover", lambda: {"commits_exit": 0, "commit_count": 1})
