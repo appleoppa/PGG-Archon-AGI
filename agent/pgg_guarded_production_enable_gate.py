@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 import urllib.request
@@ -15,7 +16,7 @@ from pathlib import Path
 from typing import Any
 
 HOME = Path.home() / ".hermes"
-TOKEN = "omniroute-dashboard-token"
+TOKEN = os.environ.get("HERMES_OMNIROUTE_DASHBOARD_TOKEN") or os.environ.get("OMNIROUTE_DASHBOARD_TOKEN") or ""
 API = "http://127.0.0.1:9197"
 EXPECTED = {
     "production_answer_chain_replaced": "guarded_strict_exact_general",
@@ -28,7 +29,7 @@ EXPECTED = {
 
 def _http_json(path: str, method: str = "GET", payload: dict[str, Any] | None = None, timeout: int = 20) -> tuple[bool, Any]:
     data = None if payload is None else json.dumps(payload, ensure_ascii=False).encode("utf-8")
-    req = urllib.request.Request(API + path, data=data, method=method, headers={"X-Hermes-Session-Token": TOKEN, "Content-Type": "application/json"})
+    req = urllib.request.Request(API + path, data=data, method=method, headers={"Content-Type": "application/json", **({"X-Hermes-Session-Token": TOKEN} if TOKEN else {})})
     try:
         with urllib.request.urlopen(req, timeout=timeout) as r:
             return True, json.loads(r.read().decode("utf-8", "replace"))
