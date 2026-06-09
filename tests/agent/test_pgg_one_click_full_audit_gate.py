@@ -25,6 +25,7 @@ def test_one_click_gate_uses_all_core_checks(monkeypatch):
         raise AssertionError(joined)
 
     monkeypatch.setattr("agent.pgg_one_click_full_audit_gate._run", fake_run)
+    monkeypatch.setattr("agent.pgg_one_click_full_audit_gate.build_memory_system_status", lambda: {"overall": {"score_percent": 100.0, "failed_or_watch": []}}, raising=False)
     rec = build_status()
     assert rec["status"] == "PASS_ONE_CLICK_FULL_AUDIT_ANTI_REGRESSION"
     assert rec["passed"] == rec["total"] == 8
