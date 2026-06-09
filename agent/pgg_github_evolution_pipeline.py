@@ -69,10 +69,11 @@ def _read_yaml_like_config(path: Path = DEFAULT_CONFIG) -> dict[str, Any]:
 
 
 def default_config_payload() -> str:
-    return """# PGG/Hermes GitHub self-evolution pipeline (bounded, no auto-merge)
+    repo_root = str(Path.home() / ".hermes" / "hermes-agent")
+    return f"""# PGG/Hermes GitHub self-evolution pipeline (bounded, no auto-merge)
 schema: PGGGithubEvolutionPipelineConfig/v1
 version: 0.1.0
-repo_root: /Users/appleoppa/.hermes/hermes-agent
+repo_root: {repo_root}
 source_repos:
   - appleoppa/z-dashen
 bot_branch_prefix: bot/evolver
@@ -148,13 +149,35 @@ def build_status(*, repo_root: Path = DEFAULT_REPO) -> dict[str, Any]:
     launchd = _run(["bash", "-lc", "launchctl print gui/$(id -u)/ai.hermes.pgg-github-cli-mcp-self-evolution 2>&1 | grep -E 'state =|runs =|last exit code|run interval|program =' | head -30"], timeout=20)
     gh = _run(["gh", "repo", "view", "appleoppa/z-dashen", "--json", "nameWithOwner,visibility,defaultBranchRef,url"], timeout=30)
     git_state = _git_state(repo_root)
+    safety = (cfg.get("safety") or {}) if isinstance(cfg.get("safety"), dict) else {}
+    stages = (cfg.get("stages") or {}) if isinstance(cfg.get("stages"), dict) else {}
+    pr_stage = (stages.get("pr") or {}) if isinstance(stages.get("pr"), dict) else {}
+    self_checks = self_status.get("checks") if isinstance(self_status.get("checks"), dict) else {}
+    self_non_skillflow_ok = all(bool(self_checks.get(k)) for k in [
+        "hermes_cli_available",
+        "mcp_hermes_studio_enabled",
+        "github_cli_authenticated",
+        "github_z_dashen_readable",
+        "commit_discipline_hooks_installed",
+        "unified_formula_latest_present",
+    ])
+    scoped_bot_write_enabled = (
+        bool(safety.get("auto_push", False))
+        and bool(safety.get("auto_pr", False))
+        and not bool(safety.get("auto_merge", False))
+        and str(safety.get("push_target", "")).lower() == "scoped_bot_branch"
+        and str(safety.get("bot_branch_prefix", "")).startswith("bot/")
+        and bool(safety.get("require_human_or_llm_review_for_pr", False))
+        and bool(pr_stage.get("enabled", False))
+    )
     checks = {
         "config_present": Path(ensure["path"]).exists(),
-        "self_status_pass": self_status.get("status") == "PASS_READONLY_SELF_EVOLUTION_MONITOR",
+        "self_status_non_skillflow_core_pass": self_non_skillflow_ok,
         "launchd_runner_exit0": "last exit code = 0" in launchd.stdout,
         "github_source_readable": gh.exit == 0,
-        "auto_merge_disabled": not bool(((cfg.get("safety") or {}) if isinstance(cfg.get("safety"), dict) else {}).get("auto_merge", False)),
-        "auto_push_disabled": not bool(((cfg.get("safety") or {}) if isinstance(cfg.get("safety"), dict) else {}).get("auto_push", False)),
+        "auto_merge_disabled": not bool(safety.get("auto_merge", False)),
+        "direct_default_push_disabled": str(safety.get("push_target", "")).lower() != "default_branch",
+        "scoped_bot_branch_pr_enabled": scoped_bot_write_enabled,
     }
     blockers = [name for name, ok in checks.items() if not ok]
     return {
@@ -168,7 +191,8 @@ def build_status(*, repo_root: Path = DEFAULT_REPO) -> dict[str, Any]:
         "github_probe": gh.to_json_dict(),
         "self_status": {"status": self_status.get("status"), "checks": self_status.get("checks"), "blockers": self_status.get("blockers"), "latest": self_status.get("_latest_path")},
         "git": git_state,
-        "boundary": "Bounded pipeline status only; no auto-merge, no auto-push, no scheduler/security/provider/production route mutation.",
+        "write_mode": "scoped_bot_branch_pr_enabled" if checks.get("scoped_bot_branch_pr_enabled") else "read_only_or_blocked",
+        "boundary": "Bounded pipeline status only; scoped bot branch + PR may be enabled when gates pass; no auto-merge, no default-branch direct push, no scheduler/security/provider/production route mutation.",
     }
 
 
