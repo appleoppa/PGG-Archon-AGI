@@ -14,6 +14,7 @@ import hashlib
 import json
 import os
 import subprocess
+import sys
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -317,7 +318,12 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
-    args = parser.parse_args(list(argv) if argv is not None else None)
+    # Cron/operator ergonomics: the installed ``hermes-evolve`` wrapper used by
+    # status dashboards is easy to call without a subcommand. Treat a bare
+    # invocation as the read-only ``status`` surface instead of failing argparse.
+    # Explicit argv=[] in tests/embedders keeps normal argparse validation.
+    parsed_argv = ["status"] if argv is None and len(sys.argv) == 1 else (list(argv) if argv is not None else None)
+    args = parser.parse_args(parsed_argv)
     return int(args.func(args))
 
 
