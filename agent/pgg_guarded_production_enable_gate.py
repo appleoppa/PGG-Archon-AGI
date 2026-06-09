@@ -16,8 +16,14 @@ from pathlib import Path
 from typing import Any
 
 HOME = Path.home() / ".hermes"
-TOKEN = os.environ.get("HERMES_OMNIROUTE_DASHBOARD_TOKEN") or os.environ.get("OMNIROUTE_DASHBOARD_TOKEN") or ""
-API = "http://127.0.0.1:9197"
+LOCAL_LOOPBACK_DASHBOARD_TOKEN = "omniroute-dashboard-token"
+TOKEN = (
+    os.environ.get("HERMES_OMNIROUTE_DASHBOARD_TOKEN")
+    or os.environ.get("OMNIROUTE_DASHBOARD_TOKEN")
+    or os.environ.get("HERMES_DASHBOARD_SESSION_TOKEN")
+    or LOCAL_LOOPBACK_DASHBOARD_TOKEN
+)
+API = os.environ.get("HERMES_OMNIROUTE_API", "http://127.0.0.1:9197")
 EXPECTED = {
     "production_answer_chain_replaced": "guarded_strict_exact_general",
     "credential_integration": "ENABLED_WITH_EXISTING_AUTH_JSON_POOL",
@@ -27,9 +33,21 @@ EXPECTED = {
 }
 
 
+def _is_loopback_api(api: str | None = None) -> bool:
+    target = api or API
+    return target.startswith("http://127.0.0.1:") or target.startswith("http://localhost:")
+
+
+def _request_headers() -> dict[str, str]:
+    headers = {"Content-Type": "application/json"}
+    if TOKEN and (TOKEN != LOCAL_LOOPBACK_DASHBOARD_TOKEN or _is_loopback_api()):
+        headers["X-Hermes-Session-Token"] = TOKEN
+    return headers
+
+
 def _http_json(path: str, method: str = "GET", payload: dict[str, Any] | None = None, timeout: int = 20) -> tuple[bool, Any]:
     data = None if payload is None else json.dumps(payload, ensure_ascii=False).encode("utf-8")
-    req = urllib.request.Request(API + path, data=data, method=method, headers={"Content-Type": "application/json", **({"X-Hermes-Session-Token": TOKEN} if TOKEN else {})})
+    req = urllib.request.Request(API + path, data=data, method=method, headers=_request_headers())
     try:
         with urllib.request.urlopen(req, timeout=timeout) as r:
             return True, json.loads(r.read().decode("utf-8", "replace"))

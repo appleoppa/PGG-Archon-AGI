@@ -32,6 +32,64 @@ def test_http_json_omits_session_token_when_env_absent(monkeypatch):
     assert normalized["content-type"] == "application/json"
 
 
+def test_default_loopback_token_is_only_sent_to_loopback(monkeypatch):
+    captured = {}
+
+    class DummyResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def read(self):
+            return b'{"ok": true}'
+
+    def fake_urlopen(req, timeout=20):
+        captured["headers"] = dict(req.header_items())
+        return DummyResponse()
+
+    monkeypatch.setattr(gate, "TOKEN", gate.LOCAL_LOOPBACK_DASHBOARD_TOKEN)
+    monkeypatch.setattr(gate, "API", "https://example.invalid")
+    monkeypatch.setattr(gate.urllib.request, "urlopen", fake_urlopen)
+
+    ok, data = gate._http_json("/probe")
+
+    assert ok is True
+    assert data == {"ok": True}
+    normalized = {k.lower(): v for k, v in captured["headers"].items()}
+    assert "x-hermes-session-token" not in normalized
+
+
+def test_default_loopback_token_is_sent_to_loopback(monkeypatch):
+    captured = {}
+
+    class DummyResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def read(self):
+            return b'{"ok": true}'
+
+    def fake_urlopen(req, timeout=20):
+        captured["headers"] = dict(req.header_items())
+        return DummyResponse()
+
+    monkeypatch.setattr(gate, "TOKEN", gate.LOCAL_LOOPBACK_DASHBOARD_TOKEN)
+    monkeypatch.setattr(gate, "API", "http://127.0.0.1:9197")
+    monkeypatch.setattr(gate.urllib.request, "urlopen", fake_urlopen)
+
+    ok, data = gate._http_json("/probe")
+
+    assert ok is True
+    assert data == {"ok": True}
+    normalized = {k.lower(): v for k, v in captured["headers"].items()}
+    assert normalized["x-hermes-session-token"] == gate.LOCAL_LOOPBACK_DASHBOARD_TOKEN
+
+
 def test_http_json_includes_session_token_when_env_present(monkeypatch):
     captured = {}
 
