@@ -13,6 +13,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import subprocess
 import sys
 from dataclasses import asdict, dataclass
@@ -29,6 +30,20 @@ DEFAULT_REVIEW_DIR = DEFAULT_HOME / ".hermes" / "workspace" / "pgg-archon-govern
 DEFAULT_STATUS_SCRIPT = DEFAULT_HOME / ".hermes" / "scripts" / "pgg_github_self_evolution_status.py"
 DEFAULT_BOT_BRANCH_PREFIX = "bot/evolver"
 
+_SECRET_TEXT_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
+    (re.compile(r"(https?://)([^/@\s:]+):([^/@\s]+)@"), r"\1***:***@"),
+    (re.compile(r"(gh[opsu]_[A-Za-z0-9_]{20,})"), "***REDACTED_GITHUB_TOKEN***"),
+    (re.compile(r"(?i)(token|api[_-]?key|authorization|password|secret)(\s*[:=]\s*)([^\s,;}]+)"), r"\1\2***REDACTED***"),
+)
+
+
+def _redact_text(value: Any) -> str:
+    """Return a status-safe string with credential-looking substrings removed."""
+    text = str(value or "")
+    for pattern, replacement in _SECRET_TEXT_PATTERNS:
+        text = pattern.sub(replacement, text)
+    return text
+
 
 @dataclass(frozen=True)
 class CommandResult:
@@ -38,7 +53,11 @@ class CommandResult:
     stderr: str
 
     def to_json_dict(self) -> dict[str, Any]:
-        return asdict(self)
+        data = asdict(self)
+        data["cmd"] = [_redact_text(part) for part in data.get("cmd", [])]
+        data["stdout"] = _redact_text(data.get("stdout", ""))
+        data["stderr"] = _redact_text(data.get("stderr", ""))
+        return data
 
 
 def _now() -> str:
@@ -170,7 +189,7 @@ def _git_state(repo_root: Path = DEFAULT_REPO) -> dict[str, Any]:
         "head": _run(["git", "rev-parse", "HEAD"], cwd=repo_root).stdout.strip(),
         "branch": _run(["git", "branch", "--show-current"], cwd=repo_root).stdout.strip(),
         "status_short": _run(["git", "status", "--short"], cwd=repo_root).stdout,
-        "remote": _run(["git", "remote", "-v"], cwd=repo_root).stdout,
+        "remote": _redact_text(_run(["git", "remote", "-v"], cwd=repo_root).stdout),
     }
 
 

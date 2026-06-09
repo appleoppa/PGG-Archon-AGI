@@ -50,6 +50,39 @@ def test_github_auth_status_exposes_watch_without_secret() -> None:
     assert pipe._github_auth_status(pipe.CommandResult(["gh", "repo", "view"], 0, "{}", "")) == "PASS_GH_CLI_AUTH_READABLE"
 
 
+def test_command_result_redacts_secret_like_output() -> None:
+    result = pipe.CommandResult(
+        ["git", "remote", "https://user:ghp_abcdefghijklmnopqrstuvwxyz@github.com/private/repo.git"],
+        1,
+        "token: ghp_abcdefghijklmnopqrstuvwxyz1234567890",
+        "Authorization=Bearer ghp_abcdefghijklmnopqrstuvwxyz1234567890",
+    ).to_json_dict()
+    dumped = json.dumps(result)
+    assert "ghp_abcdefghijklmnopqrstuvwxyz" not in dumped
+    assert "user:" not in dumped
+    assert "***REDACTED" in dumped
+
+
+def test_git_state_redacts_remote_urls(tmp_path: Path, monkeypatch) -> None:
+    calls: list[list[str]] = []
+
+    def fake_run(cmd, cwd=None, timeout=30):
+        calls.append(list(cmd))
+        if cmd[:2] == ["git", "remote"]:
+            return pipe.CommandResult(list(cmd), 0, "origin\thttps://user:secret-token@example.test/repo.git (push)\n", "")
+        if cmd[:2] == ["git", "branch"]:
+            return pipe.CommandResult(list(cmd), 0, "bot/evolver/test\n", "")
+        if cmd[:2] == ["git", "status"]:
+            return pipe.CommandResult(list(cmd), 0, "", "")
+        return pipe.CommandResult(list(cmd), 0, "abc123\n", "")
+
+    monkeypatch.setattr(pipe, "_run", fake_run)
+    state = pipe._git_state(tmp_path)
+    assert "secret-token" not in state["remote"]
+    assert "https://***:***@example.test/repo.git" in state["remote"]
+    assert calls
+
+
 def test_status_reports_github_auth_watch_separately(tmp_path: Path, monkeypatch) -> None:
     cfg = tmp_path / "evolution-pipeline.yaml"
     monkeypatch.setattr(pipe, "DEFAULT_CONFIG", cfg)
