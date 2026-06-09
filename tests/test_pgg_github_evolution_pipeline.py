@@ -51,14 +51,18 @@ def test_github_auth_status_exposes_watch_without_secret() -> None:
 
 
 def test_command_result_redacts_secret_like_output() -> None:
+    # Build the synthetic token at runtime so repository secret scanners do not
+    # flag the test fixture itself while the redaction regex still sees a
+    # realistic GitHub-token-shaped value.
+    fake_token = "ghp_" + "A" * 24
     result = pipe.CommandResult(
-        ["git", "remote", "https://user:ghp_abcdefghijklmnopqrstuvwxyz@github.com/private/repo.git"],
+        ["git", "remote", f"https://user:{fake_token}@github.com/private/repo.git"],
         1,
-        "token: ghp_abcdefghijklmnopqrstuvwxyz1234567890",
-        "Authorization=Bearer ghp_abcdefghijklmnopqrstuvwxyz1234567890",
+        f"token: {fake_token}",
+        f"Authorization=Bearer {fake_token}",
     ).to_json_dict()
     dumped = json.dumps(result)
-    assert "ghp_abcdefghijklmnopqrstuvwxyz" not in dumped
+    assert fake_token not in dumped
     assert "user:" not in dumped
     assert "***REDACTED" in dumped
 
