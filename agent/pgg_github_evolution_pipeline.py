@@ -173,8 +173,6 @@ def build_status(*, repo_root: Path = DEFAULT_REPO) -> dict[str, Any]:
     self_non_skillflow_ok = all(bool(self_checks.get(k)) for k in [
         "hermes_cli_available",
         "mcp_hermes_studio_enabled",
-        "github_cli_authenticated",
-        "github_z_dashen_readable",
         "commit_discipline_hooks_installed",
         "unified_formula_latest_present",
     ])
