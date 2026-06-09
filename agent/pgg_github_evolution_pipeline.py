@@ -14,6 +14,7 @@ import hashlib
 import json
 import os
 import subprocess
+import sys
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -54,6 +55,22 @@ def _run(cmd: Sequence[str], *, cwd: Path | None = None, timeout: int = 30) -> C
         return CommandResult(list(cmd), proc.returncode, proc.stdout[-4000:], proc.stderr[-4000:])
     except Exception as exc:  # noqa: BLE001
         return CommandResult(list(cmd), 999, "", repr(exc))
+
+
+def _github_source_readable(gh: CommandResult) -> bool:
+    """Return whether the configured GitHub source is readable.
+
+    Prefer ``gh repo view`` when GitHub CLI auth is healthy, but keep the
+    pipeline useful when ``gh`` auth is stale and the local source checkout or
+    git credential helper can still perform read-only remote discovery.
+    """
+    if gh.exit == 0:
+        return True
+    source_repo = DEFAULT_HOME / ".hermes" / "workspace" / "github" / "z-dashen"
+    if not source_repo.exists():
+        return False
+    remote = _run(["git", "ls-remote", "origin", "HEAD", "refs/heads/main"], cwd=source_repo, timeout=20)
+    return remote.exit == 0 and bool(remote.stdout.strip())
 
 
 def _read_yaml_like_config(path: Path = DEFAULT_CONFIG) -> dict[str, Any]:
@@ -174,7 +191,7 @@ def build_status(*, repo_root: Path = DEFAULT_REPO) -> dict[str, Any]:
         "config_present": Path(ensure["path"]).exists(),
         "self_status_non_skillflow_core_pass": self_non_skillflow_ok,
         "launchd_runner_exit0": "last exit code = 0" in launchd.stdout,
-        "github_source_readable": gh.exit == 0,
+        "github_source_readable": _github_source_readable(gh),
         "auto_merge_disabled": not bool(safety.get("auto_merge", False)),
         "direct_default_push_disabled": str(safety.get("push_target", "")).lower() != "default_branch",
         "scoped_bot_branch_pr_enabled": scoped_bot_write_enabled,
@@ -317,7 +334,12 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
-    args = parser.parse_args(list(argv) if argv is not None else None)
+    # Cron/operator ergonomics: the installed ``hermes-evolve`` wrapper used by
+    # status dashboards is easy to call without a subcommand. Treat a bare
+    # invocation as the read-only ``status`` surface instead of failing argparse.
+    # Explicit argv=[] in tests/embedders keeps normal argparse validation.
+    parsed_argv = ["status"] if argv is None and len(sys.argv) == 1 else (list(argv) if argv is not None else None)
+    args = parser.parse_args(parsed_argv)
     return int(args.func(args))
 
 
