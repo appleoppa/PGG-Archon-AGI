@@ -29,6 +29,21 @@ def test_status_blocks_when_self_status_missing(tmp_path: Path, monkeypatch) -> 
     assert "self_status_non_skillflow_core_pass" in result["blockers"]
 
 
+def test_github_source_readable_falls_back_to_local_git_remote(tmp_path: Path, monkeypatch) -> None:
+    source_repo = tmp_path / ".hermes" / "workspace" / "github" / "z-dashen"
+    source_repo.mkdir(parents=True)
+    monkeypatch.setattr(pipe, "DEFAULT_HOME", tmp_path)
+
+    def fake_run(cmd, cwd=None, timeout=30):
+        assert cmd[:2] == ["git", "ls-remote"]
+        assert cwd == source_repo
+        return pipe.CommandResult(list(cmd), 0, "abc123\tHEAD\nabc123\trefs/heads/main\n", "")
+
+    monkeypatch.setattr(pipe, "_run", fake_run)
+    stale_gh = pipe.CommandResult(["gh", "repo", "view"], 1, "", "HTTP 401")
+    assert pipe._github_source_readable(stale_gh) is True
+
+
 def test_review_package_writes_file(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(pipe, "build_status", lambda repo_root: {"status": "PASS_GITHUB_EVOLUTION_PIPELINE_BOUNDED", "blockers": []})
     monkeypatch.setattr(pipe, "discover", lambda: {"commits_exit": 0, "commit_count": 1})
