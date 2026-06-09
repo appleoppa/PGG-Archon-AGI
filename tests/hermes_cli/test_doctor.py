@@ -1251,9 +1251,9 @@ class TestDoctorCodexCliHintPlacement:
         lines = out.splitlines()
         codex_idx = next(i for i, l in enumerate(lines) if "OpenAI Codex auth" in l)
         hint_idx = next(i for i, l in enumerate(lines) if self._hint_line() in l)
-        minimax_idx = next(i for i, l in enumerate(lines) if "MiniMax OAuth" in l)
+        gemini_idx = next(i for i, l in enumerate(lines) if "Google Gemini OAuth" in l)
         # Hint must sit between Codex auth and the next provider row (#27975).
-        assert codex_idx < hint_idx < minimax_idx
+        assert codex_idx < hint_idx < gemini_idx
 
     def test_hint_suppressed_when_codex_cli_present(self, monkeypatch, tmp_path):
         out = self._run(monkeypatch, tmp_path, codex_logged_in=False, codex_cli_present=True)
@@ -1266,14 +1266,10 @@ class TestDoctorCodexCliHintPlacement:
         assert "(logged in)" in out
         assert self._hint_line() not in out
 
-    def test_hint_never_attaches_to_minimax_row(self, monkeypatch, tmp_path):
+    def test_minimax_oauth_row_removed(self, monkeypatch, tmp_path):
         out = self._run(monkeypatch, tmp_path, codex_logged_in=False, codex_cli_present=False)
-        # The MiniMax OAuth row and the hint must not be adjacent — the hint
-        # belongs to the Codex auth row directly above it.
-        lines = [l for l in out.splitlines() if l.strip()]
-        minimax_idx = next(i for i, l in enumerate(lines) if "MiniMax OAuth" in l)
-        assert self._hint_line() not in lines[minimax_idx - 1]
-        assert minimax_idx + 1 >= len(lines) or self._hint_line() not in lines[minimax_idx + 1]
+        assert "MiniMax OAuth" not in out
+        assert self._hint_line() in out
 
 
 class TestDoctorStaleMaxIterationsDrift:

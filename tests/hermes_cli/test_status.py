@@ -311,7 +311,7 @@ class TestShowStatusXaiOAuth:
         assert "◆ Auth Providers" in out
 
     def test_import_failure_does_not_break_other_oauth_providers(self, monkeypatch, capsys, tmp_path):
-        """Nous/Codex/MiniMax rows must still appear when xAI import fails."""
+        """Nous/Codex/Qwen rows must still appear when xAI import fails."""
         import hermes_cli.auth as auth_mod
         status_mod = _base_xai_mocks(monkeypatch, tmp_path)
         monkeypatch.setattr(auth_mod, "get_nous_auth_status",
@@ -322,7 +322,8 @@ class TestShowStatusXaiOAuth:
         out = capsys.readouterr().out
 
         assert "Nous Portal" in out
-        assert "MiniMax OAuth" in out
+        assert "Qwen OAuth" in out
+        assert "MiniMax OAuth" not in out
 
     def test_status_function_exception_does_not_crash(self, monkeypatch, capsys, tmp_path):
         """show_status must not propagate an exception raised by get_xai_oauth_auth_status."""

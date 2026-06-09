@@ -371,10 +371,6 @@ def _build_apikey_providers_list() -> list:
         ("Hugging Face",     ("HF_TOKEN",),                                  "https://router.huggingface.co/v1/models", "HF_BASE_URL", True),
         ("NVIDIA NIM",       ("NVIDIA_API_KEY",),                            "https://integrate.api.nvidia.com/v1/models", "NVIDIA_BASE_URL", True),
         ("Alibaba/DashScope", ("DASHSCOPE_API_KEY",),                        "https://dashscope-intl.aliyuncs.com/compatible-mode/v1/models", "DASHSCOPE_BASE_URL", True),
-        # MiniMax global: /v1 endpoint supports /models.
-        ("MiniMax",          ("MINIMAX_API_KEY",),                           "https://api.minimax.io/v1/models",    "MINIMAX_BASE_URL", True),
-        # MiniMax CN: /v1 endpoint does NOT support /models (returns 404).
-        ("MiniMax (China)",  ("MINIMAX_CN_API_KEY",),                        "https://api.minimaxi.com/v1/models",  "MINIMAX_CN_BASE_URL", False),
         ("Kilo Code",        ("KILOCODE_API_KEY",),                          "https://api.kilo.ai/api/gateway/models", "KILOCODE_BASE_URL", True),
         ("OpenCode Zen",     ("OPENCODE_ZEN_API_KEY",),                      "https://opencode.ai/zen/v1/models",  "OPENCODE_ZEN_BASE_URL", True),
         # OpenCode Go has no shared /models endpoint; skip the health check.
@@ -389,8 +385,7 @@ def _build_apikey_providers_list() -> list:
         "StepFun Step Plan": "stepfun", "Kimi / Moonshot (China)": "kimi-coding-cn",
         "Arcee AI": "arcee", "GMI Cloud": "gmi", "DeepSeek": "deepseek",
         "Hugging Face": "huggingface", "NVIDIA NIM": "nvidia",
-        "Alibaba/DashScope": "alibaba", "MiniMax": "minimax",
-        "MiniMax (China)": "minimax-cn",
+        "Alibaba/DashScope": "alibaba",
         "Kilo Code": "kilocode", "OpenCode Zen": "opencode-zen",
         "OpenCode Go": "opencode-go",
     }
@@ -998,7 +993,6 @@ def run_doctor(args):
             get_nous_auth_status,
             get_codex_auth_status,
             get_gemini_oauth_auth_status,
-            get_minimax_oauth_auth_status,
         )
 
         nous_status = get_nous_auth_status()
@@ -1039,17 +1033,11 @@ def run_doctor(args):
         else:
             check_warn("Google Gemini OAuth", "(not logged in)")
 
-        minimax_status = get_minimax_oauth_auth_status()
-        if minimax_status.get("logged_in"):
-            region = minimax_status.get("region", "global")
-            check_ok("MiniMax OAuth", f"(logged in, region={region})")
-        else:
-            check_warn("MiniMax OAuth", "(not logged in)")
     except Exception as e:
         check_warn("Auth provider status", f"(could not check: {e})")
 
     # xAI OAuth — separate try/except so an import failure here cannot
-    # disrupt the already-printed Nous/Codex/Gemini/MiniMax rows above.
+    # disrupt the already-printed Nous/Codex/Gemini rows above.
     try:
         from hermes_cli.auth import get_xai_oauth_auth_status
         xai_oauth_status = get_xai_oauth_auth_status() or {}

@@ -4944,3 +4944,178 @@ class TestChatLockEviction(unittest.TestCase):
                 held.release()
 
         asyncio.run(_run())
+
+
+class TestFeishuRigorousCardRenderer(unittest.TestCase):
+    def test_rigorous_card_payload_splits_answer_process_and_footer(self):
+        from gateway.config import PlatformConfig
+        from gateway.platforms.feishu import FeishuAdapter
+
+        adapter = FeishuAdapter(PlatformConfig(extra={"rigorous_card_enabled": True}))
+        payload = adapter._build_rigorous_card_payload(
+            "最终结论：已完成。\n\n## 执行过程\n- 调用工具读回\n- 验证通过",
+            metadata={"model": "gpt-5.5", "source": "unit-test", "freshness": "now"},
+        )
+        data = json.loads(payload)
+        card = data
+        self.assertIn("body", card)
+        self.assertEqual(card["header"]["title"]["content"], "Hermes")
+        element_text = json.dumps(card["body"]["elements"], ensure_ascii=False)
+        self.assertIn("最终结论：已完成", element_text)
+        self.assertIn("过程", element_text)
+        self.assertIn("证据/边界", element_text)
+        self.assertIn("已完成 · gpt-5.5", element_text)
+
+    def test_rigorous_card_payload_strips_duplicate_status_body_section(self):
+        from gateway.config import PlatformConfig
+        from gateway.platforms.feishu import FeishuAdapter
+
+        adapter = FeishuAdapter(PlatformConfig(extra={"rigorous_card_enabled": True}))
+        payload = adapter._build_rigorous_card_payload(
+            "最终答复\n\n状态 / 来源 / 边界\n\n。 状态: 已启用严谨卡片展示",
+            metadata={"status": "已启用严谨卡片展示"},
+        )
+        card = json.loads(payload)
+        elements = card["body"]["elements"]
+        body_text = json.dumps(elements[:-1], ensure_ascii=False)
+        footer_text = json.dumps(elements[-1], ensure_ascii=False)
+        self.assertIn("最终答复", body_text)
+        self.assertNotIn("状态 / 来源 / 边界", body_text)
+        self.assertNotIn("状态: 已启用严谨卡片展示", body_text)
+        self.assertIn("已启用严谨卡片展示 · Hermes", footer_text)
+
+    def test_rigorous_card_header_is_plain_hermes(self):
+        from gateway.config import PlatformConfig
+        from gateway.platforms.feishu import FeishuAdapter
+
+        adapter = FeishuAdapter(PlatformConfig(extra={"rigorous_card_enabled": True}))
+        payload = adapter._build_rigorous_card_payload("hello")
+        card = json.loads(payload)
+        self.assertEqual(card["header"]["title"]["content"], "Hermes")
+        self.assertNotIn("回复", card["header"]["title"]["content"])
+        self.assertNotIn("严谨卡片", card["header"]["title"]["content"])
+
+    def test_rigorous_card_config_parses_false(self):
+        from gateway.config import PlatformConfig
+        from gateway.platforms.feishu import FeishuAdapter
+
+        adapter = FeishuAdapter(PlatformConfig(extra={"rigorous_card_enabled": False}))
+        self.assertFalse(adapter._rigorous_card_enabled)
+
+    def test_config_yaml_bridges_nested_feishu_rigorous_card_enabled(self):
+        import tempfile
+        from pathlib import Path
+        from unittest.mock import patch
+
+        from gateway.config import Platform, load_gateway_config
+        from gateway.platforms.feishu import FeishuAdapter
+
+        with tempfile.TemporaryDirectory() as td:
+            home = Path(td)
+            (home / "config.yaml").write_text(
+                """
+platforms:
+  feishu:
+    enabled: true
+    app_id: cli_xxx
+    app_secret: secret_xxx
+    connection_mode: websocket
+    rigorous_card_enabled: true
+""".strip(),
+                encoding="utf-8",
+            )
+            with patch("gateway.config.get_hermes_home", return_value=home):
+                cfg = load_gateway_config()
+        feishu_cfg = cfg.platforms[Platform.FEISHU]
+        self.assertTrue(feishu_cfg.extra["rigorous_card_enabled"])
+        self.assertTrue(FeishuAdapter(feishu_cfg)._rigorous_card_enabled)
+
+
+    def test_rigorous_card_status_template_and_table_repair(self):
+        from gateway.config import PlatformConfig
+        from gateway.platforms.feishu import FeishuAdapter
+
+        adapter = FeishuAdapter(PlatformConfig(extra={"rigorous_card_enabled": True}))
+        payload = adapter._build_rigorous_card_payload(
+            "# 结果\n\n| A | B |\n|---|---|\n| 1 | 2 |",
+            metadata={"status": "failed", "model": "unit-model"},
+        )
+        card = json.loads(payload)
+        self.assertEqual(card["header"]["template"], "red")
+        element_text = json.dumps(card["body"]["elements"], ensure_ascii=False)
+        self.assertIn("#### 结果", element_text)
+        self.assertIn("| A | B |", element_text)
+        self.assertIn("failed", element_text)
+
+    def test_rigorous_card_edit_updates_interactive_when_enabled(self):
+        from gateway.config import PlatformConfig
+        from gateway.platforms.feishu import FeishuAdapter
+
+        adapter = FeishuAdapter(PlatformConfig(extra={"rigorous_card_enabled": True}))
+        adapter._client = SimpleNamespace(
+            im=SimpleNamespace(
+                v1=SimpleNamespace(
+                    message=SimpleNamespace(update=lambda request: SimpleNamespace(success=lambda: True, data=SimpleNamespace(message_id="om_card"))),
+                )
+            )
+        )
+
+        async def _direct(func, *args, **kwargs):
+            return func(*args, **kwargs)
+
+        with patch("gateway.platforms.feishu.asyncio.to_thread", side_effect=_direct):
+            result = asyncio.run(adapter.edit_message("oc_xxx", "om_card", "partial ▉", finalize=False, metadata={"model": "m"}))
+        self.assertTrue(result.success)
+        self.assertEqual(result.message_id, "om_card")
+
+
+    def test_cardkit_streaming_send_draft_and_edit_finalize(self):
+        from gateway.config import PlatformConfig
+        from gateway.platforms.feishu import FeishuAdapter
+
+        adapter = FeishuAdapter(PlatformConfig(extra={"rigorous_card_enabled": True, "cardkit_streaming_enabled": True}))
+        calls = {"create": 0, "content": 0, "settings": 0, "update": 0}
+        card_api = SimpleNamespace(
+            create=lambda request: (calls.__setitem__("create", calls["create"] + 1) or SimpleNamespace(success=lambda: True, data=SimpleNamespace(card_id="card_x"))),
+            settings=lambda request: (calls.__setitem__("settings", calls["settings"] + 1) or SimpleNamespace(success=lambda: True, data=SimpleNamespace())),
+            update=lambda request: (calls.__setitem__("update", calls["update"] + 1) or SimpleNamespace(success=lambda: True, data=SimpleNamespace())),
+        )
+        card_element_api = SimpleNamespace(
+            content=lambda request: (calls.__setitem__("content", calls["content"] + 1) or SimpleNamespace(success=lambda: True, data=SimpleNamespace())),
+        )
+        adapter._client = SimpleNamespace(cardkit=SimpleNamespace(v1=SimpleNamespace(card=card_api, card_element=card_element_api)))
+        adapter._feishu_send_with_retry = AsyncMock(return_value=SimpleNamespace(success=lambda: True, data=SimpleNamespace(message_id="om_stream")))
+
+        async def _direct(func, *args, **kwargs):
+            return func(*args, **kwargs)
+
+        with patch("gateway.platforms.feishu.asyncio.to_thread", side_effect=_direct):
+            draft = asyncio.run(adapter.send_draft("oc_xxx", 1, "正在回复", metadata={"model": "m"}))
+            mid = asyncio.run(adapter.edit_message("oc_xxx", "om_stream", "继续回复", finalize=False, metadata={"model": "m"}))
+            final = asyncio.run(adapter.edit_message("oc_xxx", "om_stream", "完成了。", finalize=True, metadata={"model": "m"}))
+        self.assertTrue(draft.success)
+        self.assertEqual(draft.message_id, "om_stream")
+        self.assertTrue(mid.success)
+        self.assertTrue(final.success)
+        self.assertEqual(calls, {"create": 1, "content": 1, "settings": 1, "update": 1})
+
+    def test_send_falls_back_when_interactive_card_fails(self):
+        from gateway.config import PlatformConfig
+        from gateway.platforms.feishu import FeishuAdapter
+
+        adapter = FeishuAdapter(PlatformConfig(extra={"rigorous_card_enabled": True}))
+        adapter._client = object()
+        ok_response = SimpleNamespace(success=lambda: True, data=SimpleNamespace(message_id="om_xxx"))
+
+        async def fake_send(**kwargs):
+            if kwargs["msg_type"] == "interactive":
+                raise RuntimeError("interactive rejected")
+            return ok_response
+
+        adapter._feishu_send_with_retry = AsyncMock(side_effect=fake_send)
+        result = asyncio.run(adapter.send("oc_xxx", "hello"))
+        self.assertTrue(result.success)
+        self.assertEqual(result.message_id, "om_xxx")
+        msg_types = [call.kwargs["msg_type"] for call in adapter._feishu_send_with_retry.call_args_list]
+        self.assertEqual(msg_types[0], "interactive")
+        self.assertIn("text", msg_types)
