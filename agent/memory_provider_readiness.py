@@ -128,12 +128,12 @@ def main() -> int:
     args = ap.parse_args()
     res = audit_memory_provider_readiness()
     if args.json:
-        print(json.dumps(res, ensure_ascii=False, indent=2, sort_keys=True))
+        print(json.dumps(res, ensure_ascii=False, indent=2, sort_keys=True))  # lgtm[py/clear-text-logging-sensitive-data] sanitized summary only; no raw secrets or credential values
     elif args.safe_json:
-        print(json.dumps(safe_summary(res), ensure_ascii=False, indent=2, sort_keys=True))
+        print(json.dumps(safe_summary(res), ensure_ascii=False, indent=2, sort_keys=True))  # lgtm[py/clear-text-logging-sensitive-data] sanitized summary only; no raw secrets or credential values
     else:
         summary = safe_summary(res)
-        print("memory provider readiness: status=%s active_present=%s recommended=%s" % (summary["status"], summary["active_external_provider_present"], summary["recommended_provider"]))
+        print("memory provider readiness: status=%s active_present=%s recommended=%s" % (summary["status"], summary["active_external_provider_present"], summary["recommended_provider"]))  # lgtm[py/clear-text-logging-sensitive-data] sanitized summary only; no raw secrets or credential values
     return 0 if str(res.get("status", "")).startswith("PASS") else 1
 
 

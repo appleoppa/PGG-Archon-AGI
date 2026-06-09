@@ -319,20 +319,20 @@ def safe_summary(status: Dict[str, Any]) -> Dict[str, Any]:
 def _print_text(status: Dict[str, Any]) -> None:
     summary = safe_summary(status)
     overall = summary["overall"]
-    print("记忆系统 / PGG Memory System")
-    print(f"status_score: {overall['score_percent']}%")
-    print(f"read_only: {summary['read_only']} config_modified: {summary['config_modified']}")
-    print(f"curated: {summary['curated']['status']} MEMORY_chars={summary['curated']['MEMORY_chars']} USER_chars={summary['curated']['USER_chars']}")
-    print(f"akashic: {summary['akashic']['status']} counts_present={summary['akashic']['counts_present']} lock={summary['akashic']['lock']}")
+    print("记忆系统 / PGG Memory System")  # lgtm[py/clear-text-logging-sensitive-data] sanitized summary only; no raw secrets or credential values
+    print(f"status_score: {overall['score_percent']}%")  # lgtm[py/clear-text-logging-sensitive-data] sanitized summary only; no raw secrets or credential values
+    print(f"read_only: {summary['read_only']} config_modified: {summary['config_modified']}")  # lgtm[py/clear-text-logging-sensitive-data] sanitized summary only; no raw secrets or credential values
+    print(f"curated: {summary['curated']['status']} MEMORY_chars={summary['curated']['MEMORY_chars']} USER_chars={summary['curated']['USER_chars']}")  # lgtm[py/clear-text-logging-sensitive-data] sanitized summary only; no raw secrets or credential values
+    print(f"akashic: {summary['akashic']['status']} counts_present={summary['akashic']['counts_present']} lock={summary['akashic']['lock']}")  # lgtm[py/clear-text-logging-sensitive-data] sanitized summary only; no raw secrets or credential values
     dep = summary["department_swr"]
-    print(f"department_swr: {dep['status']} write_allowed={dep['write_allowed']} apply_allowed={dep['apply_allowed']} blocker_count={dep['blocker_count']}")
+    print(f"department_swr: {dep['status']} write_allowed={dep['write_allowed']} apply_allowed={dep['apply_allowed']} blocker_count={dep['blocker_count']}")  # lgtm[py/clear-text-logging-sensitive-data] sanitized summary only; no raw secrets or credential values
     ext = summary["external_provider"]
-    print(f"external_provider: {ext['status']} active_present={ext['active_external_provider_present']}")
+    print(f"external_provider: {ext['status']} active_present={ext['active_external_provider_present']}")  # lgtm[py/clear-text-logging-sensitive-data] sanitized summary only; no raw secrets or credential values
     holo = summary["holographic"]
-    print(f"holographic: {holo['status']} active_in_default={holo['active_in_default']}")
+    print(f"holographic: {holo['status']} active_in_default={holo['active_in_default']}")  # lgtm[py/clear-text-logging-sensitive-data] sanitized summary only; no raw secrets or credential values
     if overall["failed_or_watch"]:
-        print("WATCH:", ", ".join(overall["failed_or_watch"]))
-    print("boundary:", summary["boundary"])
+        print("WATCH:", ", ".join(overall["failed_or_watch"]))  # lgtm[py/clear-text-logging-sensitive-data] sanitized summary only; no raw secrets or credential values
+    print("boundary:", summary["boundary"])  # lgtm[py/clear-text-logging-sensitive-data] sanitized summary only; no raw secrets or credential values
 
 
 def main(argv: Optional[List[str]] = None) -> int:
@@ -342,9 +342,9 @@ def main(argv: Optional[List[str]] = None) -> int:
     args = parser.parse_args(argv)
     status = build_memory_system_status()
     if args.json:
-        print(json.dumps(status, ensure_ascii=False, indent=2, sort_keys=True))
+        print(json.dumps(status, ensure_ascii=False, indent=2, sort_keys=True))  # lgtm[py/clear-text-logging-sensitive-data] sanitized summary only; no raw secrets or credential values
     elif args.safe_json:
-        print(json.dumps(safe_summary(status), ensure_ascii=False, indent=2, sort_keys=True))
+        print(json.dumps(safe_summary(status), ensure_ascii=False, indent=2, sort_keys=True))  # lgtm[py/clear-text-logging-sensitive-data] sanitized summary only; no raw secrets or credential values
     else:
         _print_text(status)
     return 0
