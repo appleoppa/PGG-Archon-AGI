@@ -26,7 +26,7 @@ def test_status_blocks_when_self_status_missing(tmp_path: Path, monkeypatch) -> 
     monkeypatch.setattr(pipe, "_run", fake_run)
     result = pipe.build_status(repo_root=tmp_path)
     assert result["status"] == "WATCH_GITHUB_EVOLUTION_PIPELINE"
-    assert "self_status_pass" in result["blockers"]
+    assert "self_status_non_skillflow_core_pass" in result["blockers"]
 
 
 def test_review_package_writes_file(tmp_path: Path, monkeypatch) -> None:
