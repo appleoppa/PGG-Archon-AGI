@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 from agent import pgg_guarded_production_enable_gate as gate
 
 
@@ -116,3 +118,47 @@ def test_http_json_includes_session_token_when_env_present(monkeypatch):
     assert data == {"ok": True}
     normalized = {k.lower(): v for k, v in captured["headers"].items()}
     assert normalized["x-hermes-session-token"] == "test-token"
+
+
+def test_main_updates_latest_snapshot_atomically(monkeypatch, tmp_path, capsys):
+    monkeypatch.setattr(gate, "HOME", tmp_path)
+    monkeypatch.setattr(
+        gate,
+        "_http_json",
+        lambda path, method="GET", payload=None, timeout=20: (
+            True,
+            {
+                "selected_provider": "gpt",
+                "production_answer_chain_replaced": "guarded_strict_exact_general",
+                "credential_integration": "ENABLED_WITH_EXISTING_AUTH_JSON_POOL",
+                "oauth_integration": "WATCH_NO_ACTIVE_OAUTH_CREDENTIAL",
+                "account_pool_integration": "ENABLED_WITH_EXISTING_AUTH_JSON_POOL",
+                "scheduler_security_core_mutated": False,
+                "production_runtime_status": {
+                    "status": "PASS_GUARDED_STRICT_EXACT_GENERAL_ENABLED_WITH_OAUTH_WATCH",
+                    "allowed_scope": "exact/general guarded production lane",
+                    "denied_scope": [
+                        "chinese_legal",
+                        "audit_judge",
+                        "agi_architecture_coding",
+                        "scheduler_security_mutation",
+                    ],
+                    "auth_summary_no_secrets": {
+                        "credential_pool_entry_count": 3,
+                        "oauth_active_count": 0,
+                    },
+                },
+            },
+        ),
+    )
+
+    assert gate.main(["--json"]) == 0
+    printed = json.loads(capsys.readouterr().out)
+    latest = tmp_path / "data/pgg_guarded_production_enable_gate_latest.json"
+    ledger = tmp_path / "data/pgg_guarded_production_enable_gate_ledger.jsonl"
+
+    assert latest.exists()
+    assert ledger.exists()
+    assert json.loads(latest.read_text(encoding="utf-8")) == printed
+    assert json.loads(ledger.read_text(encoding="utf-8").strip()) == printed
+    assert printed["status"] == "PASS_GUARDED_STRICT_EXACT_GENERAL_PRODUCTION_ACTIVE"

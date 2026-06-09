@@ -98,9 +98,15 @@ def main(argv: list[str] | None = None) -> int:
     total=len(checks)
     status="PASS_GUARDED_STRICT_EXACT_GENERAL_PRODUCTION_ACTIVE" if passed == total else "HOLD_GUARDED_STRICT_EXACT_GENERAL_PRODUCTION_GATE"
     rec={"schema":"PGGGuardedProductionEnableGate/v1","generated_at":datetime.now(timezone.utc).isoformat(),"status":status,"passed":passed,"total":total,"checks":checks,"provider_canary":canary,"strict_score":round(100*passed/total,2) if total else 0,"boundary":"exact/general guarded production lane only; OAuth remains WATCH until active credential exists; no scheduler/security mutation; not full AGI/T5/legal correctness proof."}
-    ledger=HOME/"data/pgg_guarded_production_enable_gate_ledger.jsonl"
+    data_dir = HOME / "data"
+    ledger = data_dir / "pgg_guarded_production_enable_gate_ledger.jsonl"
+    latest = data_dir / "pgg_guarded_production_enable_gate_latest.json"
     ledger.parent.mkdir(parents=True, exist_ok=True)
-    ledger.open("a",encoding="utf-8").write(json.dumps(rec,ensure_ascii=False)+"\n")
+    encoded = json.dumps(rec, ensure_ascii=False)
+    ledger.open("a", encoding="utf-8").write(encoded + "\n")
+    tmp = latest.with_suffix(latest.suffix + ".tmp")
+    tmp.write_text(encoded + "\n", encoding="utf-8")
+    tmp.replace(latest)
     if args.json:
         print(json.dumps(rec,ensure_ascii=False,indent=2))
     else:
