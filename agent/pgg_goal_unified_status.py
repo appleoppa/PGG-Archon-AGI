@@ -154,15 +154,25 @@ def main() -> int:
 
     pass_count = sum(1 for v in results.values() if isinstance(v, dict) and status_class(v.get("status")) == "PASS")
     total = len(results)
-    all_no_error = all(isinstance(v, dict) and v.get("status") != "ERROR" for v in results.values())
+    classes = [status_class(v.get("status")) for v in results.values() if isinstance(v, dict)]
+    blocked_count = sum(1 for c in classes if c == "BLOCKED")
+    watch_count = sum(1 for c in classes if c == "WATCH")
+    if blocked_count:
+        overall_status = "BLOCKED" if total and pass_count / total < 0.7 else "WATCH"
+    elif watch_count:
+        overall_status = "WATCH"
+    else:
+        overall_status = "PASS"
 
     report = {
-        "schema": "PGGGoalUnifiedStatus/v1",
+        "schema": "PGGGoalUnifiedStatus/v2",
         "generated_at": datetime.now().isoformat(),
-        "overall_status": "PASS" if all_no_error else ("WATCH" if total and pass_count / total >= 0.7 else "BLOCKED"),
+        "overall_status": overall_status,
         "components": results,
         "summary": f"{pass_count}/{total} components PASS",
-        "boundary": "Read-only status surface; not production enforcement, not full AGI/T5 proof.",
+        "watch_count": watch_count,
+        "blocked_count": blocked_count,
+        "boundary": "Read-only status surface; PASS requires every component PASS; not production enforcement, not full AGI/T5 proof.",
     }
     print(json.dumps(report, indent=2, ensure_ascii=False))
     return 0
