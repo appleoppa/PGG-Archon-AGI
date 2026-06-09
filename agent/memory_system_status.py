@@ -268,37 +268,83 @@ def build_memory_system_status(home: Path | None = None) -> Dict[str, Any]:
     return status
 
 
+def safe_summary(status: Dict[str, Any]) -> Dict[str, Any]:
+    """Return a CodeQL-friendly non-sensitive status summary for logs/CLI gates."""
+    overall = status.get("overall", {})
+    curated = status.get("curated", {})
+    files = curated.get("files", {}) if isinstance(curated.get("files"), dict) else {}
+    memory_file = files.get("MEMORY.md", {}) if isinstance(files.get("MEMORY.md"), dict) else {}
+    user_file = files.get("USER.md", {}) if isinstance(files.get("USER.md"), dict) else {}
+    ak = status.get("akashic", {})
+    dep = status.get("department_swr", {})
+    ext = status.get("external_provider", {})
+    holo = status.get("holographic", {})
+    return {
+        "schema": status.get("schema"),
+        "command": status.get("command"),
+        "read_only": bool(status.get("read_only")),
+        "config_modified": bool(status.get("config_modified")),
+        "overall": {
+            "score_percent": overall.get("score_percent"),
+            "failed_or_watch": overall.get("failed_or_watch", []),
+        },
+        "curated": {
+            "status": curated.get("status"),
+            "MEMORY_chars": memory_file.get("char_count"),
+            "USER_chars": user_file.get("char_count"),
+        },
+        "akashic": {
+            "status": ak.get("status"),
+            "lock": (ak.get("code_markers") or {}).get("write_lock") if isinstance(ak.get("code_markers"), dict) else None,
+            "counts_present": bool((ak.get("audit") or {}).get("counts")) if isinstance(ak.get("audit"), dict) else False,
+        },
+        "department_swr": {
+            "status": dep.get("status"),
+            "write_allowed": bool(dep.get("write_allowed")),
+            "apply_allowed": bool(dep.get("apply_allowed")),
+            "blocker_count": len(dep.get("blockers") or []),
+        },
+        "external_provider": {
+            "status": ext.get("status"),
+            "active_external_provider_present": bool(ext.get("active_external_provider")),
+        },
+        "holographic": {
+            "status": holo.get("status"),
+            "active_in_default": bool(holo.get("active_in_default")),
+        },
+        "boundary": status.get("boundary"),
+    }
+
+
 def _print_text(status: Dict[str, Any]) -> None:
-    overall = status["overall"]
+    summary = safe_summary(status)
+    overall = summary["overall"]
     print("记忆系统 / PGG Memory System")
     print(f"status_score: {overall['score_percent']}%")
-    print(f"hermes_home: {status['hermes_home']}")
-    print(f"curated: {status['curated']['status']} MEMORY_chars={status['curated']['files']['MEMORY.md']['char_count']} USER_chars={status['curated']['files']['USER.md']['char_count']}")
-    ak = status["akashic"]
-    print(f"akashic: {ak.get('status')} counts={ak.get('audit', {}).get('counts')} lock={ak.get('code_markers', {}).get('write_lock')}")
-    dep = status["department_swr"]
-    print(f"department_swr: {dep.get('status')} write_allowed={dep.get('write_allowed')} apply_allowed={dep.get('apply_allowed')} blockers={dep.get('blockers')}")
-    ext = status["external_provider"]
-    recommended = ext.get("recommended_next_step", {})
-    if isinstance(recommended, dict):
-        recommended_text = recommended.get("provider") or recommended.get("action")
-    else:
-        recommended_text = recommended
-    print(f"external_provider: {ext.get('status')} active={ext.get('active_external_provider')!r} recommended={recommended_text}")
-    holo = status["holographic"]
-    print(f"holographic: {holo.get('status')} active_in_default={holo.get('active_in_default')} sandbox_manifest={holo.get('latest_sandbox_manifest_status')}")
+    print(f"read_only: {summary['read_only']} config_modified: {summary['config_modified']}")
+    print(f"curated: {summary['curated']['status']} MEMORY_chars={summary['curated']['MEMORY_chars']} USER_chars={summary['curated']['USER_chars']}")
+    print(f"akashic: {summary['akashic']['status']} counts_present={summary['akashic']['counts_present']} lock={summary['akashic']['lock']}")
+    dep = summary["department_swr"]
+    print(f"department_swr: {dep['status']} write_allowed={dep['write_allowed']} apply_allowed={dep['apply_allowed']} blocker_count={dep['blocker_count']}")
+    ext = summary["external_provider"]
+    print(f"external_provider: {ext['status']} active_present={ext['active_external_provider_present']}")
+    holo = summary["holographic"]
+    print(f"holographic: {holo['status']} active_in_default={holo['active_in_default']}")
     if overall["failed_or_watch"]:
         print("WATCH:", ", ".join(overall["failed_or_watch"]))
-    print("boundary:", status["boundary"])
+    print("boundary:", summary["boundary"])
 
 
 def main(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser(prog="记忆系统", description="PGG/Hermes memory system global status")
     parser.add_argument("--json", action="store_true", help="print full JSON status")
+    parser.add_argument("--safe-json", action="store_true", help="print non-sensitive summary JSON")
     args = parser.parse_args(argv)
     status = build_memory_system_status()
     if args.json:
         print(json.dumps(status, ensure_ascii=False, indent=2, sort_keys=True))
+    elif args.safe_json:
+        print(json.dumps(safe_summary(status), ensure_ascii=False, indent=2, sort_keys=True))
     else:
         _print_text(status)
     return 0

@@ -74,7 +74,7 @@ def build_status(run_provider_canary: bool = False, provider: str = "deepseek") 
     expected_total = 11 if run_provider_canary else 10
     _add(checks, f"guarded_gate_{expected_total}_of_{expected_total}_pass", guarded["returncode"] == 0 and guarded_json.get("status") == "PASS_GUARDED_STRICT_EXACT_GENERAL_PRODUCTION_ACTIVE" and guarded_json.get("passed") == guarded_json.get("total") == expected_total, {"status": guarded_json.get("status"), "passed": guarded_json.get("passed"), "total": guarded_json.get("total")})
 
-    memory = _run([str(HOME / ".local/bin/记忆系统"), "--json"], 120)
+    memory = _run([str(HOME / ".local/bin/记忆系统"), "--safe-json"], 120)
     memory_json = _json_from_stdout(memory)
     overall = memory_json.get("overall") or {}
     evidence["memory_system"] = {"returncode": memory["returncode"], "json": memory_json}

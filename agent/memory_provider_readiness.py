@@ -106,15 +106,34 @@ def audit_memory_provider_readiness() -> Dict[str, Any]:
     }
 
 
+def safe_summary(res: dict[str, Any]) -> dict[str, Any]:
+    """Return a CodeQL-friendly summary without provider config or secret-shaped values."""
+    return {
+        "schema": res.get("schema"),
+        "status": res.get("status"),
+        "active_external_provider_present": bool(res.get("active_external_provider")),
+        "provider_count": res.get("provider_count"),
+        "recommended_provider": res.get("recommended_provider") or "",
+        "recommended_next_step": res.get("recommended_next_step") or "",
+        "config_modified": bool(res.get("config_modified")),
+        "secrets_printed": bool(res.get("secrets_printed")),
+        "boundary": res.get("boundary"),
+    }
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--json", action="store_true")
+    ap.add_argument("--safe-json", action="store_true", help="print non-sensitive summary JSON")
     args = ap.parse_args()
     res = audit_memory_provider_readiness()
     if args.json:
         print(json.dumps(res, ensure_ascii=False, indent=2, sort_keys=True))
+    elif args.safe_json:
+        print(json.dumps(safe_summary(res), ensure_ascii=False, indent=2, sort_keys=True))
     else:
-        print(f"memory provider readiness: {res['status']} active={res['active_external_provider']!r} recommended={res['recommended_provider']}")
+        summary = safe_summary(res)
+        print("memory provider readiness: status=%s active_present=%s recommended=%s" % (summary["status"], summary["active_external_provider_present"], summary["recommended_provider"]))
     return 0 if str(res.get("status", "")).startswith("PASS") else 1
 
 
