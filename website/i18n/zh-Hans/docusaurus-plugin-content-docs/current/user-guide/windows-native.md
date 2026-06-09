@@ -238,7 +238,7 @@ hermes --version
 Hermes 同时支持 `$env:X`（进程作用域）和用户环境变量（永久，在系统属性 → 环境变量中设置）。将 API key 放在 `%USERPROFILE%\.hermes\.env` 中是标准做法——与 Linux 相同：
 
 ```
-OPENROUTER_API_KEY=sk-or-...
+OPENROUTER_API_KEY=<OPENROUTER_API_KEY>
 TELEGRAM_BOT_TOKEN=...
 ```
 

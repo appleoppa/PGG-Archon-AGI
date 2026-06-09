@@ -162,7 +162,7 @@ description: "Hermes Agent 使用的所有环境变量完整参考"
 | 变量 | 描述 |
 |----------|-------------|
 | `HERMES_LANGFUSE_PUBLIC_KEY` | Langfuse 项目公钥（`pk-lf-...`）。必填。 |
-| `HERMES_LANGFUSE_SECRET_KEY` | Langfuse 项目密钥（`sk-lf-...`）。必填。 |
+| `HERMES_LANGFUSE_SECRET_KEY` | Langfuse 项目密钥（`<OPENAI_API_KEY>`）。必填。 |
 | `HERMES_LANGFUSE_BASE_URL` | Langfuse 服务器 URL（默认：`https://cloud.langfuse.com`）。自托管时设置。 |
 | `HERMES_LANGFUSE_ENV` | trace 上的环境标签（`production`、`staging` 等） |
 | `HERMES_LANGFUSE_RELEASE` | trace 上的发布/版本标签 |

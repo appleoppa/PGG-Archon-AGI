@@ -202,7 +202,7 @@ OpenClaw 配置中 token 和 API 密钥的值支持三种格式：
 
 ```json
 // 纯字符串
-"channels": { "telegram": { "botToken": "123456:ABC-DEF..." } }
+"channels": { "telegram": { "botToken": "<TELEGRAM_BOT_TOKEN_FROM_BOTFATHER>..." } }
 
 // 环境变量模板
 "channels": { "telegram": { "botToken": "${TELEGRAM_BOT_TOKEN}" } }

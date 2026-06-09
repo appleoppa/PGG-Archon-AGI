@@ -38,10 +38,10 @@ Your request
 
 ```bash
 # Add a second OpenRouter key
-hermes auth add openrouter --api-key sk-or-v1-your-second-key
+hermes auth add openrouter --api-key <OPENROUTER_API_KEY>
 
 # Add a second Anthropic key
-hermes auth add anthropic --type api-key --api-key sk-ant-api03-your-second-key
+hermes auth add anthropic --type api-key --api-key <ANTHROPIC_API_KEY>
 
 # Add an Anthropic OAuth credential (requires Claude Max plan + extra usage credits)
 hermes auth add anthropic --type oauth
@@ -153,7 +153,7 @@ hermes auth list
 #     #1  config key    api_key config:Together.ai ←
 
 # Add a second key for the same endpoint:
-hermes auth add Together.ai --api-key sk-together-second-key
+hermes auth add Together.ai --api-key <OPENAI_API_KEY>
 ```
 
 自定义端点池以 `custom:` 前缀存储在 `auth.json` 的 `credential_pool` 下：
@@ -222,7 +222,7 @@ Hermes 在启动时自动从多个来源发现凭证并初始化池：
         "auth_type": "api_key",
         "priority": 0,
         "source": "env:OPENROUTER_API_KEY",
-        "access_token": "sk-or-v1-...",
+        "access_token": "<OPENROUTER_API_KEY>",
         "last_status": "ok",
         "request_count": 142
       }

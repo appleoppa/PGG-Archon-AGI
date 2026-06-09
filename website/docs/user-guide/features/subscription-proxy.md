@@ -58,7 +58,7 @@ Any OpenAI-compatible app config takes the same triple:
 
 ```
 Base URL:   http://127.0.0.1:8645/v1
-API key:    anything (e.g. "sk-unused")
+API key:    anything (e.g. "<OPENAI_API_KEY>")
 Model:      Hermes-4-70B    # or Hermes-4.3-36B, Hermes-4-405B
 ```
 

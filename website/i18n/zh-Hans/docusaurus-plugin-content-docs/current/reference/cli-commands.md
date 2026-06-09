@@ -339,7 +339,7 @@ hermes slack manifest --slashes-only  # 仅输出 features.slash_commands 数组
 hermes auth                                              # 交互式向导
 hermes auth list                                         # 显示所有池
 hermes auth list openrouter                              # 显示特定 provider
-hermes auth add openrouter --api-key sk-or-v1-xxx        # 添加 API 密钥
+hermes auth add openrouter --api-key <OPENROUTER_API_KEY>        # 添加 API 密钥
 hermes auth add anthropic --type oauth                   # 添加 OAuth 凭据
 hermes auth remove openrouter 2                          # 按索引删除
 hermes auth reset openrouter                             # 清除冷却时间

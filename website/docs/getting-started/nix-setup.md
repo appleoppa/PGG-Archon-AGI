@@ -123,10 +123,10 @@ This module requires NixOS. For non-NixOS systems (macOS, other Linux distros), 
 That's it. `nixos-rebuild switch` creates the `hermes` user, generates `config.yaml`, wires up secrets, and starts the gateway — a long-running service that connects the agent to messaging platforms (Telegram, Discord, etc.) and listens for incoming messages.
 
 :::warning Secrets are required
-The `environmentFiles` line above assumes you have [sops-nix](https://github.com/Mic92/sops-nix) or [agenix](https://github.com/ryantm/agenix) configured. The file should contain at least one LLM provider key (e.g., `OPENROUTER_API_KEY=sk-or-...`). See [Secrets Management](#secrets-management) for full setup. If you don't have a secrets manager yet, you can use a plain file as a starting point — just ensure it's not world-readable:
+The `environmentFiles` line above assumes you have [sops-nix](https://github.com/Mic92/sops-nix) or [agenix](https://github.com/ryantm/agenix) configured. The file should contain at least one LLM provider key (e.g., `OPENROUTER_API_KEY=<OPENROUTER_API_KEY>`). See [Secrets Management](#secrets-management) for full setup. If you don't have a secrets manager yet, you can use a plain file as a starting point — just ensure it's not world-readable:
 
 ```bash
-echo "OPENROUTER_API_KEY=sk-or-your-key" | sudo install -m 0600 -o hermes /dev/stdin /var/lib/hermes/env
+echo "OPENROUTER_API_KEY=<OPENROUTER_API_KEY>" | sudo install -m 0600 -o hermes /dev/stdin /var/lib/hermes/env
 ```
 
 ```nix
@@ -377,9 +377,9 @@ The secrets file contains key-value pairs:
 ```yaml
 # secrets/hermes.yaml (encrypted with sops)
 hermes-env: |
-    OPENROUTER_API_KEY=sk-or-...
+    OPENROUTER_API_KEY=<OPENROUTER_API_KEY>
     TELEGRAM_BOT_TOKEN=123456:ABC...
-    ANTHROPIC_API_KEY=sk-ant-...
+    ANTHROPIC_API_KEY=<OPENAI_API_KEY>
 ```
 
 ### agenix

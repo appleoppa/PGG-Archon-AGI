@@ -1679,7 +1679,7 @@ def _prompt_telegram_bot_token() -> str | None:
         if not _is_valid_telegram_bot_token(token):
             print_error(
                 "Invalid token format. Expected: <numeric_id>:<alphanumeric_hash> "
-                "(e.g., 123456789:ABCdefGHI-jklMNOpqrSTUvwxYZ)"
+                "(e.g., <numeric_id>:<bot_token_hash>)"
             )
             continue
         return token

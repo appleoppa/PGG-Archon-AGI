@@ -1109,7 +1109,7 @@ model_list:
   - model_name: "best"
     litellm_params:
       model: anthropic/claude-sonnet-4
-      api_key: sk-ant-...
+      api_key: <OPENAI_API_KEY>
   - model_name: "best"
     litellm_params:
       model: openai/gpt-4o

@@ -35,7 +35,7 @@ hermes config migrate      # 交互式添加缺失选项
 # 示例：
 hermes config set model anthropic/claude-opus-4
 hermes config set terminal.backend docker
-hermes config set OPENROUTER_API_KEY sk-or-...  # 保存到 .env
+hermes config set OPENROUTER_API_KEY <OPENROUTER_API_KEY>  # 保存到 .env
 ```
 
 :::tip

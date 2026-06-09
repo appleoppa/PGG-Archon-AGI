@@ -39,7 +39,7 @@ hermes config migrate      # Interactively add missing options
 # Examples:
 hermes config set model anthropic/claude-opus-4
 hermes config set terminal.backend docker
-hermes config set OPENROUTER_API_KEY sk-or-...  # Saves to .env
+hermes config set OPENROUTER_API_KEY <OPENROUTER_API_KEY>  # Saves to .env
 ```
 
 :::tip
