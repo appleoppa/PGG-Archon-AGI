@@ -279,7 +279,7 @@ API keys are read from `/opt/data/.env` inside the container. You can also pass 
 ```sh
 docker run -it --rm \
   -v ~/.hermes:/opt/data \
-  -e ANTHROPIC_API_KEY="sk-ant-..." \
+  -e ANTHROPIC_API_KEY="<OPENAI_API_KEY>" \
   -e OPENAI_API_KEY="sk-..." \
   nousresearch/hermes-agent
 ```

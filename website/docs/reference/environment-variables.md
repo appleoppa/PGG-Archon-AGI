@@ -169,7 +169,7 @@ Environment variables for the bundled [`observability/langfuse`](/user-guide/fea
 | Variable | Description |
 |----------|-------------|
 | `HERMES_LANGFUSE_PUBLIC_KEY` | Langfuse project public key (`pk-lf-...`). Required. |
-| `HERMES_LANGFUSE_SECRET_KEY` | Langfuse project secret key (`sk-lf-...`). Required. |
+| `HERMES_LANGFUSE_SECRET_KEY` | Langfuse project secret key (`<OPENAI_API_KEY>`). Required. |
 | `HERMES_LANGFUSE_BASE_URL` | Langfuse server URL (default: `https://cloud.langfuse.com`). Set for self-hosted. |
 | `HERMES_LANGFUSE_ENV` | Environment tag on traces (`production`, `staging`, …) |
 | `HERMES_LANGFUSE_RELEASE` | Release/version tag on traces |

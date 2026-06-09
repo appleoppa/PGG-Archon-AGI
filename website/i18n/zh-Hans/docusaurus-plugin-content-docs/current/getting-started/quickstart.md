@@ -148,7 +148,7 @@ Hermes 将密钥与普通配置分开存储：
 ```bash
 hermes config set model anthropic/claude-opus-4.6
 hermes config set terminal.backend docker
-hermes config set OPENROUTER_API_KEY sk-or-...
+hermes config set OPENROUTER_API_KEY <OPENROUTER_API_KEY>
 ```
 
 ## 3. 运行第一次对话

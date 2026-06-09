@@ -50,7 +50,7 @@ Starting Hermes proxy for Nous Portal
 
 ```
 Base URL:   http://127.0.0.1:8645/v1
-API key:    任意值（例如 "sk-unused"）
+API key:    任意值（例如 "<OPENAI_API_KEY>"）
 Model:      Hermes-4-70B    # 或 Hermes-4.3-36B、Hermes-4-405B
 ```
 

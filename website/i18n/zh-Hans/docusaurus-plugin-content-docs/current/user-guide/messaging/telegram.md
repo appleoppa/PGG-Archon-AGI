@@ -19,7 +19,7 @@ Hermes Agent 与 Telegram 集成，作为功能完整的对话机器人。连接
 5. BotFather 会回复你的 **API token**，格式如下：
 
 ```
-123456789:ABCdefGHIjklMNOpqrSTUvwxYZ
+<TELEGRAM_BOT_TOKEN_FROM_BOTFATHER>
 ```
 
 :::warning
@@ -126,7 +126,7 @@ hermes gateway setup
 将以下内容添加到 `~/.hermes/.env`：
 
 ```bash
-TELEGRAM_BOT_TOKEN=123456789:ABCdefGHIjklMNOpqrSTUvwxYZ
+TELEGRAM_BOT_TOKEN=<TELEGRAM_BOT_TOKEN_FROM_BOTFATHER>
 TELEGRAM_ALLOWED_USERS=123456789    # 多个用户用逗号分隔
 ```
 

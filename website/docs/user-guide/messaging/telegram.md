@@ -19,7 +19,7 @@ Every Telegram bot requires an API token issued by [@BotFather](https://t.me/Bot
 5. BotFather replies with your **API token**. It looks like this:
 
 ```
-123456789:ABCdefGHIjklMNOpqrSTUvwxYZ
+<TELEGRAM_BOT_TOKEN_FROM_BOTFATHER>
 ```
 
 :::warning
@@ -126,7 +126,7 @@ Select **Telegram** when prompted. The wizard asks for your bot token and allowe
 Add the following to `~/.hermes/.env`:
 
 ```bash
-TELEGRAM_BOT_TOKEN=123456789:ABCdefGHIjklMNOpqrSTUvwxYZ
+TELEGRAM_BOT_TOKEN=<TELEGRAM_BOT_TOKEN_FROM_BOTFATHER>
 TELEGRAM_ALLOWED_USERS=123456789    # Comma-separated for multiple users
 ```
 

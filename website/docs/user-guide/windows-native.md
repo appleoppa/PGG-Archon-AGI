@@ -238,7 +238,7 @@ hermes --version
 Hermes honors both `$env:X` (process-scope) and User environment variables (permanent, set in System Properties → Environment Variables). Setting API keys in `%USERPROFILE%\.hermes\.env` is the normal path — same as Linux:
 
 ```
-OPENROUTER_API_KEY=sk-or-...
+OPENROUTER_API_KEY=<OPENROUTER_API_KEY>
 TELEGRAM_BOT_TOKEN=...
 ```
 

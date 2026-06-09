@@ -206,7 +206,7 @@ OpenClaw config values for tokens and API keys can be in three formats:
 
 ```json
 // Plain string
-"channels": { "telegram": { "botToken": "123456:ABC-DEF..." } }
+"channels": { "telegram": { "botToken": "<TELEGRAM_BOT_TOKEN_FROM_BOTFATHER>..." } }
 
 // Environment template
 "channels": { "telegram": { "botToken": "${TELEGRAM_BOT_TOKEN}" } }

@@ -475,7 +475,7 @@ Manage credential pools for same-provider key rotation. See [Credential Pools](/
 hermes auth                                              # Interactive wizard
 hermes auth list                                         # Show all pools
 hermes auth list openrouter                              # Show specific provider
-hermes auth add openrouter --api-key sk-or-v1-xxx        # Add API key
+hermes auth add openrouter --api-key <OPENROUTER_API_KEY>        # Add API key
 hermes auth add anthropic --type oauth                   # Add OAuth credential
 hermes auth remove openrouter 2                          # Remove by index
 hermes auth reset openrouter                             # Clear cooldowns
