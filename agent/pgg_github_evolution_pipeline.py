@@ -351,8 +351,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     # Cron/operator ergonomics: the installed ``hermes-evolve`` wrapper used by
     # status dashboards is easy to call without a subcommand. Treat a bare
     # invocation as the read-only ``status`` surface instead of failing argparse.
-    # Explicit argv=[] in tests/embedders keeps normal argparse validation.
-    parsed_argv = ["status"] if argv is None and len(sys.argv) == 1 else (list(argv) if argv is not None else None)
+    # Also accept the common flag-shaped spelling ``hermes-evolve --status`` as
+    # an alias for ``hermes-evolve status``. Explicit argv=[] in tests/embedders
+    # keeps normal argparse validation.
+    if argv is None:
+        raw_argv = list(sys.argv[1:])
+        parsed_argv = ["status"] if not raw_argv or raw_argv == ["--status"] else raw_argv
+    else:
+        raw_argv = list(argv)
+        parsed_argv = ["status"] if raw_argv == ["--status"] else raw_argv
     args = parser.parse_args(parsed_argv)
     return int(args.func(args))
 

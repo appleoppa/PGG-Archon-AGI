@@ -106,6 +106,19 @@ def test_bare_main_defaults_to_status(monkeypatch, capsys) -> None:
     assert "STATUS_CALLED" in capsys.readouterr().out
 
 
+def test_flag_status_alias_defaults_to_status(monkeypatch, capsys) -> None:
+    monkeypatch.setattr(pipe.sys, "argv", ["hermes-evolve", "--status"])
+    monkeypatch.setattr(pipe, "cmd_status", lambda args: print("STATUS_ALIAS_CALLED") or 0)
+    assert pipe.main() == 0
+    assert "STATUS_ALIAS_CALLED" in capsys.readouterr().out
+
+
+def test_explicit_status_alias_defaults_to_status(monkeypatch, capsys) -> None:
+    monkeypatch.setattr(pipe, "cmd_status", lambda args: print("EXPLICIT_STATUS_ALIAS_CALLED") or 0)
+    assert pipe.main(["--status"]) == 0
+    assert "EXPLICIT_STATUS_ALIAS_CALLED" in capsys.readouterr().out
+
+
 def test_explicit_empty_argv_still_requires_subcommand() -> None:
     try:
         pipe.main([])
