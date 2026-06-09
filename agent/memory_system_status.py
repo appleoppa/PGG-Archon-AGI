@@ -317,34 +317,27 @@ def safe_summary(status: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _print_text(status: Dict[str, Any]) -> None:
-    summary = safe_summary(status)
-    overall = summary["overall"]
-    print("记忆系统 / PGG Memory System")  # lgtm[py/clear-text-logging-sensitive-data] sanitized summary only; no raw secrets or credential values
-    print(f"status_score: {overall['score_percent']}%")  # lgtm[py/clear-text-logging-sensitive-data] sanitized summary only; no raw secrets or credential values
-    print(f"read_only: {summary['read_only']} config_modified: {summary['config_modified']}")  # lgtm[py/clear-text-logging-sensitive-data] sanitized summary only; no raw secrets or credential values
-    print(f"curated: {summary['curated']['status']} MEMORY_chars={summary['curated']['MEMORY_chars']} USER_chars={summary['curated']['USER_chars']}")  # lgtm[py/clear-text-logging-sensitive-data] sanitized summary only; no raw secrets or credential values
-    print(f"akashic: {summary['akashic']['status']} counts_present={summary['akashic']['counts_present']} lock={summary['akashic']['lock']}")  # lgtm[py/clear-text-logging-sensitive-data] sanitized summary only; no raw secrets or credential values
-    dep = summary["department_swr"]
-    print(f"department_swr: {dep['status']} write_allowed={dep['write_allowed']} apply_allowed={dep['apply_allowed']} blocker_count={dep['blocker_count']}")  # lgtm[py/clear-text-logging-sensitive-data] sanitized summary only; no raw secrets or credential values
-    ext = summary["external_provider"]
-    print(f"external_provider: {ext['status']} active_present={ext['active_external_provider_present']}")  # lgtm[py/clear-text-logging-sensitive-data] sanitized summary only; no raw secrets or credential values
-    holo = summary["holographic"]
-    print(f"holographic: {holo['status']} active_in_default={holo['active_in_default']}")  # lgtm[py/clear-text-logging-sensitive-data] sanitized summary only; no raw secrets or credential values
-    if overall["failed_or_watch"]:
-        print("WATCH:", ", ".join(overall["failed_or_watch"]))  # lgtm[py/clear-text-logging-sensitive-data] sanitized summary only; no raw secrets or credential values
-    print("boundary:", summary["boundary"])  # lgtm[py/clear-text-logging-sensitive-data] sanitized summary only; no raw secrets or credential values
+    # CLI intentionally avoids printing config/status-derived details to satisfy
+    # public CodeQL clear-text logging gates. Use safe_summary() in-process for
+    # structured gate consumption.
+    overall = status.get("overall", {})
+    ok = overall.get("score_percent") == 100.0 and overall.get("failed_or_watch") == []
+    print("记忆系统 / PGG Memory System")
+    print("status: PASS_READ_ONLY_SUMMARY" if ok else "status: WATCH_READ_ONLY_SUMMARY")
+    print("boundary: read-only; no provider/config/credential mutation; no secret values printed")
 
 
 def main(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser(prog="记忆系统", description="PGG/Hermes memory system global status")
-    parser.add_argument("--json", action="store_true", help="print full JSON status")
-    parser.add_argument("--safe-json", action="store_true", help="print non-sensitive summary JSON")
+    parser.add_argument("--json", action="store_true", help="deprecated: prints a redacted summary only")
+    parser.add_argument("--safe-json", action="store_true", help="prints a redacted summary only")
     args = parser.parse_args(argv)
     status = build_memory_system_status()
-    if args.json:
-        print(json.dumps(status, ensure_ascii=False, indent=2, sort_keys=True))  # lgtm[py/clear-text-logging-sensitive-data] sanitized summary only; no raw secrets or credential values
-    elif args.safe_json:
-        print(json.dumps(safe_summary(status), ensure_ascii=False, indent=2, sort_keys=True))  # lgtm[py/clear-text-logging-sensitive-data] sanitized summary only; no raw secrets or credential values
+    summary = safe_summary(status)
+    ok = summary.get("overall", {}).get("score_percent") == 100.0 and summary.get("overall", {}).get("failed_or_watch") == []
+    if args.json or args.safe_json:
+        # Keep CLI JSON redacted and not derived from config/provider secret values.
+        print("{\"schema\":\"PGGMemorySystemStatus/v1\",\"status\":\"PASS_READ_ONLY_SUMMARY\",\"score_percent\":100.0,\"failed_or_watch\":[]}" if ok else "{\"schema\":\"PGGMemorySystemStatus/v1\",\"status\":\"WATCH_READ_ONLY_SUMMARY\"}")
     else:
         _print_text(status)
     return 0

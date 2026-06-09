@@ -122,19 +122,12 @@ def safe_summary(res: dict[str, Any]) -> dict[str, Any]:
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--json", action="store_true")
-    ap.add_argument("--safe-json", action="store_true", help="print non-sensitive summary JSON")
-    args = ap.parse_args()
+    # CLI intentionally avoids printing config-derived provider details. Import
+    # audit_memory_provider_readiness() from Python for structured in-process use.
     res = audit_memory_provider_readiness()
-    if args.json:
-        print(json.dumps(res, ensure_ascii=False, indent=2, sort_keys=True))  # lgtm[py/clear-text-logging-sensitive-data] sanitized summary only; no raw secrets or credential values
-    elif args.safe_json:
-        print(json.dumps(safe_summary(res), ensure_ascii=False, indent=2, sort_keys=True))  # lgtm[py/clear-text-logging-sensitive-data] sanitized summary only; no raw secrets or credential values
-    else:
-        summary = safe_summary(res)
-        print("memory provider readiness: status=%s active_present=%s recommended=%s" % (summary["status"], summary["active_external_provider_present"], summary["recommended_provider"]))  # lgtm[py/clear-text-logging-sensitive-data] sanitized summary only; no raw secrets or credential values
-    return 0 if str(res.get("status", "")).startswith("PASS") else 1
+    ok = str(res.get("status", "")).startswith("PASS")
+    print("memory provider readiness: PASS_READ_ONLY_AUDIT" if ok else "memory provider readiness: WATCH")
+    return 0 if ok else 1
 
 
 if __name__ == "__main__":

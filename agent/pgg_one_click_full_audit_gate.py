@@ -74,11 +74,17 @@ def build_status(run_provider_canary: bool = False, provider: str = "deepseek") 
     expected_total = 11 if run_provider_canary else 10
     _add(checks, f"guarded_gate_{expected_total}_of_{expected_total}_pass", guarded["returncode"] == 0 and guarded_json.get("status") == "PASS_GUARDED_STRICT_EXACT_GENERAL_PRODUCTION_ACTIVE" and guarded_json.get("passed") == guarded_json.get("total") == expected_total, {"status": guarded_json.get("status"), "passed": guarded_json.get("passed"), "total": guarded_json.get("total")})
 
-    memory = _run([str(HOME / ".local/bin/记忆系统"), "--safe-json"], 120)
-    memory_json = _json_from_stdout(memory)
-    overall = memory_json.get("overall") or {}
-    evidence["memory_system"] = {"returncode": memory["returncode"], "json": memory_json}
-    _add(checks, "memory_system_100_no_failed_watch", memory["returncode"] == 0 and overall.get("score_percent") == 100.0 and overall.get("failed_or_watch") == [], {"score": overall.get("score_percent"), "failed_or_watch": overall.get("failed_or_watch")})
+    try:
+        from agent.memory_system_status import build_memory_system_status
+        memory_json = build_memory_system_status()
+        overall = memory_json.get("overall") or {}
+        memory_rc = 0
+    except Exception as exc:  # pragma: no cover - defensive gate surface
+        memory_json = {"error": f"{type(exc).__name__}: {str(exc)[:160]}"}
+        overall = {}
+        memory_rc = 1
+    evidence["memory_system"] = {"returncode": memory_rc, "json": memory_json}
+    _add(checks, "memory_system_100_no_failed_watch", memory_rc == 0 and overall.get("score_percent") == 100.0 and overall.get("failed_or_watch") == [], {"score": overall.get("score_percent"), "failed_or_watch": overall.get("failed_or_watch")})
 
     neuron = _run([str(HOME / ".local/bin/神经元系统"), "--json"], 120)
     neuron_json = _json_from_stdout(neuron)
