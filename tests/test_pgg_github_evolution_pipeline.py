@@ -46,3 +46,19 @@ def test_create_pr_request_is_blocked_without_scoped_patch(tmp_path: Path, monke
     out = json.loads(capsys.readouterr().out)
     assert code == 1
     assert out["pr_status"] == "BLOCKED_CREATE_PR_NO_SCOPED_PATCH_SELECTED"
+
+
+def test_bare_main_defaults_to_status(monkeypatch, capsys) -> None:
+    monkeypatch.setattr(pipe.sys, "argv", ["hermes-evolve"])
+    monkeypatch.setattr(pipe, "cmd_status", lambda args: print("STATUS_CALLED") or 0)
+    assert pipe.main() == 0
+    assert "STATUS_CALLED" in capsys.readouterr().out
+
+
+def test_explicit_empty_argv_still_requires_subcommand() -> None:
+    try:
+        pipe.main([])
+    except SystemExit as exc:
+        assert exc.code == 2
+    else:  # pragma: no cover - defensive: argparse should always exit here.
+        raise AssertionError("empty argv must keep argparse validation")
