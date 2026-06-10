@@ -62,6 +62,15 @@ def _pass_packet() -> dict[str, Any]:
             "candidate_hypotheses": True,
             "population_persistence": True,
         },
+        "morphogenetic_acceptance": {
+            "delta_error": -0.3,
+            "delta_complexity": 0.05,
+            "complexity_beta": 1.0,
+            "refractory_rounds_remaining": 0,
+            "temperature": 1.0,
+            "invariant_breach": False,
+            "refinement_preserves_behavior": True,
+        },
         "harmrate_growth": {
             "harmrate": 0.1,
             "verification": "tests",

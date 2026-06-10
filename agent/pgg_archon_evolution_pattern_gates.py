@@ -17,6 +17,15 @@ from typing import Any, Mapping, Sequence
 BOUNDARY = "internal_evolution_pattern_gates; no promotion; no external code copy; no AGI/T5/ASI claim"
 
 
+def _safe_exp(x: float) -> float:
+    """Safely compute exp(x), clamped to avoid overflow."""
+    import math
+    try:
+        return math.exp(max(-100.0, min(100.0, x)))
+    except (OverflowError, ValueError):
+        return float('inf') if x > 0 else 0.0
+
+
 def _now() -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%S%z")
 
@@ -174,6 +183,66 @@ def skill_body_lapse_separation_gate(packet: Mapping[str, Any]) -> dict[str, Any
     }
 
 
+def morphogenetic_acceptance_gate(packet: Mapping[str, Any]) -> dict[str, Any]:
+    """OpenCOAT morphogenetic agent inspired: ΔF acceptance criterion.
+
+    A structural evolution is accepted only when:
+        ΔF = ΔError + β·ΔComplexity < 0
+
+    This formalizes the acceptance check for evolutionary changes:
+    - ΔError: change in task/prediction error (negative = improvement)
+    - ΔComplexity: change in structural description length
+    - β: complexity coefficient (temperature-dependent)
+    - Refractory period prevents oscillation.
+    """
+    required = [
+        "delta_error",
+        "delta_complexity",
+        "complexity_beta",
+    ]
+    missing = [field for field in required if not _has(packet, field)]
+    warnings: list[str] = []
+    metrics: list[str] = []
+    delta_error = float(packet.get("delta_error", 0.0) or 0.0)
+    delta_complexity = float(packet.get("delta_complexity", 0.0) or 0.0)
+    beta = float(packet.get("complexity_beta", 1.0) or 1.0)
+    refractory = int(packet.get("refractory_rounds_remaining", 0) or 0)
+    delta_f = delta_error + beta * delta_complexity
+    effective_temperature = float(packet.get("temperature", 1.0) or 1.0)
+    rate = min(1.0, _safe_exp(-delta_f / effective_temperature)) if effective_temperature > 0 else 0.0
+
+    errors: list[str] = []
+    if refractory > 0:
+        errors.append("refractory_rounds_remaining")
+    if not missing and delta_f >= 0:
+        errors.append("delta_f_not_negative")
+
+    if _has(packet, "invariant_breach"):
+        if packet.get("invariant_breach") is True:
+            errors.append("invariant_breach")
+    if _has(packet, "refinement_preserves_behavior") and packet.get("refinement_preserves_behavior") is False:
+        errors.append("refinement_does_not_preserve_behavior")
+
+    metrics.append(f"ΔF={delta_f:.4f}")
+    metrics.append(f"rate={rate:.4f}")
+    metrics.append(f"temperature={effective_temperature:.2f}")
+    status = "PASS" if not missing and not errors else "BLOCK"
+    if status == "PASS" and warnings:
+        status = "WATCH"
+    return {
+        "schema": "PGGMorphogeneticAcceptanceGate/v1",
+        "created_at": _now(),
+        "status": status,
+        "errors": errors,
+        "warnings": warnings,
+        "metrics": metrics,
+        "delta_f": delta_f,
+        "acceptance_rate": rate,
+        "opencat_inspired": True,
+        "boundary": BOUNDARY,
+    }
+
+
 def population_search_gate(packet: Mapping[str, Any]) -> dict[str, Any]:
     """pi-evo-research inspired: check candidate evolution uses population-guided search.
 
@@ -277,6 +346,7 @@ def evaluate_evolution_pattern_gates(packet: Mapping[str, Any], *, output_dir: s
         "skill_body_lapse": skill_body_lapse_separation_gate(packet.get("skill_body_lapse", {})),
         "declarative_spec": declarative_spec_gate(packet.get("declarative_spec", {})),
         "population_search": population_search_gate(packet.get("population_search", {})),
+        "morphogenetic_acceptance": morphogenetic_acceptance_gate(packet.get("morphogenetic_acceptance", {})),
         "harmrate_growth": harmrate_growth_gate(packet.get("harmrate_growth", {})),
     }
     blocked = [name for name, result in sections.items() if result["status"] not in {"PASS", "WATCH"}]
@@ -307,6 +377,7 @@ __all__ = [
     "skill_body_lapse_separation_gate",
     "declarative_spec_gate",
     "population_search_gate",
+    "morphogenetic_acceptance_gate",
     "harmrate_growth_gate",
     "evaluate_evolution_pattern_gates",
 ]
