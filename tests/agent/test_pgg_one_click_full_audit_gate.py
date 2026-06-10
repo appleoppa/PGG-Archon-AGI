@@ -11,6 +11,8 @@ def test_one_click_gate_uses_all_core_checks(monkeypatch):
         joined = " ".join(str(x) for x in cmd)
         if "hermes-goal" in joined:
             return {"returncode": 0, "stdout": '{"overall_status":"PASS","summary":"16/16 components PASS","watch_count":0,"blocked_count":0}', "stderr": ""}
+        if "pgg_l2_readiness_gate" in joined:
+            return {"returncode": 0, "stdout": '{"status":"PASS_INTERNAL_L2_CANDIDATE_READINESS","score":86.8,"checks":{"agi_gap_ge_83":true},"component_statuses":{"agi_gap_source":"live"}}', "stderr": ""}
         if "omniroute_ui_status" in joined:
             return {"returncode": 0, "stdout": '{"status":"PASS_OMNIROUTE_UI_PRACTICAL_READY_CONFIG_SYNC","passed":15,"total":15}', "stderr": ""}
         if "pgg_omniroute_provider_probe_gate" in joined:
@@ -31,7 +33,8 @@ def test_one_click_gate_uses_all_core_checks(monkeypatch):
     monkeypatch.setattr("agent.pgg_one_click_full_audit_gate._memory_system_status", lambda: (0, {"overall": {"score_percent": 100.0, "failed_or_watch": []}}))
     rec = build_status()
     assert rec["status"] == "PASS_ONE_CLICK_FULL_AUDIT_ANTI_REGRESSION"
-    assert rec["passed"] == rec["total"] == 8
+    assert rec["passed"] == rec["total"] == 9
+    assert any(c["name"] == "l2_readiness_live_agi_gap_pass" and c["ok"] for c in rec["checks"])
 
 
 def test_one_click_gate_updates_latest_snapshot_atomically(monkeypatch, tmp_path, capsys):
