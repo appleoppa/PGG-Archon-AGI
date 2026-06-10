@@ -16,6 +16,7 @@ SKIP_DIRS = {'.git', '.venv', 'venv', 'node_modules', '.mypy_cache', '.pytest_ca
 SKIP_EXT = {'.png', '.jpg', '.jpeg', '.gif', '.webp', '.pdf', '.zip', '.gz', '.tgz', '.mp4', '.mov', '.sqlite', '.db', '.pack', '.idx', '.pyc'}
 PATTERNS: list[tuple[str, re.Pattern[bytes]]] = [
     ('github_token', re.compile(rb'gh[pousr]_[A-Za-z0-9_]{20,}')),
+    ('openrouter_api_key', re.compile(rb'sk-or-v1-[A-Za-z0-9_-]{20,}')),
     ('openai_key', re.compile(rb'sk-[A-Za-z0-9]{20,}')),
     ('anthropic_key', re.compile(rb'sk-ant-[A-Za-z0-9_-]{20,}')),
     ('aws_access_key', re.compile(rb'AKIA[0-9A-Z]{16}')),
@@ -26,13 +27,11 @@ PATTERNS: list[tuple[str, re.Pattern[bytes]]] = [
 ]
 ALLOW_CONTEXT = (b'EXAMPLE', b'FAKE', b'DUMMY', b'MOCK', b'PLACEHOLDER', b'TEST', b'<', b'REDACTED')
 
-SCANNED_PREFIXES = (
-    Path('.env.example'),
-    Path('hermes_cli'),
-    Path('website'),
-    Path('skills'),
-)
+SCANNED_PREFIXES = (Path('.'),)
 ALLOWLIST_PREFIXES = (
+    # Tests intentionally synthesize fake secret shapes to exercise redaction
+    # and loader sanitization. GitHub secret-scanning still covers the full
+    # repository; this local gate blocks source/docs/examples/config fixtures.
     Path('tests'),
     Path('external'),
 )
@@ -45,14 +44,21 @@ def should_skip(path: Path) -> bool:
         return True
     if any(part in SKIP_DIRS for part in path.parts):
         return True
-    # Default fail gate targets docs/examples/skills and CLI user-facing examples.
-    # Tests/external fixtures intentionally contain fake secret shapes for redaction tests.
+    if in_prefix(path, ALLOWLIST_PREFIXES):
+        return True
+    # Default fail gate scans source/docs/examples/config fixtures across the
+    # repository. Tests/external fixtures are excluded above because they contain
+    # intentionally fake secret shapes for redaction tests.
     return not in_prefix(path, SCANNED_PREFIXES)
 
 def is_allowed_context(data: bytes, start: int, end: int, typ: str) -> bool:
-    window = data[max(0, start - 120): min(len(data), end + 120)].upper()
+    window = data[max(0, start - 160): min(len(data), end + 160)].upper()
+    if typ == 'private_key_block' and (b'PRIVATE_KEY_RE' in window or b'RE.COMPILE' in window):
+        # A redaction regex source literal is not a leaked private key.
+        return True
     if any(marker in window for marker in ALLOW_CONTEXT):
-        # AWS official EXAMPLE keys are safe fixtures but should still avoid real-looking docs when possible.
+        # AWS official EXAMPLE keys and private-key redaction examples are safe fixtures
+        # but should still avoid real-looking docs when possible.
         return typ in {'aws_access_key', 'private_key_block'}
     return False
 
