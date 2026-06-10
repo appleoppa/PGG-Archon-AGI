@@ -129,7 +129,11 @@ def build_status() -> dict[str, Any]:
         },
         "can_claim": "Internal L2-candidate/readiness if PASS; engineering readiness only.",
         "must_not_claim": ["external AGI L2", "full AGI", "T5", "legal correctness proof", "unsupervised high-risk production takeover"],
-        "remaining_external_evidence_needed": ["autonomy collector own multi-day elapsed samples", "independent external benchmark", "real legal E2E correctness review"],
+        "remaining_external_evidence_needed": [
+            "autonomy collector own multi-day elapsed samples",
+            "external/community benchmark or evaluation evidence track (no single official AGI standard assumed)",
+            "real legal E2E correctness review",
+        ],
     }
     DATA.mkdir(parents=True, exist_ok=True)
     LATEST.write_text(json.dumps(rec, ensure_ascii=False, indent=2), encoding="utf-8")

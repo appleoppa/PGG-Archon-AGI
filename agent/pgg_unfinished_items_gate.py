@@ -106,7 +106,7 @@ def build_status() -> dict[str, Any]:
         },
         "remaining_external_evidence_needed": [
             "autonomy collector own multi-day elapsed samples",
-            "independent external benchmark",
+            "external/community benchmark or evaluation evidence track (no single official AGI standard assumed)",
             "real legal E2E correctness review",
         ],
         "boundary": "Read-only classifier. Stale historical WATCH files are not current blockers; no deletion or mutation performed. Not external AGI L2/full AGI/T5/legal correctness proof.",

@@ -1,8 +1,10 @@
 """Aggregate AGI gap-closure gate and bounded progress score.
 
 Composes the four concrete gates added for the user's requested gap closure.
-It preserves truth boundaries: token/OAuth WATCH and multi-day/external benchmark
-claims cannot be upgraded without real credentials and longitudinal/external data.
+It preserves truth boundaries: token/OAuth WATCH and multi-day autonomy evidence
+claims cannot be upgraded without real credentials and longitudinal data.
+There is no single official AGI benchmark standard here; external/community
+benchmarks are optional evidence tracks, not something to fabricate as proof.
 """
 from __future__ import annotations
 
@@ -57,7 +59,7 @@ def build_status() -> dict[str, Any]:
         "benchmark_legal_smoke": statuses["benchmark_legal_smoke"].startswith("PASS"),
         "token_oauth_min_privilege": statuses["token_oauth"].startswith("PASS"),
     }
-    # Bounded score: gate progress improves score, but token/OAuth WATCH and lack of multi-day/external proof cap it.
+    # Bounded score: gate progress improves score, but token/OAuth WATCH and lack of multi-day autonomy evidence cap it.
     dims = {
         "基础认知/工具调用": 88,
         "跨域适配/多通道路由": 82 if strict_pass["high_risk_lanes"] else 78,
@@ -72,7 +74,7 @@ def build_status() -> dict[str, Any]:
     if not strict_pass["token_oauth_min_privilege"]:
         cap_reasons.append("token/OAuth requires real credential rotation; current gate is WATCH")
     cap_reasons.append("multi-day unsupervised autonomy needs longitudinal samples, not one baseline")
-    cap_reasons.append("official external benchmark/legal correctness not yet proven")
+    cap_reasons.append("external/community benchmark and legal correctness require separate evidence tracks; no single official AGI benchmark standard is assumed")
     score = min(raw_score, score_cap)
     status = "PASS_WITH_WATCH_AGI_GAP_CLOSURE_GATED" if strict_pass["high_risk_lanes"] and strict_pass["autonomy_curve_baseline"] and strict_pass["benchmark_legal_smoke"] else "WATCH_AGI_GAP_CLOSURE_PARTIAL"
     rec = {
@@ -94,10 +96,11 @@ def build_status() -> dict[str, Any]:
             "Token/OAuth risks are detected without printing secrets.",
         ],
         "must_not_claim": [
-            "full AGI/T5/L2+ external AGI benchmark",
+            "full AGI/T5/L2+ external AGI benchmark certification",
             "unsupervised external legal/audit/AGI production takeover",
             "token/OAuth least privilege complete while current credential remains over-scoped/no active OAuth",
             "LegalBench/LexGLUE/legal correctness proof from deterministic smoke",
+            "a fabricated official AGI standard where no agreed standard exists",
         ],
     }
     DATA.mkdir(parents=True, exist_ok=True)
