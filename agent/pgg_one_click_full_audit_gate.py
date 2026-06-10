@@ -63,6 +63,27 @@ def build_status(run_provider_canary: bool = False, provider: str = "deepseek") 
     evidence["hermes_goal"] = {"returncode": goal["returncode"], "json": goal_json}
     _add(checks, "hermes_goal_16_of_16_pass", goal["returncode"] == 0 and goal_json.get("overall_status") == "PASS" and goal_json.get("summary") == "16/16 components PASS" and goal_json.get("watch_count") == 0 and goal_json.get("blocked_count") == 0, {"status": goal_json.get("overall_status"), "summary": goal_json.get("summary"), "watch": goal_json.get("watch_count"), "blocked": goal_json.get("blocked_count")})
 
+    l2 = _run([str(PY), "-m", "agent.pgg_l2_readiness_gate", "--json"], 180)
+    l2_json = _json_from_stdout(l2)
+    evidence["l2_readiness_gate"] = {"returncode": l2["returncode"], "json": l2_json}
+    l2_checks = l2_json.get("checks") or {}
+    l2_components = l2_json.get("component_statuses") or {}
+    _add(
+        checks,
+        "l2_readiness_live_agi_gap_pass",
+        l2["returncode"] == 0
+        and l2_json.get("status") == "PASS_INTERNAL_L2_CANDIDATE_READINESS"
+        and float(l2_json.get("score") or 0) >= 85.0
+        and l2_checks.get("agi_gap_ge_83") is True
+        and l2_components.get("agi_gap_source") == "live",
+        {
+            "status": l2_json.get("status"),
+            "score": l2_json.get("score"),
+            "agi_gap_ge_83": l2_checks.get("agi_gap_ge_83"),
+            "agi_gap_source": l2_components.get("agi_gap_source"),
+        },
+    )
+
     omni = _run([str(HERMES_BIN / "omniroute_ui_status"), "--json"], 60)
     omni_json = _json_from_stdout(omni)
     evidence["omniroute_ui_status"] = {"returncode": omni["returncode"], "json": omni_json}
