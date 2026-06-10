@@ -9,6 +9,7 @@ from agent.pgg_archon_evolution_pattern_gates import (
     evaluate_evolution_pattern_gates,
     harmrate_growth_gate,
     resource_lineage_gate,
+    skill_body_lapse_separation_gate,
     skill_trajectory_gate,
 )
 
@@ -38,6 +39,28 @@ def _pass_packet() -> dict[str, Any]:
             "targeted_patch": "patch",
             "independent_audit": "reviewer",
             "rollback_or_versioning": "v1",
+        },
+        "skill_body_lapse": {
+            "skill_body_current": "original skill body",
+            "skill_body_proposed_change": "fix error handling",
+            "failure_trajectories": ["t1", "t2"],
+            "evidence_type": "skill_changing",
+            "change_classification": "skill_body_fix",
+        },
+        "declarative_spec": {
+            "spec_format": "yaml",
+            "typed_steps": ["step1", "step2"],
+            "explicit_state": "state.json",
+            "module_reuse": True,
+            "sandbox_rollback": True,
+        },
+        "population_search": {
+            "families": [{"name": "a"}, {"name": "b"}],
+            "selection_strategy": "fitness",
+            "stagnation_detection": {"max_family_failures": 3},
+            "novelty_injection": True,
+            "candidate_hypotheses": True,
+            "population_persistence": True,
         },
         "harmrate_growth": {
             "harmrate": 0.1,
@@ -83,6 +106,31 @@ def test_harmrate_growth_gate_blocks_threshold_and_external_claim() -> None:
     assert out["status"] == "BLOCK"
     assert "harmrate_at_or_above_threshold" in out["errors"]
     assert "external_authority_claim_not_allowed" in out["errors"]
+
+
+def test_population_search_gate_passes_with_multiple_families() -> None:
+    from agent.pgg_archon_evolution_pattern_gates import population_search_gate
+    ev = population_search_gate({
+        "families": [{"name": "a"}, {"name": "b"}],
+        "selection_strategy": "fitness",
+        "stagnation_detection": {"max_family_failures": 3},
+        "novelty_injection": True,
+        "candidate_hypotheses": True,
+        "population_persistence": True,
+    })
+    assert ev["status"] == "PASS"
+    assert ev["pievo_inspired"] is True
+
+
+def test_population_search_gate_single_family_warns() -> None:
+    from agent.pgg_archon_evolution_pattern_gates import population_search_gate
+    ev = population_search_gate({
+        "families": [{"name": "only_one"}],
+        "selection_strategy": "fitness",
+        "stagnation_detection": {"max_family_failures": 3},
+    })
+    assert ev["status"] == "WATCH"
+    assert "less_than_2_families" in ev["warnings"]
 
 
 def test_evaluate_all_gates_writes_output(tmp_path) -> None:
