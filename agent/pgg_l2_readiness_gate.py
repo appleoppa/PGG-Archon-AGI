@@ -69,7 +69,7 @@ def _json_live_or_latest(cmd: list[str], latest_path: Path, timeout: int = 45) -
 def build_status() -> dict[str, Any]:
     goal = _json_live_or_latest([str(HOME / "bin/hermes-goal")], DATA / "pgg_goal_unified_status_latest.json", 90)
     evolve = _json_live_or_latest([str(HOME / "bin/hermes-evolve"), "status"], DATA / "pgg_github_evolution_pipeline_latest.json", 60)
-    agi = _load_json_file(DATA / "pgg_agi_gap_closure_gate_latest.json")
+    agi = _json_live_or_latest([str(PY), "-m", "agent.pgg_agi_gap_closure_gate", "--json"], DATA / "pgg_agi_gap_closure_gate_latest.json", 180)
     token = _load_json_file(DATA / "pgg_token_oauth_governance_latest.json")
     legal = _load_json_file(DATA / "pgg_legal_e2e_benchmark_latest.json")
     auto = _load_json_file(DATA / "pgg_autonomy_curve_latest.json")
