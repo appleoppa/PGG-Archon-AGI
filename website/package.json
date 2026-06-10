@@ -36,7 +36,12 @@
   },
   "overrides": {
     "serialize-javascript": "^7.0.5",
-    "uuid": "^14.0.0"
+    "uuid": "^14.0.0",
+    "ws": "8.20.1",
+    "postcss": "8.5.10",
+    "path-to-regexp@0.1.x": "0.1.13",
+    "brace-expansion@1.1.x": "1.1.13",
+    "picomatch@2.x": "2.3.2"
   },
   "browserslist": {
     "production": [
