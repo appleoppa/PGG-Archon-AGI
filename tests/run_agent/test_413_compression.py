@@ -16,6 +16,7 @@ from unittest.mock import MagicMock, patch
 
 
 from agent.context_compressor import SUMMARY_PREFIX
+from agent import conversation_loop
 from run_agent import AIAgent
 import run_agent
 
@@ -868,9 +869,14 @@ class TestOverflowWithCompactionDisabled:
             {"role": "assistant", "content": "previous answer"},
         ]
 
-    def test_413_does_not_compress_when_disabled(self, agent):
-        """413 must NOT call _compress_context when compaction is disabled."""
+    def test_413_does_not_compress_when_disabled(self, agent, monkeypatch):
+        """413 must NOT call _compress_context when current config disables compaction."""
         agent.compression_enabled = False
+        monkeypatch.setattr(
+            conversation_loop,
+            "_current_config_auto_compaction_enabled",
+            lambda: False,
+        )
         err_413 = _make_413_error()
         # If the guard fails, a second (success) response would be consumed.
         agent.client.chat.completions.create.side_effect = [err_413, _mock_response()]
@@ -889,9 +895,14 @@ class TestOverflowWithCompactionDisabled:
         assert result.get("compaction_disabled") is True
         assert "auto-compaction is disabled" in result["error"]
 
-    def test_context_overflow_does_not_compress_when_disabled(self, agent):
-        """400 'prompt is too long' must NOT compress when compaction disabled."""
+    def test_context_overflow_does_not_compress_when_disabled(self, agent, monkeypatch):
+        """400 'prompt is too long' must NOT compress when current config disables compaction."""
         agent.compression_enabled = False
+        monkeypatch.setattr(
+            conversation_loop,
+            "_current_config_auto_compaction_enabled",
+            lambda: False,
+        )
         err_400 = Exception(
             "Error code: 400 - {'type': 'error', 'error': {'type': "
             "'invalid_request_error', 'message': 'prompt is too long: "
@@ -936,3 +947,86 @@ class TestOverflowWithCompactionDisabled:
         mock_compress.assert_called_once()
         assert result["completed"] is True
         assert result.get("compaction_disabled") is not True
+
+    def test_stale_runtime_disabled_recovers_when_current_config_enabled(self, agent, monkeypatch):
+        """Runtime False + current config True should recover and compress."""
+        agent.compression_enabled = False
+        err_413 = _make_413_error()
+        ok_resp = _mock_response(content="Recovered after stale runtime recovery", finish_reason="stop")
+        agent.client.chat.completions.create.side_effect = [err_413, ok_resp]
+        monkeypatch.setattr(
+            conversation_loop,
+            "_current_config_auto_compaction_enabled",
+            lambda: True,
+        )
+
+        with (
+            patch.object(agent, "_compress_context") as mock_compress,
+            patch.object(agent, "_persist_session"),
+            patch.object(agent, "_save_trajectory"),
+            patch.object(agent, "_cleanup_task_resources"),
+        ):
+            mock_compress.return_value = (
+                [{"role": "user", "content": "hello"}], "compressed",
+            )
+            result = agent.run_conversation("hello", conversation_history=self._prefill())
+
+        mock_compress.assert_called_once()
+        assert result["completed"] is True
+        assert result.get("compaction_disabled") is not True
+        assert agent.compression_enabled is True
+        assert getattr(agent, "_compression_disabled_reason") == "stale_runtime_recovered_current_config_true"
+
+    @pytest.mark.parametrize("current_config_enabled", [False, None])
+    def test_stale_runtime_disabled_fails_closed_when_current_config_not_enabled(
+        self,
+        agent,
+        monkeypatch,
+        current_config_enabled,
+    ):
+        """Runtime False must stay disabled when config is false or unreadable."""
+        agent.compression_enabled = False
+        err_413 = _make_413_error()
+        agent.client.chat.completions.create.side_effect = [err_413, _mock_response()]
+        monkeypatch.setattr(
+            conversation_loop,
+            "_current_config_auto_compaction_enabled",
+            lambda: current_config_enabled,
+        )
+
+        with (
+            patch.object(agent, "_compress_context") as mock_compress,
+            patch.object(agent, "_persist_session"),
+            patch.object(agent, "_save_trajectory"),
+            patch.object(agent, "_cleanup_task_resources"),
+        ):
+            result = agent.run_conversation("hello", conversation_history=self._prefill())
+
+        mock_compress.assert_not_called()
+        assert result.get("compaction_disabled") is True
+        assert agent.compression_enabled is False
+
+    def test_background_review_fork_reason_blocks_stale_runtime_recovery(self, agent, monkeypatch):
+        """Background review fork must not be re-enabled by config recovery."""
+        agent.compression_enabled = False
+        setattr(agent, "_compression_disabled_reason", "background_review_fork")
+        err_413 = _make_413_error()
+        agent.client.chat.completions.create.side_effect = [err_413, _mock_response()]
+        monkeypatch.setattr(
+            conversation_loop,
+            "_current_config_auto_compaction_enabled",
+            lambda: True,
+        )
+
+        with (
+            patch.object(agent, "_compress_context") as mock_compress,
+            patch.object(agent, "_persist_session"),
+            patch.object(agent, "_save_trajectory"),
+            patch.object(agent, "_cleanup_task_resources"),
+        ):
+            result = agent.run_conversation("hello", conversation_history=self._prefill())
+
+        mock_compress.assert_not_called()
+        assert result.get("compaction_disabled") is True
+        assert agent.compression_enabled is False
+        assert getattr(agent, "_compression_disabled_reason") == "background_review_fork"
