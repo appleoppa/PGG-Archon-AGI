@@ -43,6 +43,10 @@ def _json_from_run(cmd: list[str], timeout: int = 120) -> dict[str, Any]:
 
 def build_status() -> dict[str, Any]:
     goal = _json_from_run([str(HOME / "bin/hermes-goal")], 240)
+    goal_retry_used = False
+    if not (goal.get("summary") == "16/16 components PASS" and goal.get("watch_count") == 0 and goal.get("blocked_count") == 0):
+        goal = _json_from_run([str(HOME / "bin/hermes-goal")], 240)
+        goal_retry_used = True
     evolve = _json_from_run([str(HOME / "bin/hermes-evolve"), "status"], 120)
     agi = _json_from_run([str(PY), "-m", "agent.pgg_agi_gap_closure_gate", "--json"], 240)
     agi_retry_used = False
@@ -89,6 +93,7 @@ def build_status() -> dict[str, Any]:
         "checks": checks,
         "component_statuses": {
             "goal": goal.get("summary"),
+            "goal_retry_used": goal_retry_used,
             "evolve": evolve.get("status"),
             "agi_gap": agi.get("status"),
             "agi_gap_retry_used": agi_retry_used,
