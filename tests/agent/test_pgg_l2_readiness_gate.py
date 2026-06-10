@@ -42,6 +42,8 @@ def test_l2_readiness_is_internal_not_external(monkeypatch, tmp_path):
             return {"returncode": 0, "stdout": '{"summary":"16/16 components PASS","watch_count":0,"blocked_count":0}', "stderr": ""}
         if "hermes-evolve" in joined:
             return {"returncode": 0, "stdout": '{"status":"PASS_GITHUB_EVOLUTION_PIPELINE_BOUNDED","blockers":[]}', "stderr": ""}
+        if "pgg_agi_gap_closure_gate" in joined:
+            return {"returncode": 0, "stdout": '{"status":"PASS_WITH_WATCH_AGI_GAP_CLOSURE_GATED","score":83.2}', "stderr": ""}
         return {"returncode": 0, "stdout": "{}", "stderr": ""}
 
     monkeypatch.setattr(l2, "_run", fake_run)
@@ -49,6 +51,8 @@ def test_l2_readiness_is_internal_not_external(monkeypatch, tmp_path):
     assert rec["status"] == "PASS_INTERNAL_L2_CANDIDATE_READINESS"
     assert rec["score"] >= 85
     assert rec["checks"]["historical_backfill_internal_pass"] is True
+    assert rec["checks"]["agi_gap_ge_83"] is True
+    assert rec["component_statuses"]["agi_gap_source"] == "live"
     assert rec["dimensions"]["自主行动"] == 88
     assert "external AGI L2" in rec["must_not_claim"]
 
