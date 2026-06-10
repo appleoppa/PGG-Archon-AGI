@@ -405,6 +405,131 @@ def population_search_gate(packet: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
+
+def agentspex_full_harness_gate(packet: Mapping[str, Any]) -> dict[str, Any]:
+    """AgentSPEX-inspired full harness spec gate.
+
+    Checks whether a task spec is executable as a declarative workflow:
+    typed steps, explicit state, control flow, module reuse, sandbox, tool bindings,
+    checkpoint/resume, verifier/logger, state mutation audit, and boundary claims.
+
+    Boundary: local structural validation only. It does not execute AgentSPEX, does not
+    reproduce paper benchmarks, and does not claim official AgentSPEX parity.
+    """
+    required = [
+        "spec_format",
+        "typed_steps",
+        "explicit_state",
+        "control_flow",
+        "module_reuse",
+        "sandbox",
+        "tool_bindings",
+        "checkpoint_resume",
+        "verifier",
+        "logger",
+        "boundary",
+    ]
+    missing = [field for field in required if not _has(packet, field)]
+    errors: list[str] = []
+    warnings: list[str] = []
+    metrics: list[str] = []
+
+    spec_format = str(packet.get("spec_format", "")).strip().lower()
+    if spec_format and spec_format not in {"yaml", "json", "toml", "markdown"}:
+        warnings.append(f"nonstandard_spec_format:{spec_format}")
+
+    typed_steps = packet.get("typed_steps") or []
+    if isinstance(typed_steps, (list, tuple)):
+        metrics.append(f"typed_steps:{len(typed_steps)}")
+        if len(typed_steps) < 3:
+            warnings.append("less_than_3_typed_steps")
+        for idx, step in enumerate(typed_steps):
+            if not isinstance(step, Mapping):
+                errors.append(f"typed_step_{idx}_not_mapping")
+                continue
+            for field in ("id", "type", "input", "output"):
+                if not _has(step, field):
+                    errors.append(f"typed_step_{idx}_missing_{field}")
+
+    control_flow = packet.get("control_flow") or {}
+    if isinstance(control_flow, Mapping):
+        if not any(_has(control_flow, key) for key in ("sequence", "branch", "loop", "parallel", "join_policy")):
+            warnings.append("control_flow_has_no_operator")
+        if _has(control_flow, "parallel") and not _has(control_flow, "join_policy"):
+            errors.append("parallel_control_flow_requires_join_policy")
+
+    state = packet.get("explicit_state") or {}
+    if isinstance(state, Mapping):
+        if not _has(state, "schema"):
+            errors.append("explicit_state_missing_schema")
+        if not _has(state, "mutation_policy"):
+            errors.append("explicit_state_missing_mutation_policy")
+
+    sandbox = packet.get("sandbox") or {}
+    if isinstance(sandbox, Mapping):
+        if sandbox.get("enabled") is not True:
+            errors.append("sandbox_not_enabled")
+        if not _has(sandbox, "rollback"):
+            errors.append("sandbox_missing_rollback")
+        if sandbox.get("production_or_security_change") is True and not _has(packet, "user_authorization"):
+            errors.append("production_or_security_change_requires_user_authorization")
+
+    tools = packet.get("tool_bindings") or []
+    if isinstance(tools, (list, tuple)):
+        metrics.append(f"tool_bindings:{len(tools)}")
+        if not tools:
+            errors.append("no_tool_bindings")
+        for idx, tool in enumerate(tools):
+            if isinstance(tool, Mapping):
+                if not _has(tool, "name"):
+                    errors.append(f"tool_binding_{idx}_missing_name")
+                if not _has(tool, "permission"):
+                    errors.append(f"tool_binding_{idx}_missing_permission")
+
+    checkpoint = packet.get("checkpoint_resume") or {}
+    if isinstance(checkpoint, Mapping):
+        if checkpoint.get("enabled") is not True:
+            errors.append("checkpoint_resume_not_enabled")
+        if not _has(checkpoint, "resume_key"):
+            errors.append("checkpoint_resume_missing_resume_key")
+
+    verifier = packet.get("verifier") or {}
+    if isinstance(verifier, Mapping):
+        if not _has(verifier, "gates"):
+            errors.append("verifier_missing_gates")
+        if not _has(verifier, "success_criteria"):
+            errors.append("verifier_missing_success_criteria")
+
+    logger = packet.get("logger") or {}
+    if isinstance(logger, Mapping):
+        if not _has(logger, "evidence_path"):
+            errors.append("logger_missing_evidence_path")
+        if not _has(logger, "manifest_key"):
+            warnings.append("logger_missing_manifest_key")
+
+    if packet.get("benchmark_claim") is True:
+        errors.append("benchmark_claim_not_allowed_without_local_eval")
+    if packet.get("official_agentspex_parity_claim") is True:
+        errors.append("official_agentspex_parity_claim_not_allowed")
+    if packet.get("full_agi_claim") is True:
+        errors.append("full_agi_claim_not_allowed")
+
+    status = "PASS" if not missing and not errors else "BLOCK"
+    if status == "PASS" and warnings:
+        status = "WATCH"
+    return {
+        "schema": "PGGAgentSPEXFullHarnessGate/v1",
+        "created_at": _now(),
+        "status": status,
+        "missing": missing,
+        "errors": errors,
+        "warnings": warnings,
+        "metrics": metrics,
+        "agentspex_full_harness_inspired": True,
+        "boundary": BOUNDARY,
+    }
+
+
 def declarative_spec_gate(packet: Mapping[str, Any]) -> dict[str, Any]:
     """AgentSPEX-inspired: check task evolution has a declarative spec separate from code.
 
@@ -461,6 +586,7 @@ def evaluate_evolution_pattern_gates(packet: Mapping[str, Any], *, output_dir: s
         "skill_trajectory": skill_trajectory_gate(packet.get("skill_trajectory", {})),
         "skill_body_lapse": skill_body_lapse_separation_gate(packet.get("skill_body_lapse", {})),
         "declarative_spec": declarative_spec_gate(packet.get("declarative_spec", {})),
+        "agentspex_full_harness": agentspex_full_harness_gate(packet.get("agentspex_full_harness", {})),
         "population_search": population_search_gate(packet.get("population_search", {})),
         "morphogenetic_acceptance": morphogenetic_acceptance_gate(packet.get("morphogenetic_acceptance", {})),
         "harmrate_growth": harmrate_growth_gate(packet.get("harmrate_growth", {})),
@@ -494,6 +620,7 @@ __all__ = [
     "skill_trajectory_gate",
     "skill_body_lapse_separation_gate",
     "declarative_spec_gate",
+    "agentspex_full_harness_gate",
     "population_search_gate",
     "morphogenetic_acceptance_gate",
     "harmrate_growth_gate",

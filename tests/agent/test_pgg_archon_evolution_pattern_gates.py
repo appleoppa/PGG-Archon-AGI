@@ -8,6 +8,7 @@ from agent.pgg_archon_evolution_pattern_gates import (
     artifact_first_gate,
     coral_multi_agent_parallel_gate,
     evaluate_evolution_pattern_gates,
+    agentspex_full_harness_gate,
     gepa_prompt_optimizer_gate,
     harmrate_growth_gate,
     resource_lineage_gate,
@@ -75,6 +76,26 @@ def _pass_packet() -> dict[str, Any]:
             "explicit_state": "state.json",
             "module_reuse": True,
             "sandbox_rollback": True,
+        },
+        "agentspex_full_harness": {
+            "spec_format": "yaml",
+            "typed_steps": [
+                {"id": "s1", "type": "load", "input": "case_material", "output": "state.material"},
+                {"id": "s2", "type": "verify", "input": "state.material", "output": "state.evidence"},
+                {"id": "s3", "type": "deliver", "input": "state.evidence", "output": "state.report"},
+            ],
+            "explicit_state": {"schema": "state.schema.json", "mutation_policy": "append_only_evidence"},
+            "control_flow": {"sequence": ["s1", "s2", "s3"], "parallel": ["evidence", "law"], "join_policy": "all_pass"},
+            "module_reuse": ["agent-cms", "dept-evidence-management", "dept-legal-support"],
+            "sandbox": {"enabled": True, "workspace": "case_sandbox", "rollback": "restore checkpoint"},
+            "tool_bindings": [
+                {"name": "cms_case_guard", "permission": "read_write_case_index"},
+                {"name": "case_trusted_workflow_gate", "permission": "read_only_verify"},
+            ],
+            "checkpoint_resume": {"enabled": True, "resume_key": "case_id+stage"},
+            "verifier": {"gates": ["cms_validate", "trusted_workflow"], "success_criteria": "all hard gates pass"},
+            "logger": {"evidence_path": "workspace/case/evidence", "manifest_key": "sample_agentspex_case"},
+            "boundary": "internal spec gate only; no benchmark/full AGI claim",
         },
         "population_search": {
             "families": [{"name": "a"}, {"name": "b"}],
@@ -164,6 +185,29 @@ def test_harmrate_growth_gate_blocks_threshold_and_external_claim() -> None:
     assert out["status"] == "BLOCK"
     assert "harmrate_at_or_above_threshold" in out["errors"]
     assert "external_authority_claim_not_allowed" in out["errors"]
+
+
+def test_agentspex_full_harness_gate_passes_and_blocks_unsafe_claims() -> None:
+    out = agentspex_full_harness_gate(_pass_packet()["agentspex_full_harness"])
+    assert out["status"] == "PASS"
+    assert out["agentspex_full_harness_inspired"] is True
+    bad = dict(_pass_packet()["agentspex_full_harness"])
+    bad["benchmark_claim"] = True
+    bad["official_agentspex_parity_claim"] = True
+    bad["full_agi_claim"] = True
+    out = agentspex_full_harness_gate(bad)
+    assert out["status"] == "BLOCK"
+    assert "benchmark_claim_not_allowed_without_local_eval" in out["errors"]
+    assert "official_agentspex_parity_claim_not_allowed" in out["errors"]
+    assert "full_agi_claim_not_allowed" in out["errors"]
+
+
+def test_agentspex_full_harness_gate_requires_parallel_join_policy() -> None:
+    bad = dict(_pass_packet()["agentspex_full_harness"])
+    bad["control_flow"] = {"parallel": ["a", "b"]}
+    out = agentspex_full_harness_gate(bad)
+    assert out["status"] == "BLOCK"
+    assert "parallel_control_flow_requires_join_policy" in out["errors"]
 
 
 def test_population_search_gate_passes_with_multiple_families() -> None:
