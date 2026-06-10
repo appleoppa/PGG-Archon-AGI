@@ -2,8 +2,10 @@ from __future__ import annotations
 
 from agent.pgg_archon_benchmark_and_gene_gates import (
     coral_parallel_workspace_mini_benchmark,
+    coral_real_worktree_smoke,
     evaluate_all,
     gene_fusion_synergy_gate,
+    gepa_executable_task_benchmark,
     gepa_prompt_evolution_mini_benchmark,
     reflexion_discovery_gate,
 )
@@ -96,3 +98,32 @@ def test_evaluate_all_passes(tmp_path):
     assert out["blocked"] == []
     assert out["promotion_performed"] is False
     assert "output_path" in out
+
+
+
+def test_gepa_executable_task_benchmark_runs_real_ops():
+    out = gepa_executable_task_benchmark({
+        "baseline_ops": ["strip"],
+        "candidate_variants": [
+            {"ops": ["strip", "lower"]},
+            {"ops": ["strip", "lower", "remove_punctuation", "collapse_spaces"]},
+        ],
+        "tasks": [
+            {"id": "a", "input": " Hello! ", "expected": "hello"},
+            {"id": "b", "input": " A  B. ", "expected": "a b"},
+            {"id": "c", "input": "OK?", "expected": "ok"},
+        ],
+    })
+    assert out["status"] == "PASS"
+    assert out["best_variant"]["score"] == 3
+    assert out["official_gepa_reproduction"] is False
+
+
+def test_coral_real_worktree_smoke_executes_git_worktrees():
+    out = coral_real_worktree_smoke({
+        "agents": ["a", "b"],
+        "proposals": [{"score": 1}, {"score": 3}],
+    })
+    assert out["status"] == "PASS"
+    assert out["selected"]["score"] == 3
+    assert out["official_coral_reproduction"] is False

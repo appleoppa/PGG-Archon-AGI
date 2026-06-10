@@ -108,6 +108,120 @@ def coral_parallel_workspace_mini_benchmark(packet: Mapping[str, Any]) -> dict[s
     return {"schema":"PGGCORALParallelWorkspaceMiniBenchmark/v1","created_at":_now(),"status":"PASS" if not errors else "BLOCK", "selected_experiment":best, "metrics":metrics, "errors":errors, "warnings":warnings, "benchmark_regression_passed":not errors, "official_coral_reproduction":False, "boundary":BOUNDARY}
 
 
+
+def gepa_executable_task_benchmark(packet: Mapping[str, Any]) -> dict[str, Any]:
+    """Executable local GEPA-like prompt benchmark.
+
+    This is stronger than term matching: each prompt variant encodes deterministic
+    operations (lower/strip/remove_punctuation/json_quote/prefix:<x>) that are actually
+    executed against input→expected validation tasks. It remains a local process-smoke,
+    not official GEPA or LLM benchmark reproduction.
+    """
+    import string
+    tasks = packet.get("tasks") or []
+    variants = packet.get("candidate_variants") or []
+    baseline_ops = packet.get("baseline_ops") or []
+    errors: list[str] = []
+    if not isinstance(tasks, Sequence) or isinstance(tasks, (str, bytes)) or len(tasks) < 3:
+        errors.append("need_at_least_3_tasks")
+    if not isinstance(variants, Sequence) or isinstance(variants, (str, bytes)) or len(variants) < 2:
+        errors.append("need_at_least_2_variants")
+
+    def apply_ops(text: str, ops: Sequence[Any]) -> str:
+        out = str(text)
+        for raw in ops:
+            op = str(raw)
+            if op == "strip":
+                out = out.strip()
+            elif op == "lower":
+                out = out.lower()
+            elif op == "upper":
+                out = out.upper()
+            elif op == "remove_punctuation":
+                out = out.translate(str.maketrans("", "", string.punctuation))
+            elif op == "collapse_spaces":
+                out = " ".join(out.split())
+            elif op == "json_quote":
+                out = json.dumps(out, ensure_ascii=False)
+            elif op.startswith("prefix:"):
+                out = op.split(":", 1)[1] + out
+            elif op.startswith("suffix:"):
+                out = out + op.split(":", 1)[1]
+        return out
+
+    def eval_ops(ops: Sequence[Any]) -> tuple[int, list[dict[str, Any]]]:
+        passed = 0
+        details = []
+        for task in tasks if isinstance(tasks, Sequence) and not isinstance(tasks, (str, bytes)) else []:
+            if not isinstance(task, Mapping):
+                continue
+            got = apply_ops(str(task.get("input", "")), ops)
+            exp = str(task.get("expected", ""))
+            ok = got == exp
+            passed += int(ok)
+            details.append({"id": task.get("id"), "ok": ok, "got": got, "expected": exp})
+        return passed, details
+
+    baseline_score, baseline_details = eval_ops(baseline_ops)
+    results = []
+    for idx, variant in enumerate(variants if isinstance(variants, Sequence) and not isinstance(variants, (str, bytes)) else []):
+        ops = variant.get("ops", variant) if isinstance(variant, Mapping) else variant
+        if isinstance(ops, str):
+            ops = [ops]
+        score, details = eval_ops(ops if isinstance(ops, Sequence) and not isinstance(ops, (str, bytes)) else [])
+        results.append({"index": idx, "ops": list(ops) if isinstance(ops, Sequence) and not isinstance(ops, (str, bytes)) else [], "score": score, "details": details})
+    best = max(results, key=lambda r: r["score"], default=None)
+    passed = not errors and best is not None and best["score"] > baseline_score and best["score"] == len(tasks)
+    return {"schema": "PGGGEPAExecutableTaskBenchmark/v1", "created_at": _now(), "status": "PASS" if passed else "BLOCK", "baseline_score": baseline_score, "baseline_details": baseline_details, "best_variant": best, "variant_results": results, "errors": errors, "benchmark_regression_passed": passed, "official_gepa_reproduction": False, "boundary": BOUNDARY}
+
+
+def coral_real_worktree_smoke(packet: Mapping[str, Any]) -> dict[str, Any]:
+    """Run an actual local git worktree smoke for CORAL-style isolated agents."""
+    import os
+    import subprocess
+    import tempfile
+    agents = packet.get("agents") or ["agent_a", "agent_b"]
+    proposals = packet.get("proposals") or []
+    errors: list[str] = []
+    events: list[str] = []
+    if not isinstance(agents, Sequence) or isinstance(agents, (str, bytes)) or len(agents) < 2:
+        errors.append("need_at_least_2_agents")
+    if not isinstance(proposals, Sequence) or isinstance(proposals, (str, bytes)) or len(proposals) < 2:
+        errors.append("need_at_least_2_proposals")
+    if errors:
+        return {"schema": "PGGCORALRealWorktreeSmoke/v1", "created_at": _now(), "status": "BLOCK", "errors": errors, "events": events, "benchmark_regression_passed": False, "official_coral_reproduction": False, "boundary": BOUNDARY}
+    with tempfile.TemporaryDirectory(prefix="pgg_coral_worktree_") as td:
+        root = Path(td) / "repo"
+        subprocess.run(["git", "init", str(root)], check=True, capture_output=True, text=True)
+        subprocess.run(["git", "config", "user.email", "pgg@example.local"], cwd=root, check=True)
+        subprocess.run(["git", "config", "user.name", "PGG Bench"], cwd=root, check=True)
+        (root / "score.txt").write_text("0\n", encoding="utf-8")
+        subprocess.run(["git", "add", "score.txt"], cwd=root, check=True)
+        subprocess.run(["git", "commit", "-m", "base"], cwd=root, check=True, capture_output=True, text=True)
+        worktrees = []
+        scored = []
+        for idx, proposal in enumerate(proposals):
+            agent = str(agents[idx % len(agents)])
+            branch = f"{agent}_{idx}"
+            wt = Path(td) / f"wt_{idx}"
+            subprocess.run(["git", "worktree", "add", "-b", branch, str(wt)], cwd=root, check=True, capture_output=True, text=True)
+            score = int(proposal.get("score", 0) if isinstance(proposal, Mapping) else 0)
+            (wt / "score.txt").write_text(f"{score}\n", encoding="utf-8")
+            subprocess.run(["git", "add", "score.txt"], cwd=wt, check=True)
+            subprocess.run(["git", "commit", "-m", f"proposal {idx}"], cwd=wt, check=True, capture_output=True, text=True)
+            worktrees.append(str(wt)); scored.append({"branch": branch, "agent": agent, "score": score, "worktree": str(wt)})
+        best = max(scored, key=lambda x: x["score"])
+        if best["score"] <= 0:
+            errors.append("no_positive_score_proposal")
+        subprocess.run(["git", "merge", best["branch"], "--ff-only"], cwd=root, check=True, capture_output=True, text=True)
+        final_score = int((root / "score.txt").read_text().strip())
+        if final_score != best["score"]:
+            errors.append("final_score_mismatch_after_merge")
+        events.append(f"worktrees={len(worktrees)}")
+        events.append(f"selected={best['branch']}:{best['score']}")
+    return {"schema": "PGGCORALRealWorktreeSmoke/v1", "created_at": _now(), "status": "PASS" if not errors else "BLOCK", "errors": errors, "events": events, "selected": best if 'best' in locals() else None, "benchmark_regression_passed": not errors, "official_coral_reproduction": False, "boundary": BOUNDARY}
+
+
 def gene_fusion_synergy_gate(packet: Mapping[str, Any]) -> dict[str, Any]:
     """Validate bounded gene fusion by measured synergy, not arbitrary multipliers."""
     parents = packet.get("parents") or []
@@ -155,6 +269,8 @@ def evaluate_all(packet: Mapping[str, Any], *, output_dir: str|Path|None=None) -
     sections={
         "gepa_benchmark":gepa_prompt_evolution_mini_benchmark(packet.get("gepa_benchmark",{})),
         "coral_benchmark":coral_parallel_workspace_mini_benchmark(packet.get("coral_benchmark",{})),
+        "gepa_executable_benchmark":gepa_executable_task_benchmark(packet.get("gepa_executable_benchmark",{})) if packet.get("gepa_executable_benchmark") is not None else {"status":"PASS","skipped":True},
+        "coral_worktree_smoke":coral_real_worktree_smoke(packet.get("coral_worktree_smoke",{})) if packet.get("coral_worktree_smoke") is not None else {"status":"PASS","skipped":True},
         "gene_fusion":gene_fusion_synergy_gate(packet.get("gene_fusion",{})),
         "reflexion_discovery":reflexion_discovery_gate(packet.get("reflexion_discovery",{})),
     }
@@ -165,4 +281,4 @@ def evaluate_all(packet: Mapping[str, Any], *, output_dir: str|Path|None=None) -
         path=d/f"{int(time.time())}_benchmark_gene_gates.json"; path.write_text(json.dumps(out,ensure_ascii=False,indent=2),encoding='utf-8'); out['output_path']=str(path)
     return out
 
-__all__=["gepa_prompt_evolution_mini_benchmark","coral_parallel_workspace_mini_benchmark","gene_fusion_synergy_gate","reflexion_discovery_gate","evaluate_all"]
+__all__=["gepa_prompt_evolution_mini_benchmark","coral_parallel_workspace_mini_benchmark","gepa_executable_task_benchmark","coral_real_worktree_smoke","gene_fusion_synergy_gate","reflexion_discovery_gate","evaluate_all"]
