@@ -44,6 +44,79 @@ def test_github_source_readable_falls_back_to_local_git_remote(tmp_path: Path, m
     assert pipe._github_source_readable(stale_gh) is True
 
 
+def test_github_auth_status_exposes_watch_without_secret() -> None:
+    stale_gh = pipe.CommandResult(["gh", "repo", "view"], 1, "", "HTTP 401: Requires authentication")
+    assert pipe._github_auth_status(stale_gh) == "WATCH_GH_CLI_AUTH_REQUIRED"
+    assert pipe._github_auth_status(pipe.CommandResult(["gh", "repo", "view"], 0, "{}", "")) == "PASS_GH_CLI_AUTH_READABLE"
+
+
+def test_command_result_redacts_secret_like_output() -> None:
+    # Build the synthetic token at runtime so repository secret scanners do not
+    # flag the test fixture itself while the redaction regex still sees a
+    # realistic GitHub-token-shaped value.
+    fake_token = "".join(["gh", "p_"]) + "A" * 24
+    result = pipe.CommandResult(
+        ["git", "remote", f"https://user:{fake_token}@github.com/private/repo.git"],
+        1,
+        f"token: {fake_token}",
+        f"Authorization=Bearer {fake_token}",
+    ).to_json_dict()
+    dumped = json.dumps(result)
+    assert fake_token not in dumped
+    assert "user:" not in dumped
+    assert "***REDACTED" in dumped
+
+
+def test_git_state_redacts_remote_urls(tmp_path: Path, monkeypatch) -> None:
+    calls: list[list[str]] = []
+
+    def fake_run(cmd, cwd=None, timeout=30):
+        calls.append(list(cmd))
+        if cmd[:2] == ["git", "remote"]:
+            return pipe.CommandResult(list(cmd), 0, "origin\thttps://user:secret-token@example.test/repo.git (push)\n", "")
+        if cmd[:2] == ["git", "branch"]:
+            return pipe.CommandResult(list(cmd), 0, "bot/evolver/test\n", "")
+        if cmd[:2] == ["git", "status"]:
+            return pipe.CommandResult(list(cmd), 0, "", "")
+        return pipe.CommandResult(list(cmd), 0, "abc123\n", "")
+
+    monkeypatch.setattr(pipe, "_run", fake_run)
+    state = pipe._git_state(tmp_path)
+    assert "secret-token" not in state["remote"]
+    assert "https://***:***@example.test/repo.git" in state["remote"]
+    assert calls
+
+
+def test_status_reports_github_auth_watch_separately(tmp_path: Path, monkeypatch) -> None:
+    cfg = tmp_path / "evolution-pipeline.yaml"
+    monkeypatch.setattr(pipe, "DEFAULT_CONFIG", cfg)
+    monkeypatch.setattr(pipe, "_load_self_status", lambda: {"status": "PASS", "checks": {
+        "hermes_cli_available": True,
+        "mcp_hermes_studio_enabled": True,
+        "commit_discipline_hooks_installed": True,
+        "unified_formula_latest_present": True,
+    }, "blockers": []})
+    monkeypatch.setattr(pipe, "_git_state", lambda repo_root: {"repo_root": str(repo_root), "head": "h", "branch": "b", "status_short": "", "remote": ""})
+
+    def fake_run(cmd, cwd=None, timeout=30):
+        joined = " ".join(cmd)
+        if "launchctl" in joined:
+            return pipe.CommandResult(list(cmd), 0, "last exit code = 0", "")
+        if cmd[:3] == ["gh", "repo", "view"]:
+            return pipe.CommandResult(list(cmd), 1, "", "HTTP 401: Requires authentication")
+        if cmd[:2] == ["git", "ls-remote"]:
+            return pipe.CommandResult(list(cmd), 0, "abc123\tHEAD\n", "")
+        return pipe.CommandResult(list(cmd), 0, "", "")
+
+    source_repo = tmp_path / ".hermes" / "workspace" / "github" / "z-dashen"
+    source_repo.mkdir(parents=True)
+    monkeypatch.setattr(pipe, "DEFAULT_HOME", tmp_path)
+    monkeypatch.setattr(pipe, "_run", fake_run)
+    result = pipe.build_status(repo_root=tmp_path)
+    assert result["github_auth_status"] == "WATCH_GH_CLI_AUTH_REQUIRED"
+    assert result["checks"]["github_source_readable"] is True
+
+
 def test_review_package_writes_file(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(pipe, "build_status", lambda repo_root: {"status": "PASS_GITHUB_EVOLUTION_PIPELINE_BOUNDED", "blockers": []})
     monkeypatch.setattr(pipe, "discover", lambda: {"commits_exit": 0, "commit_count": 1})
@@ -68,6 +141,19 @@ def test_bare_main_defaults_to_status(monkeypatch, capsys) -> None:
     monkeypatch.setattr(pipe, "cmd_status", lambda args: print("STATUS_CALLED") or 0)
     assert pipe.main() == 0
     assert "STATUS_CALLED" in capsys.readouterr().out
+
+
+def test_flag_status_alias_defaults_to_status(monkeypatch, capsys) -> None:
+    monkeypatch.setattr(pipe.sys, "argv", ["hermes-evolve", "--status"])
+    monkeypatch.setattr(pipe, "cmd_status", lambda args: print("STATUS_ALIAS_CALLED") or 0)
+    assert pipe.main() == 0
+    assert "STATUS_ALIAS_CALLED" in capsys.readouterr().out
+
+
+def test_explicit_status_alias_defaults_to_status(monkeypatch, capsys) -> None:
+    monkeypatch.setattr(pipe, "cmd_status", lambda args: print("EXPLICIT_STATUS_ALIAS_CALLED") or 0)
+    assert pipe.main(["--status"]) == 0
+    assert "EXPLICIT_STATUS_ALIAS_CALLED" in capsys.readouterr().out
 
 
 def test_explicit_empty_argv_still_requires_subcommand() -> None:
