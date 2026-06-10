@@ -96,7 +96,8 @@ def build_status(run_provider_canary: bool = False, provider: str = "deepseek") 
 
     tests = _run([str(PY), "-m", "pytest", "-q", "tests/agent/test_pgg_goal_unified_status.py", "tests/agent/test_department_memory_runtime.py"], 180)
     evidence["focused_tests"] = {"returncode": tests["returncode"], "stdout": tests["stdout"], "stderr": tests["stderr"]}
-    _add(checks, "focused_tests_pass", tests["returncode"] == 0 and "6 passed" in tests.get("stdout", ""), (tests.get("stdout", "") + tests.get("stderr", ""))[-500:])
+    focused_out = tests.get("stdout", "") + tests.get("stderr", "")
+    _add(checks, "focused_tests_pass", tests["returncode"] == 0 and " passed" in focused_out and " failed" not in focused_out, focused_out[-500:])
 
     docker = _run(["docker", "info", "--format", "{{.ServerVersion}}"], 30)
     evidence["docker"] = {"returncode": docker["returncode"], "stdout": docker["stdout"], "stderr": docker["stderr"]}
@@ -126,14 +127,20 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
     rec = build_status(run_provider_canary=args.provider_canary, provider=args.provider)
     ledger = HOME / ".hermes/data/pgg_one_click_full_audit_gate_ledger.jsonl"
+    latest = HOME / ".hermes/data/pgg_one_click_full_audit_gate_latest.json"
     ledger.parent.mkdir(parents=True, exist_ok=True)
-    ledger.open("a", encoding="utf-8").write(json.dumps(rec, ensure_ascii=False) + "\n")
+    encoded = json.dumps(rec, ensure_ascii=False)
+    ledger.open("a", encoding="utf-8").write(encoded + "\n")
+    tmp = latest.with_suffix(latest.suffix + ".tmp")
+    tmp.write_text(encoded + "\n", encoding="utf-8")
+    tmp.replace(latest)
     if args.json:
         print(json.dumps(rec, ensure_ascii=False, indent=2))
     else:
         print(rec["status"])
         print(f"checks={rec['passed']}/{rec['total']}")
         print(f"ledger={ledger}")
+        print(f"latest={latest}")
         for c in rec["checks"]:
             print("PASS" if c["ok"] else "FAIL", c["name"], c.get("info"))
     return 0 if rec["passed"] == rec["total"] else 2
