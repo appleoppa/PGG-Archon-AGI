@@ -47,9 +47,12 @@ def build_status() -> dict[str, Any]:
     combined = (gh.get("stdout") or "") + (gh.get("stderr") or "")
     scopes = _parse_scopes(combined)
     dangerous_present = sorted(set(scopes) & DANGEROUS_SCOPES)
-    oauth_active_count = 0
+    # GitHub CLI browser/device auth stores an OAuth token in the OS keyring and
+    # reports it as a gho_ token. Do not read or print the value; only classify
+    # the token family from gh auth status output.
+    oauth_active_count = 1 if "Token: gho_" in combined else 0
     auth_json = HOME / "auth.json"
-    if auth_json.exists():
+    if oauth_active_count == 0 and auth_json.exists():
         try:
             data = json.loads(auth_json.read_text(encoding="utf-8"))
             text = json.dumps(data).lower()

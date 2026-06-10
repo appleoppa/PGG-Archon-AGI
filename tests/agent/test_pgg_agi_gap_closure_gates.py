@@ -13,6 +13,22 @@ def test_token_scope_parser_and_watch_boundary():
     assert "delete_repo" in token.DANGEROUS_SCOPES
 
 
+def test_token_gate_treats_gho_as_active_oauth(monkeypatch, tmp_path):
+    monkeypatch.setattr(token, "HOME", tmp_path)
+    monkeypatch.setattr(token, "DATA", tmp_path / "data")
+    monkeypatch.setattr(token, "LATEST", tmp_path / "data/latest.json")
+    monkeypatch.setattr(token, "LEDGER", tmp_path / "data/ledger.jsonl")
+    monkeypatch.setattr(token, "_run", lambda cmd, timeout=30: {
+        "returncode": 0,
+        "stdout": "github.com\n  ✓ Logged in to github.com account appleoppa (keyring)\n  - Token: gho_************************************\n  - Token scopes: 'gist', 'read:org', 'repo', 'workflow'\n",
+        "stderr": "",
+    })
+    rec = token.build_status()
+    assert rec["status"] == "PASS_TOKEN_OAUTH_MIN_PRIVILEGE"
+    assert rec["dangerous_scope_count"] == 0
+    assert rec["oauth_active_count_detected"] == 1
+
+
 def test_high_risk_lane_receipts_are_guarded(monkeypatch, tmp_path):
     monkeypatch.setattr(lanes, "HOME", tmp_path)
     monkeypatch.setattr(lanes, "DATA", tmp_path / "data")
