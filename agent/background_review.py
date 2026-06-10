@@ -458,8 +458,11 @@ def _run_review_in_thread(
             # children (issue #38727). Review also needs full context to
             # produce a good memory/skill summary — compressing would strip
             # detail. Both compression triggers in conversation_loop.py gate on
-            # agent.compression_enabled, so this short-circuits both paths.
+            # agent.compression_enabled, so this short-circuits both paths. The
+            # explicit reason also prevents stale-runtime recovery from
+            # re-enabling compression for this safety-critical fork.
             review_agent.compression_enabled = False
+            setattr(review_agent, "_compression_disabled_reason", "background_review_fork")
 
             from model_tools import get_tool_definitions
             from hermes_cli.plugins import (

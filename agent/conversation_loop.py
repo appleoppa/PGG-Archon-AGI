@@ -60,10 +60,56 @@ from agent.trajectory import has_incomplete_scratchpad
 from agent.usage_pricing import estimate_usage_cost, normalize_usage
 from hermes_constants import PARTIAL_STREAM_STUB_ID
 from hermes_logging import set_session_context
+from hermes_cli.config import cfg_get, load_config_readonly
 from tools.skill_provenance import set_current_write_origin
-from utils import base_url_host_matches, env_var_enabled
+from utils import base_url_host_matches, env_var_enabled, is_truthy_value
 
 logger = logging.getLogger(__name__)
+
+
+def _current_config_auto_compaction_enabled() -> Optional[bool]:
+    """Return active-profile ``compression.enabled`` for stale-runtime recovery.
+
+    Long-lived gateway/Web UI bridge workers can hold an old
+    ``agent.compression_enabled`` value after ``config.yaml`` changes.  At the
+    provider-overflow boundary we may safely re-read the current active-profile
+    config.  ``None`` means the read failed and callers must fail closed.
+    """
+    try:
+        cfg = load_config_readonly()
+        return is_truthy_value(
+            cfg_get(cfg, "compression", "enabled", default=True),
+            default=True,
+        )
+    except Exception as exc:  # pragma: no cover - exercised via caller tests
+        logger.warning(
+            "Failed to read current compression.enabled for stale-runtime "
+            "recovery: %s",
+            exc,
+        )
+        return None
+
+
+def _recover_stale_runtime_auto_compaction(agent: Any) -> bool:
+    """Recover only stale runtime false -> current config true.
+
+    This deliberately does NOT override safety-critical disables such as the
+    background review fork, which shares the parent session id and must never
+    rotate/compress that session.
+    """
+    if getattr(agent, "_compression_disabled_reason", None) == "background_review_fork":
+        return False
+    current_enabled = _current_config_auto_compaction_enabled()
+    if current_enabled is True:
+        agent.compression_enabled = True
+        agent._compression_disabled_reason = "stale_runtime_recovered_current_config_true"
+        logger.warning(
+            "%sRecovered stale runtime compression_enabled=False from current "
+            "config compression.enabled=True.",
+            getattr(agent, "log_prefix", ""),
+        )
+        return True
+    return False
 
 # Stable prefix of the local interrupt status string emitted when a turn is
 # cancelled while waiting on the provider. Surfaces (ACP, TUI) match on this
@@ -2431,6 +2477,7 @@ def run_conversation(
                 if (
                     classified.reason in _overflow_reasons
                     and not getattr(agent, "compression_enabled", True)
+                    and not _recover_stale_runtime_auto_compaction(agent)
                 ):
                     agent._flush_status_buffer()
                     agent._vprint(
