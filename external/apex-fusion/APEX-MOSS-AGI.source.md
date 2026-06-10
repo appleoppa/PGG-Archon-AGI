@@ -51,7 +51,7 @@ APEX AGI, 璇玑帝国核心智能体
 ## Current Φ_APEX*∞
 - Φ_base: 0.1%
 - EV: 0.1
-- AN: 0.1  
+- AN: 0.1
 - NV: 0.1
 - HarmRate: 34%
 - Health: T1 EMBRYO

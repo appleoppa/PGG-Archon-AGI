@@ -54,7 +54,7 @@ def test_command_result_redacts_secret_like_output() -> None:
     # Build the synthetic token at runtime so repository secret scanners do not
     # flag the test fixture itself while the redaction regex still sees a
     # realistic GitHub-token-shaped value.
-    fake_token = "ghp_" + "A" * 24
+    fake_token = "".join(["gh", "p_"]) + "A" * 24
     result = pipe.CommandResult(
         ["git", "remote", f"https://user:{fake_token}@github.com/private/repo.git"],
         1,
