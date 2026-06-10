@@ -8757,8 +8757,21 @@ class GatewayRunner(GatewayKanbanWatchersMixin, GatewaySlashCommandsMixin):
             except Exception as _footer_err:
                 logger.debug("runtime_footer build failed: %s", _footer_err)
                 _footer_line = ""
-            if _footer_line and response and not agent_result.get("already_sent"):
-                response = f"{response}\n\n{_footer_line}"
+            try:
+                _platform_key_for_runtime = _platform_config_key(source.platform)
+                if _platform_key_for_runtime == "feishu" and response and not agent_result.get("already_sent"):
+                    _model_for_footer = agent_result.get("model") or _resolve_gateway_model() or "Hermes"
+                    response = (
+                        f"{response}\n\n__HERMES_RUNTIME_META__\n"
+                        f"elapsed={_response_time:.1f}s\n"
+                        f"model={_model_for_footer}"
+                    )
+                elif _footer_line and response and not agent_result.get("already_sent"):
+                    response = f"{response}\n\n{_footer_line}"
+            except Exception as _footer_meta_err:
+                logger.debug("runtime footer metadata attach failed: %s", _footer_meta_err)
+                if _footer_line and response and not agent_result.get("already_sent"):
+                    response = f"{response}\n\n{_footer_line}"
 
             # Emit agent:end hook
             await self.hooks.emit("agent:end", {

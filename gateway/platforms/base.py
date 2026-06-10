@@ -4235,6 +4235,22 @@ class BasePlatformAdapter(ABC):
                         _thread_metadata["notify"] = True
                     else:
                         _thread_metadata = {"notify": True}
+                    try:
+                        if getattr(self, "platform", None) == Platform.FEISHU and isinstance(response, str):
+                            _marker = "\n\n__HERMES_RUNTIME_META__\n"
+                            if _marker in response:
+                                _visible, _meta_raw = response.rsplit(_marker, 1)
+                                _thread_metadata = dict(_thread_metadata or {})
+                                for _line in _meta_raw.strip().splitlines():
+                                    if "=" in _line:
+                                        _k, _v = _line.split("=", 1)
+                                        _k = _k.strip()
+                                        _v = _v.strip()
+                                        if _k and _v:
+                                            _thread_metadata[_k] = _v
+                                text_content = text_content.rsplit(_marker, 1)[0].rstrip()
+                    except Exception:
+                        pass
                     result = await self._send_with_retry(
                         chat_id=event.source.chat_id,
                         content=text_content,

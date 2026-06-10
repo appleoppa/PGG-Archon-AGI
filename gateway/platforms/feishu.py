@@ -2089,7 +2089,8 @@ class FeishuAdapter(BasePlatformAdapter):
         for key in ("elapsed", "elapsed_text", "elapsed_ms", "duration_ms"):
             if meta.get(key):
                 suffix = "ms" if key.endswith("_ms") else ""
-                footer_parts.append(f"耗时 {meta[key]}{suffix}")
+                label = "总用时" if finalize else "已用时"
+                footer_parts.append(f"{label} {meta[key]}{suffix}")
                 break
         tool_count = meta.get("tool_count") or meta.get("tool_calls") or meta.get("tools_used")
         if tool_count:
