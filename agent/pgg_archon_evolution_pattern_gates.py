@@ -90,6 +90,119 @@ def artifact_first_gate(packet: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
+
+def gepa_prompt_optimizer_gate(packet: Mapping[str, Any]) -> dict[str, Any]:
+    """GEPA-inspired: reflective prompt/program optimization with Pareto validation.
+
+    Boundary: local structural gate only; no DSPy/GEPA execution, no official-source
+    claim, no GeneDB promotion. It checks prompt evolution is metric-grounded rather
+    than arbitrary rewrite.
+    """
+    required = [
+        "baseline_prompt_or_program",
+        "task_metric",
+        "reflective_feedback",
+        "candidate_variants",
+        "validation_split",
+        "pareto_or_score_selection",
+        "rollback_or_versioning",
+    ]
+    missing = [field for field in required if not _has(packet, field)]
+    errors: list[str] = []
+    warnings: list[str] = []
+    metrics: list[str] = []
+
+    variants = packet.get("candidate_variants") or []
+    if isinstance(variants, (list, tuple)):
+        metrics.append(f"candidate_variants:{len(variants)}")
+        if len(variants) < 2:
+            warnings.append("less_than_2_candidate_variants")
+    if packet.get("train_equals_validation") is True:
+        errors.append("train_validation_leakage")
+    if packet.get("metric_improvement_claimed") is True and not _has(packet, "metric_readback"):
+        errors.append("metric_improvement_claim_without_readback")
+    if packet.get("manual_prompt_rewrite_only") is True:
+        warnings.append("manual_rewrite_without_reflective_search")
+    if _has(packet, "pareto_or_score_selection"):
+        metrics.append("has_selection_rule")
+    if _has(packet, "reflective_feedback"):
+        metrics.append("has_reflective_feedback")
+
+    status = "PASS" if not missing and not errors else "BLOCK"
+    if status == "PASS" and warnings:
+        status = "WATCH"
+    return {
+        "schema": "PGGGEPAReflectivePromptOptimizerGate/v1",
+        "created_at": _now(),
+        "status": status,
+        "missing": missing,
+        "errors": errors,
+        "warnings": warnings,
+        "metrics": metrics,
+        "gepa_inspired": True,
+        "boundary": BOUNDARY,
+    }
+
+
+def coral_multi_agent_parallel_gate(packet: Mapping[str, Any]) -> dict[str, Any]:
+    """CORAL-inspired: autonomous multi-agent evolution with isolated workspaces.
+
+    Boundary: local structural gate only; does not run CORAL and does not claim
+    official implementation parity. It checks whether multi-agent evolution proposals
+    are isolated, merged by evidence, and audited.
+    """
+    required = [
+        "agent_population",
+        "parallel_workspaces",
+        "shared_objective",
+        "independent_experiments",
+        "merge_selection_policy",
+        "cross_agent_audit",
+        "conflict_resolution",
+        "final_regression_gate",
+    ]
+    missing = [field for field in required if not _has(packet, field)]
+    errors: list[str] = []
+    warnings: list[str] = []
+    metrics: list[str] = []
+
+    agents = packet.get("agent_population") or []
+    workspaces = packet.get("parallel_workspaces") or []
+    if isinstance(agents, (list, tuple)):
+        metrics.append(f"agents:{len(agents)}")
+        if len(agents) < 2:
+            warnings.append("less_than_2_agents")
+    if isinstance(workspaces, (list, tuple)):
+        metrics.append(f"workspaces:{len(workspaces)}")
+        if len(workspaces) < 2:
+            warnings.append("less_than_2_parallel_workspaces")
+    if packet.get("shared_workspace_mutation") is True:
+        errors.append("shared_workspace_mutation_not_allowed")
+    if packet.get("merge_without_regression") is True:
+        errors.append("merge_without_regression_not_allowed")
+    if packet.get("self_audit_only") is True:
+        errors.append("cross_agent_audit_cannot_be_self_only")
+    if _has(packet, "merge_selection_policy"):
+        metrics.append("has_merge_selection_policy")
+    if _has(packet, "final_regression_gate"):
+        metrics.append("has_final_regression_gate")
+
+    status = "PASS" if not missing and not errors else "BLOCK"
+    if status == "PASS" and warnings:
+        status = "WATCH"
+    return {
+        "schema": "PGGCORALMultiAgentParallelGate/v1",
+        "created_at": _now(),
+        "status": status,
+        "missing": missing,
+        "errors": errors,
+        "warnings": warnings,
+        "metrics": metrics,
+        "coral_inspired": True,
+        "boundary": BOUNDARY,
+    }
+
+
 def skill_trajectory_gate(packet: Mapping[str, Any]) -> dict[str, Any]:
     """Check skill evolution has strategies, success/failure comparison, narrow patch, audit."""
     required = [
@@ -238,7 +351,8 @@ def morphogenetic_acceptance_gate(packet: Mapping[str, Any]) -> dict[str, Any]:
         "metrics": metrics,
         "delta_f": delta_f,
         "acceptance_rate": rate,
-        "opencat_inspired": True,
+        "opencoat_inspired": True,
+        "opencat_inspired": True,  # backward-compatible typo alias
         "boundary": BOUNDARY,
     }
 
@@ -342,6 +456,8 @@ def evaluate_evolution_pattern_gates(packet: Mapping[str, Any], *, output_dir: s
     sections = {
         "resource_lineage": resource_lineage_gate(packet.get("resource_lineage", {})),
         "artifact_first": artifact_first_gate(packet.get("artifact_first", {})),
+        "gepa_prompt_optimizer": gepa_prompt_optimizer_gate(packet.get("gepa_prompt_optimizer", {})),
+        "coral_multi_agent_parallel": coral_multi_agent_parallel_gate(packet.get("coral_multi_agent_parallel", {})),
         "skill_trajectory": skill_trajectory_gate(packet.get("skill_trajectory", {})),
         "skill_body_lapse": skill_body_lapse_separation_gate(packet.get("skill_body_lapse", {})),
         "declarative_spec": declarative_spec_gate(packet.get("declarative_spec", {})),
@@ -373,6 +489,8 @@ __all__ = [
     "BOUNDARY",
     "resource_lineage_gate",
     "artifact_first_gate",
+    "gepa_prompt_optimizer_gate",
+    "coral_multi_agent_parallel_gate",
     "skill_trajectory_gate",
     "skill_body_lapse_separation_gate",
     "declarative_spec_gate",
