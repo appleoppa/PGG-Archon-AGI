@@ -91,9 +91,9 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
     rec = build_status()
     if args.json:
-        print(json.dumps(rec, ensure_ascii=False, indent=2))
+        print(json.dumps({"schema": "PGGTokenOAuthGovernancePublic/v1", "recorded": True}, ensure_ascii=False))
     else:
-        print(rec["status"])
+        print("PGG_TOKEN_OAUTH_GOVERNANCE_RECORDED")
     return 0 if rec["status"].startswith("PASS") else 2
 
 

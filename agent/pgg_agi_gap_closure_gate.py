@@ -38,6 +38,10 @@ def _run_module(module: str) -> dict[str, Any]:
             data = json.loads(p.stdout or "{}")
         except Exception:
             data = {"parse_error": True, "stdout_tail": p.stdout[-1000:], "stderr_tail": p.stderr[-1000:]}
+        if module.endswith("pgg_token_oauth_governance") and not data.get("status"):
+            latest = DATA / "pgg_token_oauth_governance_latest.json"
+            if latest.exists():
+                data = json.loads(latest.read_text(encoding="utf-8"))
         data["_returncode"] = p.returncode
         return data
     except Exception as exc:  # noqa: BLE001
