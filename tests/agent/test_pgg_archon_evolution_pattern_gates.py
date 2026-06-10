@@ -9,6 +9,7 @@ from agent.pgg_archon_evolution_pattern_gates import (
     evaluate_evolution_pattern_gates,
     harmrate_growth_gate,
     resource_lineage_gate,
+    skill_body_lapse_separation_gate,
     skill_trajectory_gate,
 )
 
@@ -38,6 +39,13 @@ def _pass_packet() -> dict[str, Any]:
             "targeted_patch": "patch",
             "independent_audit": "reviewer",
             "rollback_or_versioning": "v1",
+        },
+        "skill_body_lapse": {
+            "skill_body_current": "original skill body",
+            "skill_body_proposed_change": "fix error handling",
+            "failure_trajectories": ["t1", "t2"],
+            "evidence_type": "skill_changing",
+            "change_classification": "skill_body_fix",
         },
         "harmrate_growth": {
             "harmrate": 0.1,

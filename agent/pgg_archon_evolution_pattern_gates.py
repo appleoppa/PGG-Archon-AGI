@@ -133,14 +133,56 @@ def harmrate_growth_gate(packet: Mapping[str, Any], *, threshold: float = 0.34) 
     }
 
 
+def skill_body_lapse_separation_gate(packet: Mapping[str, Any]) -> dict[str, Any]:
+    """EmbodiSkill-inspired: separate skill-body changes from execution-lapse preservation.
+
+    A skill update must distinguish whether a failure is caused by incorrect skill content
+    (skill-body issue → fix the body) or by the agent failing to follow valid guidance
+    (execution lapse → preserve and reinforce existing guidance, do not rewrite body).
+    """
+    required = [
+        "skill_body_current",
+        "failure_trajectories",
+        "evidence_type",
+        "change_classification",
+    ]
+    optional = ["skill_body_proposed_change"]
+    missing = [field for field in required if not _has(packet, field)]
+    evidence_type = str(packet.get("evidence_type", "")).strip()
+    change_classification = str(packet.get("change_classification", "")).strip()
+    errors: list[str] = []
+    warnings: list[str] = []
+    if change_classification not in {"skill_body_fix", "execution_lapse_preserve", "mixed"}:
+        errors.append(f"invalid_change_classification:{change_classification}")
+    if evidence_type not in {"skill_changing", "execution_lapse", "both"}:
+        errors.append(f"invalid_evidence_type:{evidence_type}")
+    if change_classification == "execution_lapse_preserve" and _has(packet, "skill_body_proposed_change"):
+        if str(packet.get("skill_body_proposed_change", "")).strip():
+            warnings.append("execution_lapse_with_proposed_body_change_contradiction")
+    status = "PASS" if not missing and not errors else "BLOCK"
+    if status == "PASS" and warnings:
+        status = "WATCH"
+    return {
+        "schema": "PGGSkillBodyLapseSeparationGate/v1",
+        "created_at": _now(),
+        "status": status,
+        "missing": missing,
+        "errors": errors,
+        "warnings": warnings,
+        "boundary": BOUNDARY,
+        "embodiskill_inspired": True,
+    }
+
+
 def evaluate_evolution_pattern_gates(packet: Mapping[str, Any], *, output_dir: str | Path | None = None) -> dict[str, Any]:
     sections = {
         "resource_lineage": resource_lineage_gate(packet.get("resource_lineage", {})),
         "artifact_first": artifact_first_gate(packet.get("artifact_first", {})),
         "skill_trajectory": skill_trajectory_gate(packet.get("skill_trajectory", {})),
+        "skill_body_lapse": skill_body_lapse_separation_gate(packet.get("skill_body_lapse", {})),
         "harmrate_growth": harmrate_growth_gate(packet.get("harmrate_growth", {})),
     }
-    blocked = [name for name, result in sections.items() if result["status"] != "PASS"]
+    blocked = [name for name, result in sections.items() if result["status"] not in {"PASS", "WATCH"}]
     summary = {
         "schema": "PGGEvolutionPatternGates/v1",
         "created_at": _now(),
@@ -165,6 +207,7 @@ __all__ = [
     "resource_lineage_gate",
     "artifact_first_gate",
     "skill_trajectory_gate",
+    "skill_body_lapse_separation_gate",
     "harmrate_growth_gate",
     "evaluate_evolution_pattern_gates",
 ]
