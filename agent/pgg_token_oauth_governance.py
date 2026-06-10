@@ -90,7 +90,10 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args(argv)
     rec = build_status()
-    print(json.dumps(rec, ensure_ascii=False, indent=2) if args.json else f"{rec['status']} dangerous_scope_count={rec['dangerous_scope_count']} oauth_active={rec['oauth_active_count_detected']}")
+    if args.json:
+        print(json.dumps(rec, ensure_ascii=False, indent=2))
+    else:
+        print(rec["status"])
     return 0 if rec["status"].startswith("PASS") else 2
 
 
