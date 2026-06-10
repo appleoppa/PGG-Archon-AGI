@@ -111,3 +111,38 @@ def test_hermes_goal_watch_when_any_component_watch(monkeypatch, capsys):
     assert data["overall_status"] == "WATCH"
     assert data["watch_count"] == 1
     assert data["summary"].startswith("15/16")
+
+
+def test_hermes_goal_github_auth_missing_is_watch_not_error(monkeypatch, capsys):
+    def fake_run(cmd, timeout=10):
+        joined = " ".join(str(x) for x in cmd)
+        if "hermes --version" in joined:
+            return "Hermes Agent v0.16.0", 0
+        if "gh --version" in joined:
+            return "gh version 2.92.0", 0
+        if "gh auth status" in joined:
+            return "You are not logged into any GitHub hosts", 1
+        if "hermes mcp list" in joined:
+            return "hermes-studio enabled\ngithub enabled\nfilesystem enabled\nllm-audit enabled", 0
+        if "hermes-evolve status" in joined:
+            return json.dumps({"status": "WATCH_GITHUB_EVOLUTION_PIPELINE", "blockers": ["github_cli_authenticated"]}), 1
+        if "hermes mcp test" in joined:
+            return "✓ Connected", 0
+        return "", 0
+
+    def fake_gate_json(cmd, name, timeout=10):
+        if name == "evm_gate":
+            return {"status": "PASS_BOUNDED_EVM_RUNTIME_GATE", "evm_gate": 0.9}
+        if name == "sigma_delta_all":
+            return {"status": "PASS", "sigma_delta": 10}
+        return {"status": "PASS_READY", "score": 88.0}
+
+    monkeypatch.setattr(goal, "run", fake_run)
+    monkeypatch.setattr(goal, "gate_json", fake_gate_json)
+    assert goal.main() == 0
+    data = json.loads(capsys.readouterr().out)
+    assert data["overall_status"] == "WATCH"
+    assert data["blocked_count"] == 0
+    assert data["watch_count"] == 2
+    assert data["components"]["github_auth"]["status"] == "WATCH_GITHUB_AUTH_REQUIRED"
+    assert data["components"]["evolution_pipeline"]["status"] == "WATCH"

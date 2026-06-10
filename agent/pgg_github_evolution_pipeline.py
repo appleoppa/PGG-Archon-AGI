@@ -13,6 +13,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import subprocess
 import sys
 from dataclasses import asdict, dataclass
@@ -29,6 +30,20 @@ DEFAULT_REVIEW_DIR = DEFAULT_HOME / ".hermes" / "workspace" / "pgg-archon-govern
 DEFAULT_STATUS_SCRIPT = DEFAULT_HOME / ".hermes" / "scripts" / "pgg_github_self_evolution_status.py"
 DEFAULT_BOT_BRANCH_PREFIX = "bot/evolver"
 
+_SECRET_TEXT_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
+    (re.compile(r"(https?://)([^/@\s:]+):([^/@\s]+)@"), r"\1***:***@"),
+    (re.compile(r"(gh[opsu]_[A-Za-z0-9_]{20,})"), "***REDACTED_GITHUB_TOKEN***"),
+    (re.compile(r"(?i)(token|api[_-]?key|authorization|password|secret)(\s*[:=]\s*)([^\s,;}]+)"), r"\1\2***REDACTED***"),
+)
+
+
+def _redact_text(value: Any) -> str:
+    """Return a status-safe string with credential-looking substrings removed."""
+    text = str(value or "")
+    for pattern, replacement in _SECRET_TEXT_PATTERNS:
+        text = pattern.sub(replacement, text)
+    return text
+
 
 @dataclass(frozen=True)
 class CommandResult:
@@ -38,7 +53,11 @@ class CommandResult:
     stderr: str
 
     def to_json_dict(self) -> dict[str, Any]:
-        return asdict(self)
+        data = asdict(self)
+        data["cmd"] = [_redact_text(part) for part in data.get("cmd", [])]
+        data["stdout"] = _redact_text(data.get("stdout", ""))
+        data["stderr"] = _redact_text(data.get("stderr", ""))
+        return data
 
 
 def _now() -> str:
@@ -71,6 +90,21 @@ def _github_source_readable(gh: CommandResult) -> bool:
         return False
     remote = _run(["git", "ls-remote", "origin", "HEAD", "refs/heads/main"], cwd=source_repo, timeout=20)
     return remote.exit == 0 and bool(remote.stdout.strip())
+
+
+def _github_auth_status(gh: CommandResult) -> str:
+    """Classify GitHub CLI auth without treating auth as required for read-only status.
+
+    The pipeline can still be PASS when local/read-only source discovery works,
+    but exposing this WATCH prevents a bounded PASS from being mistaken for
+    authenticated GitHub write/PR readiness.
+    """
+    if gh.exit == 0:
+        return "PASS_GH_CLI_AUTH_READABLE"
+    stderr = (gh.stderr or "").lower()
+    if "requires authentication" in stderr or "gh auth login" in stderr or "http 401" in stderr:
+        return "WATCH_GH_CLI_AUTH_REQUIRED"
+    return "WATCH_GH_CLI_UNREADABLE"
 
 
 def _read_yaml_like_config(path: Path = DEFAULT_CONFIG) -> dict[str, Any]:
@@ -155,7 +189,7 @@ def _git_state(repo_root: Path = DEFAULT_REPO) -> dict[str, Any]:
         "head": _run(["git", "rev-parse", "HEAD"], cwd=repo_root).stdout.strip(),
         "branch": _run(["git", "branch", "--show-current"], cwd=repo_root).stdout.strip(),
         "status_short": _run(["git", "status", "--short"], cwd=repo_root).stdout,
-        "remote": _run(["git", "remote", "-v"], cwd=repo_root).stdout,
+        "remote": _redact_text(_run(["git", "remote", "-v"], cwd=repo_root).stdout),
     }
 
 
@@ -173,8 +207,6 @@ def build_status(*, repo_root: Path = DEFAULT_REPO) -> dict[str, Any]:
     self_non_skillflow_ok = all(bool(self_checks.get(k)) for k in [
         "hermes_cli_available",
         "mcp_hermes_studio_enabled",
-        "github_cli_authenticated",
-        "github_z_dashen_readable",
         "commit_discipline_hooks_installed",
         "unified_formula_latest_present",
     ])
@@ -206,6 +238,7 @@ def build_status(*, repo_root: Path = DEFAULT_REPO) -> dict[str, Any]:
         "config": ensure,
         "launchd_probe": launchd.to_json_dict(),
         "github_probe": gh.to_json_dict(),
+        "github_auth_status": _github_auth_status(gh),
         "self_status": {"status": self_status.get("status"), "checks": self_status.get("checks"), "blockers": self_status.get("blockers"), "latest": self_status.get("_latest_path")},
         "git": git_state,
         "write_mode": "scoped_bot_branch_pr_enabled" if checks.get("scoped_bot_branch_pr_enabled") else "read_only_or_blocked",
@@ -337,8 +370,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     # Cron/operator ergonomics: the installed ``hermes-evolve`` wrapper used by
     # status dashboards is easy to call without a subcommand. Treat a bare
     # invocation as the read-only ``status`` surface instead of failing argparse.
-    # Explicit argv=[] in tests/embedders keeps normal argparse validation.
-    parsed_argv = ["status"] if argv is None and len(sys.argv) == 1 else (list(argv) if argv is not None else None)
+    # Also accept the common flag-shaped spelling ``hermes-evolve --status`` as
+    # an alias for ``hermes-evolve status``. Explicit argv=[] in tests/embedders
+    # keeps normal argparse validation.
+    if argv is None:
+        raw_argv = list(sys.argv[1:])
+        parsed_argv = ["status"] if not raw_argv or raw_argv == ["--status"] else raw_argv
+    else:
+        raw_argv = list(argv)
+        parsed_argv = ["status"] if raw_argv == ["--status"] else raw_argv
     args = parser.parse_args(parsed_argv)
     return int(args.func(args))
 

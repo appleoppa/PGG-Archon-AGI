@@ -76,12 +76,14 @@ def main() -> int:
     }
 
     # 3. GitHub auth
-    out, rc = run(["gh", "auth", "status"], 20)
+    out, rc = run(["gh", "auth", "status"], 30)
     gh_auth_text = out
+    gh_logged_in = rc == 0 and "Logged in" in gh_auth_text
     results["github_auth"] = {
-        "status": "PASS" if "Logged in" in gh_auth_text else "ERROR",
+        "status": "PASS" if gh_logged_in else "WATCH_GITHUB_AUTH_REQUIRED",
         "account": "appleoppa" if "appleoppa" in gh_auth_text else "unknown",
-        "timeout_seconds": 20,
+        "timeout_seconds": 30,
+        "detail": "authenticated" if gh_logged_in else "gh CLI is present but not authenticated/readable for GitHub API; no token or secret is printed",
     }
 
     # 4. MCP servers
@@ -102,11 +104,15 @@ def main() -> int:
     # 5. GitHub evolution pipeline — use absolute fallback to avoid PATH false WATCH.
     hermes_evolve = HERMES_BIN / "hermes-evolve"
     evolve_cmd = [str(hermes_evolve), "status"] if hermes_evolve.exists() else ["hermes-evolve", "status"]
-    out, rc = run(evolve_cmd, 30)
-    if rc != 0:
-        results["evolution_pipeline"] = {"status": "ERROR", "detail": out[:300], "cmd": evolve_cmd, "timeout_seconds": 30}
+    out, rc = run(evolve_cmd, 60)
+    data = load_json_or_error(out, "evolution_pipeline")
+    # Some pipeline invocations return a non-zero rc for WATCH while still emitting
+    # well-formed JSON. Prefer the structured status over a raw ERROR wrapper so
+    # the /goal surface does not confuse an expected remediation state with a
+    # broken command. Truly unparsable output remains ERROR.
+    if rc != 0 and data.get("status") == "ERROR":
+        results["evolution_pipeline"] = {"status": "ERROR", "detail": out[:300], "cmd": evolve_cmd, "timeout_seconds": 60}
     else:
-        data = load_json_or_error(out, "evolution_pipeline")
         status = data.get("status", "UNKNOWN")
         # Preserve real pipeline WATCH; only fix the previous command-not-found false WATCH.
         results["evolution_pipeline"] = {
@@ -114,6 +120,7 @@ def main() -> int:
             "detail": status,
             "blockers": data.get("blockers", []),
             "cmd": evolve_cmd,
+            "timeout_seconds": 60,
         }
 
     # 6. MCP endpoint smoke

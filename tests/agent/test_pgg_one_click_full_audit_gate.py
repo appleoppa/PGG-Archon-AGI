@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import json
+
+from agent import pgg_one_click_full_audit_gate as gate
 from agent.pgg_one_click_full_audit_gate import build_status
 
 
@@ -19,7 +22,7 @@ def test_one_click_gate_uses_all_core_checks(monkeypatch):
         if "神经元系统" in joined:
             return {"returncode": 0, "stdout": '{"status":"PASS"}', "stderr": ""}
         if "pytest" in joined:
-            return {"returncode": 0, "stdout": '6 passed in 0.10s', "stderr": ""}
+            return {"returncode": 0, "stdout": '7 passed in 0.10s', "stderr": ""}
         if "docker info" in joined:
             return {"returncode": 0, "stdout": '29.5.2\n', "stderr": ""}
         raise AssertionError(joined)
@@ -29,3 +32,25 @@ def test_one_click_gate_uses_all_core_checks(monkeypatch):
     rec = build_status()
     assert rec["status"] == "PASS_ONE_CLICK_FULL_AUDIT_ANTI_REGRESSION"
     assert rec["passed"] == rec["total"] == 8
+
+
+def test_one_click_gate_updates_latest_snapshot_atomically(monkeypatch, tmp_path, capsys):
+    rec = {
+        "schema": "PGGOneClickFullAuditAntiRegressionGate/v1",
+        "status": "PASS_ONE_CLICK_FULL_AUDIT_ANTI_REGRESSION",
+        "passed": 1,
+        "total": 1,
+        "checks": [{"name": "probe", "ok": True}],
+    }
+    monkeypatch.setattr(gate, "HOME", tmp_path)
+    monkeypatch.setattr(gate, "build_status", lambda run_provider_canary=False, provider="deepseek": rec)
+
+    assert gate.main(["--json"]) == 0
+    printed = json.loads(capsys.readouterr().out)
+    latest = tmp_path / ".hermes/data/pgg_one_click_full_audit_gate_latest.json"
+    ledger = tmp_path / ".hermes/data/pgg_one_click_full_audit_gate_ledger.jsonl"
+
+    assert latest.exists()
+    assert ledger.exists()
+    assert json.loads(latest.read_text(encoding="utf-8")) == printed
+    assert json.loads(ledger.read_text(encoding="utf-8").strip()) == printed
