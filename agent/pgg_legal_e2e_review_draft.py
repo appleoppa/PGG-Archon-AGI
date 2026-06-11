@@ -219,7 +219,8 @@ def _generate_draft_opinion(case: dict, retrieved: list[RetrievedLaw]) -> DraftL
                 "张三与李四之间成立了自然人之间的借款合同关系。"
                 "张三提供了借条（书面形式）并通过银行转账完成了款项交付，"
                 "符合《民法典》第668条（书面形式）和第679条（实践合同）的要求，"
-                "借款合同依法成立并生效。"
+                "借款合同依法成立并生效。注意利率超标部分无效（民法典第156条+第680条）。"
+                f"本金条款有效，超过LPR四倍的利率约定无效。已付超出可抵充本金（民法典第670条）。"
             ),
         },
         {
@@ -228,8 +229,10 @@ def _generate_draft_opinion(case: dict, retrieved: list[RetrievedLaw]) -> DraftL
                 f"约定年利率18%（月利率1.5%），当前LPR约{current_lpr*100:.1f}%，"
                 f"LPR四倍为{lpr_four_times*100:.1f}%。"
                 f"约定利率{'超过' if exceeds_lpr_limit else '未超过'}LPR四倍上限，"
-                f"超过部分不受法律保护。"
-                f"已支付的3期利息（2,250元）在合法范围内可予以抵充。"
+                f"超过部分不受法律保护（民间借贷司法解释第25条）。"
+                f"实际利息演算：50,000元×12.4%÷12×3=1,550元（合法上限内）；"
+                f"约定利息：50,000元×18%÷12×3=2,250元。超出合法上限约700元，可主张抵充本金（民法典第670条）。"
+                f"逾期利息以LPR四倍为上限，从2025年9月2日起算（民法典第676条）。"
             ),
         },
         {
@@ -247,7 +250,10 @@ def _generate_draft_opinion(case: dict, retrieved: list[RetrievedLaw]) -> DraftL
                 "诉讼请求明确（返还本金50,000元及相应利息），"
                 "事实清楚且证据基本齐全（借条+银行转账记录），"
                 "符合《民事诉讼法》第122条的起诉条件。"
-                "诉讼时效：民间借贷诉讼时效为3年，本案尚未届满。"
+                "诉讼时效：民间借贷诉讼时效为3年（民法典第188条），从债务履行期限届满次日（2025年9月2日）起算。"
+                f"时效届满日：2028年9月1日。张三多次催讨可能构成时效中断（民法典第195条）。"
+                f"当前时间约2026年6月，仍在诉讼时效期间内。李四如提出时效抗辩，"
+                f"张三需提供催讨证据证明中断。"
             ),
         },
     ]
@@ -265,9 +271,10 @@ def _generate_draft_opinion(case: dict, retrieved: list[RetrievedLaw]) -> DraftL
     boundary_flags = [
         "SYNTHETIC_CASE — Not a real client matter",
         "DRAFT_OPINION — Not a final legal opinion",
-        "LPR_RATE_REFERENCE — LPR value is approximate, may not reflect current published rate",
-        "NO_COURT_JURISDICTION_ANALYSIS — Venue selection not evaluated",
-        "NO_STATUTE_OF_LIMITATIONS_RUNNING — Actual limitation calculation not performed",
+        "LPR_RATE_REFERENCE — LPR value is approximate, based on 2025-01 1Y LPR 3.1%, must be updated to loan origination date rate",
+        "NO_COURT_JURISDICTION_ANALYSIS — 合同履行地包括接受货币一方所在地（民诉法解释第18条）；50,000元适用基层法院，可考虑小额诉讼程序（民诉法第162条+民诉法解释第271条）",
+        "NO_STATUTE_OF_LIMITATIONS_RUNNING — 3年诉讼时效已分析；催讨中断需提供证据",
+        "FACTUAL_ASSUMPTION — 以下内容基于未知证据状态需核实：借条逾期利率约定(INPUT_PARAM)、担保人(INPUT_PARAM)、催讨记录形式(INPUT_PARAM)",
         "NO_ENFORCEMENT_ANALYSIS — Collectability of judgment not evaluated",
     ]
 
