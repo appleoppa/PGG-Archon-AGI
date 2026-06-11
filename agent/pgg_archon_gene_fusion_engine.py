@@ -214,17 +214,24 @@ def insert_fused_gene(
             (cycle_id, _now(), '标准基因融合引擎', '12534', 'verified' if promote else 'candidate', 'A' if promote else 'B', BOUNDARY),
         )
         source_refs = json.dumps([{'parent_gene_ids': gene.get('parent_ids', []), 'standard_gene_template': True}], ensure_ascii=False)
-        con.execute(
-            '''INSERT OR IGNORE INTO evolution_genes(gene_id,cycle_id,created_at,defect_no,defect_name,gene_name,absorbed_knowledge,source_refs_json,repair_mechanism,severity_rank,apex_variables,gate_type,reusable_rule,status,evidence_grade,verification_status,boundary,gene_hash,fitness,execution_count,last_executed) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',
-            (
-                gene['id'], cycle_id, _now(), 47, '标准基因融合引擎落地', gene['id'],
-                json.dumps(gene, ensure_ascii=False), source_refs, '\n'.join(gene.get('strategy', [])),
-                1, 'Φ_anti_VERIFIED_SOURCE,Ω_self,EVM_gate', 'standard_gene_fusion_engine',
-                'standard gene template fusion with positive synergy', status, 'A' if promote else 'B',
-                verification, BOUNDARY, gene.get('gene_hash') or _hash(gene),
-                int(gene.get('fitness') or 0), 0, None,
-            ),
+        cols = {row[1] for row in con.execute('PRAGMA table_info(evolution_genes)').fetchall()}
+        base_values = (
+            gene['id'], cycle_id, _now(), 47, '标准基因融合引擎落地', gene['id'],
+            json.dumps(gene, ensure_ascii=False), source_refs, '\n'.join(gene.get('strategy', [])),
+            1, 'Φ_anti_VERIFIED_SOURCE,Ω_self,EVM_gate', 'standard_gene_fusion_engine',
+            'standard gene template fusion with positive synergy', status, 'A' if promote else 'B',
+            verification, BOUNDARY, gene.get('gene_hash') or _hash(gene),
         )
+        if {'fitness', 'execution_count', 'last_executed'}.issubset(cols):
+            con.execute(
+                '''INSERT OR IGNORE INTO evolution_genes(gene_id,cycle_id,created_at,defect_no,defect_name,gene_name,absorbed_knowledge,source_refs_json,repair_mechanism,severity_rank,apex_variables,gate_type,reusable_rule,status,evidence_grade,verification_status,boundary,gene_hash,fitness,execution_count,last_executed) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',
+                base_values + (int(gene.get('fitness') or 0), 0, None),
+            )
+        else:
+            con.execute(
+                '''INSERT OR IGNORE INTO evolution_genes(gene_id,cycle_id,created_at,defect_no,defect_name,gene_name,absorbed_knowledge,source_refs_json,repair_mechanism,severity_rank,apex_variables,gate_type,reusable_rule,status,evidence_grade,verification_status,boundary,gene_hash) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',
+                base_values,
+            )
         con.commit()
         row = con.execute('SELECT status, verification_status FROM evolution_genes WHERE gene_id = ?', (gene['id'],)).fetchone()
         return {'schema': 'PGGStandardGeneFusionInsert/v1', 'status': 'PASS', 'written': True, 'promoted': promote, 'gene_id': gene['id'], 'db_status': row[0] if row else None, 'verification_status': row[1] if row else None, 'boundary': BOUNDARY}
