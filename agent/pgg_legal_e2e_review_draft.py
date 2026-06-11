@@ -274,7 +274,7 @@ def _generate_draft_opinion(case: dict, retrieved: list[RetrievedLaw]) -> DraftL
         "LPR_RATE_REFERENCE — LPR value is approximate, based on 2025-01 1Y LPR 3.1%, must be updated to loan origination date rate",
         "NO_COURT_JURISDICTION_ANALYSIS — 合同履行地包括接受货币一方所在地（民诉法解释第18条）；50,000元适用基层法院，可考虑小额诉讼程序（民诉法第162条+民诉法解释第271条）",
         "NO_STATUTE_OF_LIMITATIONS_RUNNING — 3年诉讼时效已分析；催讨中断需提供证据",
-        "FACTUAL_ASSUMPTION — 以下内容基于未知证据状态需核实：借条逾期利率约定(INPUT_PARAM)、担保人(INPUT_PARAM)、催讨记录形式(INPUT_PARAM)",
+        "FACTUAL_ASSUMPTION — 以下内容基于未知证据状态需核实：借条逾期利率约定(INPUT_PARAM)、担保人(INPUT_PARAM)、催讨记录形式(INPUT_PARAM)、被告送达地址(INPUT_PARAM)",
         "NO_ENFORCEMENT_ANALYSIS — Collectability of judgment not evaluated",
     ]
 
