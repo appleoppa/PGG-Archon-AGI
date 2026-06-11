@@ -103,6 +103,7 @@ def fuse_standard_genes(
     offspring_id: str | None = None,
     category: str = 'pgg_fusion',
     reviewer: str = 'apple_didi',
+    mode: str = 'additive',
 ) -> dict[str, Any]:
     validations = [validate_standard_gene(p) for p in parents]
     errors: list[str] = []
@@ -131,10 +132,23 @@ def fuse_standard_genes(
             pass
     complexity_penalty = max(0.0, float((len(_uniq(strategy)) - 8) * 2))
     avg_parent = sum(fitnesses) / len(fitnesses) if fitnesses else 500.0
-    offspring_fitness = min(999, int(avg_parent + 40 + 5 * len(parents) - complexity_penalty))
-    synergy = offspring_fitness - (max(fitnesses) if fitnesses else 0.0) - complexity_penalty
-    if synergy <= 0:
-        errors.append('synergy_not_positive_after_penalties')
+    max_parent = max(fitnesses) if fitnesses else 500.0
+    if mode == 'multiplicative':
+        # Normalized multiplicative: offspring = avg × (1 + synergy_ratio × multiplier)
+        # synergy_ratio = spread / max_parent  (higher spread = more fusion potential)
+        # multiplier scales with parent count, capped at 3.0
+        synergy_ratio = (max_parent - avg_parent) / max(max_parent, 1.0)
+        multiplier = min(3.0, 0.5 * (len(parents) - 1))
+        raw = avg_parent * (1.0 + synergy_ratio * multiplier)
+        offspring_fitness = min(9999, int(raw + 0.5))
+        synergy = offspring_fitness - max_parent
+        if synergy_ratio < 0.05:
+            errors.append('synergy_ratio_below_threshold')
+    else:
+        offspring_fitness = min(999, int(avg_parent + 40 + 5 * len(parents) - complexity_penalty))
+        synergy = offspring_fitness - max_parent - complexity_penalty
+        if synergy <= 0:
+            errors.append('synergy_not_positive_after_penalties')
     gene = {
         'type': 'pgg_gene',
         'id': oid,
@@ -146,6 +160,7 @@ def fuse_standard_genes(
         'validation': _uniq(validation_items),
         'created': _now(),
         'origin': 'pgg_standard_gene_fusion_engine',
+        'fusion_mode': mode,
         'fitness': offspring_fitness,
         'parent_ids': parent_ids,
         'synergy': synergy,
@@ -222,10 +237,11 @@ def fuse_genedb_records(
     db_path: str | Path = DEFAULT_DB,
     write: bool = False,
     promote: bool = False,
+    mode: str = 'additive',
 ) -> dict[str, Any]:
     records = fetch_genedb_records(parent_ids, db_path=db_path)
     genes = [gene_record_to_standard_gene(record) for record in records]
-    fusion = fuse_standard_genes(genes, offspring_id='standard_fusion_' + _hash(parent_ids)[:16])
+    fusion = fuse_standard_genes(genes, offspring_id='standard_fusion_' + _hash(parent_ids)[:16], mode=mode)
     insert = None
     if fusion['status'] == 'PASS':
         insert = insert_fused_gene(fusion['offspring_gene'], db_path=db_path, write=write, promote=promote)
