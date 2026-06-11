@@ -215,13 +215,14 @@ def insert_fused_gene(
         )
         source_refs = json.dumps([{'parent_gene_ids': gene.get('parent_ids', []), 'standard_gene_template': True}], ensure_ascii=False)
         con.execute(
-            '''INSERT OR IGNORE INTO evolution_genes(gene_id,cycle_id,created_at,defect_no,defect_name,gene_name,absorbed_knowledge,source_refs_json,repair_mechanism,severity_rank,apex_variables,gate_type,reusable_rule,status,evidence_grade,verification_status,boundary,gene_hash) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',
+            '''INSERT OR IGNORE INTO evolution_genes(gene_id,cycle_id,created_at,defect_no,defect_name,gene_name,absorbed_knowledge,source_refs_json,repair_mechanism,severity_rank,apex_variables,gate_type,reusable_rule,status,evidence_grade,verification_status,boundary,gene_hash,fitness,execution_count,last_executed) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',
             (
                 gene['id'], cycle_id, _now(), 47, '标准基因融合引擎落地', gene['id'],
                 json.dumps(gene, ensure_ascii=False), source_refs, '\n'.join(gene.get('strategy', [])),
                 1, 'Φ_anti_VERIFIED_SOURCE,Ω_self,EVM_gate', 'standard_gene_fusion_engine',
                 'standard gene template fusion with positive synergy', status, 'A' if promote else 'B',
                 verification, BOUNDARY, gene.get('gene_hash') or _hash(gene),
+                int(gene.get('fitness') or 0), 0, None,
             ),
         )
         con.commit()
