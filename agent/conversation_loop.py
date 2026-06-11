@@ -2509,6 +2509,35 @@ def run_conversation(
                         "compaction_disabled": True,
                     }
 
+                # ── General overflow: compress & retry ───────────────
+                # For context_overflow (the generic model-provider overflow
+                # error — neither Anthropic long-context-tier nor 413),
+                # compress conversation and retry. The payload_too_large
+                # case has its own handler further down (line ~2736).
+                # Without this, context_overflow would fall through all
+                # the way to the generic retry loop and keep hitting the
+                # same overflow with zero compression, burning retries.
+                if classified.reason == FailoverReason.context_overflow:
+                    compression_attempts += 1
+                    if compression_attempts <= max_compression_attempts:
+                        original_len = len(messages)
+                        messages, active_system_prompt = agent._compress_context(
+                            messages, system_message,
+                            approx_tokens=approx_tokens,
+                            task_id=effective_task_id,
+                        )
+                        # Compression created a new session — clear history
+                        # so _flush_messages_to_session_db writes compressed
+                        # messages to the new session, not skipping them.
+                        conversation_history = None
+                        if len(messages) < original_len:
+                            agent._buffer_status(
+                                f"🗜️ Context compressed after {classified.reason.value}, retrying..."
+                            )
+                            time.sleep(2)
+                            _retry.restart_with_compressed_messages = True
+                            break
+
                 # ── Anthropic Sonnet long-context tier gate ───────────
                 # Anthropic returns HTTP 429 "Extra usage is required for
                 # long context requests" when a Claude Max (or similar)

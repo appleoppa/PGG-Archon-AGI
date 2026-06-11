@@ -1556,6 +1556,15 @@ def init_agent(
             abort_on_summary_failure=compression_abort_on_summary_failure,
         )
     agent.compression_enabled = compression_enabled
+    logger.info(
+        "Compression initialized: enabled=%s threshold=%.2f "
+        "target_ratio=%.2f protect_last=%d protect_first=%d",
+        compression_enabled,
+        compression_threshold,
+        compression_target_ratio,
+        compression_protect_last,
+        compression_protect_first,
+    )
 
     # Reject models whose context window is below the minimum required
     # for reliable tool-calling workflows (64K tokens).
