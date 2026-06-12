@@ -59,13 +59,11 @@ def _qr_route(task: str) -> Dict[str, Any]:
 
 
 # 自动降级优先级：DeepSeek 必须最后兜底。
-# 用户策略（2026-06-11）：自动路由/动态 fallback 时，只有 GPT/Claude/Ark/
-# MiMo/Agnes 等其他可用 LLM 都不可用后，才调用 DeepSeek。显式指定
-# DeepSeek、压缩会话、中文法律指定用途不受此 helper 影响。
-# QR tier 历史含义大致为 A=GPT, C=Claude, D=MiMo/其他, B=DeepSeek；
-# 因此遍历时先非 B，再单独 B。
-_FALLOVER_TIER_ORDER = ["A", "C", "D"]
-_DEEPSEEK_TIER = "B"
+# 苹果哥策略（2026-06-12）：
+#   A(GPT, 日常主力) → C(Claude, 编程) → E(Ark, 万能补位) → D(MiMo/Agnes, 审计复核) → B(DeepSeek, 最后兜底)
+# 显式指定 DeepSeek 不受此 helper 影响。压缩/标题生成已不再默认走 DeepSeek。
+_FALLOVER_TIER_ORDER = ["A", "C", "E", "D"]
+_DEEPSEEK_TIER = "B"  # 最后兜底
 
 
 def _provider_is_deepseek(name: str, model: str = "") -> bool:
