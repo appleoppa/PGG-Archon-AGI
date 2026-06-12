@@ -25,6 +25,10 @@ from typing import Any
 
 import agent.pgg_archon_gene_fusion_engine as fusion
 import agent.pgg_archon_standard_gene_backfill as backfill
+import agent.pgg_aris_reflection as aris
+import agent.pgg_dream_mode as dream
+import agent.pgg_picoapex_saturation as picoapex
+import agent.pgg_health_monitor as health
 
 BOUNDARY = "pgg_self_evolution_loop; local DB writes; no LLM/network; no AGI/T5/ASI claim"
 
@@ -447,6 +451,8 @@ def generate_db_summary(db_path: Path = DEFAULT_DB) -> dict[str, Any]:
 
 
 def run_evolution_cycle(*, promote: bool = True, fusion: bool = True, intake: bool = True,
+                        dream_mode: bool = True, aris_reflect: bool = True, 
+                        picoapex_check: bool = True, health_check: bool = True,
                         dry_run: bool = False, db_path: Path = DEFAULT_DB) -> dict[str, Any]:
     """运行一次完整的自主演化周期。
 
@@ -454,6 +460,10 @@ def run_evolution_cycle(*, promote: bool = True, fusion: bool = True, intake: bo
         promote: 是否执行晋升（candidate→verified）
         fusion: 是否执行融合（verified→offspring）
         intake: 是否执行基因摄入（扫描代码/补全 backfill）
+        dream_mode: 是否执行梦境合成（回顾→合成→模拟→写入）
+        aris_reflect: 是否执行3层反思（偏差→逻辑→架构）
+        picoapex_check: 是否执行饱和检测+目标切换
+        health_check: 是否执行健康监控采集
         dry_run: 只读模式（不写 DB）
         db_path: GeneDB 路径
     """
@@ -489,6 +499,54 @@ def run_evolution_cycle(*, promote: bool = True, fusion: bool = True, intake: bo
         fusion_result = run_fusion_on_verified(db_path, dry_run=dry_run)
         result["phases"]["fusion"] = fusion_result
         _log(f"  → fused: {fusion_result['fused']} new offspring")
+
+# Phase 4: 3层ARIS反思
+    if aris_reflect:
+        _log("Phase 4: ARIS 3层反思（偏差/逻辑/架构边界）...")
+        try:
+            reflector = aris.ArisReflector()
+            aris_result = reflector.run_reflection()
+            result["phases"]["aris_reflection"] = aris_result
+            _log(f"  → L1偏差={aris_result.get('l1_score')}, L2问题={len(aris_result.get('l2_issues', []))}, L3阻塞={len(aris_result.get('l3_blockers', []))}")
+        except Exception as e:
+            _log(f"  → ARIS 反思失败: {e}")
+            result["phases"]["aris_reflection"] = {"error": str(e)}
+
+    # Phase 5: 梦境合成
+    if dream_mode and not dry_run:
+        _log("Phase 5: 基因梦境合成（回顾/融合/模拟/写入）...")
+        try:
+            engine = dream.DreamEngine()
+            dream_result = engine.run_full_cycle()
+            result["phases"]["dream_mode"] = dream_result
+            _log(f"  → 合成 {dream_result.get('synth_count', 0)} 个新基因")
+        except Exception as e:
+            _log(f"  → 梦境合成失败: {e}")
+            result["phases"]["dream_mode"] = {"error": str(e)}
+
+    # Phase 6: PicoAPEX 饱和检测 + 自动目标切换
+    if picoapex_check:
+        _log("Phase 6: PicoAPEX 饱和检测...")
+        try:
+            pico = picoapex.PicoAPEXEngine()
+            pico_result = pico.check_and_switch()
+            result["phases"]["picoapex"] = pico_result
+            _log(f"  → 维度={pico_result.get('current_dim')}, 精英率={pico_result.get('elite_ratio'):.4f}, 饱和={pico_result.get('saturated')}")
+        except Exception as e:
+            _log(f"  → PicoAPEX 失败: {e}")
+            result["phases"]["picoapex"] = {"error": str(e)}
+
+    # Phase 7: 健康监控
+    if health_check:
+        _log("Phase 7: 健康监控采集...")
+        try:
+            monitor = health.HealthMonitor()
+            health_result = monitor.collect_and_report()
+            result["phases"]["health"] = health_result.get("status", "OK")
+            _log(f"  → 健康级别={health_result.get('level', 'unknown')}, 告警={len(health_result.get('alerts', []))}条")
+        except Exception as e:
+            _log(f"  → 健康监控失败: {e}")
+            result["phases"]["health"] = {"error": str(e)}
 
     # Summary
     summary = generate_db_summary(db_path)
