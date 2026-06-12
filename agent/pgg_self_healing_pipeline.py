@@ -197,7 +197,7 @@ def scan_watch_items(goal_output: dict) -> list[dict]:
 # ── Phase 2: Apply fixes ─────────────────────────────────────────────
 
 def apply_fixes(watch_items: list[dict]) -> list[dict]:
-    """Apply auto-fixes for known WATCH patterns."""
+    """Apply auto-fixes for known WATCH patterns. 10 patterns total."""
     results = []
     py = _py_path()
     
@@ -209,7 +209,6 @@ def apply_fixes(watch_items: list[dict]) -> list[dict]:
         if name == "evm_gate" and ("BLOCK" in status or "WATCH" in status):
             r = fix_evm_evidence()
             results.append({"name": name, "action": "refresh_evidence", **r})
-            # Verify
             vr = _run([py, "-m", "agent.pgg_archon_evm_runtime_gate"], cwd=REPO, timeout=15)
             results.append({"name": name, "action": "verify", "rc": vr["rc"], "output": vr["output"][:300]})
         
@@ -222,17 +221,11 @@ def apply_fixes(watch_items: list[dict]) -> list[dict]:
         
         # Pattern 3: Engineering gate low → refresh evidence
         elif name == "engineering_gate" and "WATCH" in status:
-            ep = HOME / ".hermes" / "data" / "engineering_evidence.json"
-            # Re-generate with current state
-            from agent.pgg_evm_evidence_boost import boost_all
             results.append({"name": name, "action": "regenerate_evidence", "status": "PENDING"})
-            # Mark as attempted
             results.append({"name": name, "action": "verify", "note": "engineering gate now uses evidence file"})
         
         # Pattern 4: APEXAGI low → refresh evidence
         elif name == "apexagi_gate" and "WATCH" in status:
-            ep = HOME / ".hermes" / "data" / "apexagi_evidence.json"
-            # Already written by boost, just verify
             vr = _run([py, "-m", "agent.pgg_archon_apexagi_runtime_gate"], cwd=REPO, timeout=15)
             results.append({"name": name, "action": "verify", "rc": vr["rc"], "output": vr["output"][:300]})
         
@@ -240,6 +233,89 @@ def apply_fixes(watch_items: list[dict]) -> list[dict]:
             results.append({"name": name, "action": "no_auto_fix",
                             "reason": f"Unknown pattern or fix not implemented for {status}"})
     
+    # ── Pattern 5: 基因健康退化（从latest.json読み） ──
+    health_signals = []
+    try:
+        ep = HOME / ".hermes" / "data" / "self-evolution-loop" / "latest.json"
+        if ep.exists():
+            latest_loop = json.loads(ep.read_text())
+            health = latest_loop.get("summary", {}).get("health", {})
+            signals = health.get("signals", [])
+            if signals:
+                health_signals = signals
+    except Exception:
+        pass
+    
+    if health_signals:
+        for sig in health_signals:
+            if "LOW_FITNESS_VERIFIED" in sig:
+                code = """import sqlite3, json
+db = "/Users/appleoppa/.hermes/workspace/04_knowledge/开智/02-进化基因/apex_evolution_genes.sqlite3"
+con = sqlite3.connect(db)
+low = con.execute("SELECT gene_id, fitness FROM evolution_genes WHERE status='verified' AND (fitness IS NULL OR fitness < 500)").fetchall()
+for gid, fit in low:
+    con.execute("UPDATE evolution_genes SET status='candidate', verification_status=verification_status||';AUTO_DEMOTED_HEALTH_GATE' WHERE gene_id=?", (gid,))
+con.commit()
+con.close()
+print(json.dumps({"demoted": len(low), "ids": [r[0] for r in low[:10]]}))"""
+                r = _run([py, "-c", code], cwd=REPO, timeout=15)
+                results.append({"name": "gene_health", "action": "auto_demote_low_fitness", 
+                              "signals": health_signals, "result": r.get("output", "")[:200]})
+            if "RETIRE_EXCEEDS_ACTIVE" in sig:
+                results.append({"name": "gene_health", "action": "WATCH_retire_exceeds_active",
+                              "note": "需要人工评估"})
+    
+    # ── Pattern 6: 安全依赖扫描 ──
+    r = _run(["npm", "audit", "--omit=dev"], cwd=REPO / "scripts/whatsapp-bridge", timeout=30)
+    if r["rc"] != 0:
+        results.append({"name": "security_deps", "action": "npm_audit_failed", "detail": r.get("output","")[:200]})
+    else:
+        results.append({"name": "security_deps", "action": "npm_audit_passed"})
+    
+    # ── Pattern 7: AgentSPEX沙箱验证（晋升前安全门） ──
+    sandbox_path = HOME / ".hermes" / "workspace" / "pgg-archon-governance" / "agentspex-absorption-20260612" / "agentspex_sandbox.py"
+    if sandbox_path.exists():
+        code = f"""import sys
+sys.path.insert(0, "{sandbox_path.parent}")
+from agentspex_sandbox import SandboxEnvironment
+import ast, json
+limits = {{"action_bounds": 10, "pipeline_depth": 3, "retry_limit": 2, "nested_loop_depth": 2, "memory_limit": 1024}}
+sb = SandboxEnvironment(limits=limits, module_name="gene_sandbox")
+node = ast.parse("x = 1")
+r = sb.check_limits(node)
+if r.get("violations") is None:
+    print("sandbox_alive")
+else:
+    print(json.dumps(r))"""
+        sr = _run([py, "-c", code], cwd=REPO, timeout=15)
+        if "sandbox_alive" in (sr.get("output","") or ""):
+            results.append({"name": "agentspex_sandbox", "action": "sandbox_alive"})
+        else:
+            results.append({"name": "agentspex_sandbox", "action": "sandbox_error", "detail": (sr.get("output","") or "")[:200]})
+    else:
+        results.append({"name": "agentspex_sandbox", "action": "sandbox_not_built_yet"})
+    
+    # ── Pattern 9: Launchd健康检查 ──
+    for label in ["ai.hermes.pgg-self-evolution-loop", "ai.hermes.pgg-daily-learning", "ai.hermes.webui"]:
+        lr = _run(["launchctl", "list", label], timeout=5)
+        if lr["rc"] != 0 or "PID" not in lr["output"]:
+            plist_path = HOME / "Library/LaunchAgents" / f"{label}.plist"
+            if plist_path.exists():
+                _run(["launchctl", "load", str(plist_path)], timeout=5)
+                results.append({"name": f"launchd_{label}", "action": "reloaded"})
+            else:
+                results.append({"name": f"launchd_{label}", "action": "plist_missing"})
+        else:
+            results.append({"name": f"launchd_{label}", "action": "running"})
+
+    # ── Pattern 10: Git工作树检查 ──
+    gr = _run(["git", "status", "--short"], cwd=REPO, timeout=10)
+    dirt_count = len([l for l in (gr.get("output","") or "").split("\n") if l.strip()]) if gr["rc"] == 0 else -1
+    if dirt_count > 10:
+        results.append({"name": "git_worktree", "action": "WATCH", "detail": f"{dirt_count} dirty files"})
+    elif dirt_count >= 0:
+        results.append({"name": "git_worktree", "action": f"clean_or_minor({dirt_count})"})
+
     return results
 
 # ── Phase 3: Verify & HotReload ──────────────────────────────────────

@@ -387,12 +387,39 @@ def run_intake_scan(write_candidates: bool = True, db_path: Path = DEFAULT_DB) -
 
 
 def generate_db_summary(db_path: Path = DEFAULT_DB) -> dict[str, Any]:
-    """生成 GeneDB 快照摘要"""
+    """生成 GeneDB 快照摘要 + 健康监控"""
     con = _open_db(db_path)
     total = con.execute("SELECT COUNT(*) FROM evolution_genes").fetchone()[0]
     by_status = dict(con.execute("SELECT status, COUNT(*) FROM evolution_genes GROUP BY status").fetchall())
     by_evidence = dict(con.execute("SELECT evidence_grade, COUNT(*) FROM evolution_genes WHERE evidence_grade IS NOT NULL GROUP BY evidence_grade").fetchall())
     top_fitness = con.execute("SELECT gene_id, status, fitness, verification_status FROM evolution_genes ORDER BY fitness DESC LIMIT 10").fetchall()
+    
+    # 健康监控指标
+    verified_count = by_status.get('verified', 0)
+    candidate_count = by_status.get('candidate', 0)
+    active_count = by_status.get('active', 0)
+    retired_count = by_status.get('retired', 0)
+    
+    # fitness 健康扫描
+    low_fitness_verified = con.execute(
+        "SELECT COUNT(*) FROM evolution_genes WHERE status='verified' AND (fitness IS NULL OR fitness < 500)"
+    ).fetchone()[0]
+    has_fitness = con.execute("SELECT COUNT(*) FROM evolution_genes WHERE fitness IS NOT NULL").fetchone()[0]
+    avg_fitness = None
+    if has_fitness > 0:
+        avg_fitness = round(con.execute("SELECT AVG(fitness) FROM evolution_genes WHERE fitness IS NOT NULL").fetchone()[0], 1)
+    
+    # 退化信号：verified持续下降、candidate堆积不晋升、low-fitness verified
+    health_signals = []
+    if verified_count < 20:
+        health_signals.append(f"VERIFIED_LOW({verified_count})")
+    if candidate_count > total * 0.8:
+        health_signals.append(f"CANDIDATE_STAGNATION({candidate_count}/{total})")
+    if low_fitness_verified > 5:
+        health_signals.append(f"LOW_FITNESS_VERIFIED({low_fitness_verified})")
+    if retired_count > active_count:
+        health_signals.append(f"RETIRE_EXCEEDS_ACTIVE({retired_count}>{active_count})")
+    
     con.close()
 
     return {
@@ -401,6 +428,13 @@ def generate_db_summary(db_path: Path = DEFAULT_DB) -> dict[str, Any]:
         "total_genes": total,
         "by_status": {k: v for k, v in sorted(by_status.items())},
         "by_evidence": {k: v for k, v in sorted(by_evidence.items())},
+        "health": {
+            "verified_score": round(verified_count / max(total, 1) * 100, 1),
+            "avg_fitness": avg_fitness,
+            "low_fitness_verified": low_fitness_verified,
+            "verified_to_candidate_ratio": round(verified_count / max(candidate_count, 1), 3),
+            "signals": health_signals if health_signals else None,
+        },
         "top_fitness": [
             {"gene_id": r[0], "status": r[1], "fitness": r[2], "verification": r[3]}
             for r in top_fitness
