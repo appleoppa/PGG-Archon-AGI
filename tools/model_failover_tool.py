@@ -58,9 +58,17 @@ def _qr_route(task: str) -> Dict[str, Any]:
     return {}
 
 
-# 降级优先级（用户偏好：备用不选 Claude）：A(GPT) -> D(MiniMax) -> B(DeepSeek)
-# Claude 仅作为主模型或显式调用使用，不作为自动降级备用。
-_FALLOVER_TIER_ORDER = ["A", "D", "B"]
+# 自动降级优先级：DeepSeek 必须最后兜底。
+# 苹果哥策略（2026-06-12）：
+#   A(GPT, 日常主力) → C(Claude, 编程) → E(Ark, 万能补位) → D(MiMo/Agnes, 审计复核) → B(DeepSeek, 最后兜底)
+# 显式指定 DeepSeek 不受此 helper 影响。压缩/标题生成已不再默认走 DeepSeek。
+_FALLOVER_TIER_ORDER = ["A", "C", "E", "D"]
+_DEEPSEEK_TIER = "B"  # 最后兜底
+
+
+def _provider_is_deepseek(name: str, model: str = "") -> bool:
+    value = f"{name} {model}".lower()
+    return "deepseek" in value
 
 
 def auto_failover(
@@ -90,13 +98,27 @@ def auto_failover(
     health = result.get("health") or []
 
     if selected and selected != failed_provider:
-        # 找到对应 provider 的模型名
+        # 如果选中的是 DeepSeek，优先找非 DeepSeek 替代
+        if _provider_is_deepseek(str(selected)):
+            # 先查非 DeepSeek 在线供应商
+            for h in health:
+                if (
+                    isinstance(h, dict)
+                    and h.get("status") == "ok"
+                    and h.get("name") not in (failed_provider, "")
+                    and h.get("name") in all_online
+                    and not _provider_is_deepseek(
+                        str(h.get("name", "")), str(h.get("model", ""))
+                    )
+                ):
+                    return (h.get("model") or "", h.get("name") or "")
+        # 如果选中的不是 DeepSeek，或没有非 DeepSeek 替代，直接返回
         for h in health:
             if isinstance(h, dict) and h.get("name") == selected:
                 return (h.get("model") or "", selected)
         return ("", selected)
 
-    # 如果选中结果失败，手动遍历降级
+    # 手动遍历降级：先试非 DeepSeek 层级
     for tier in _FALLOVER_TIER_ORDER:
         for h in health:
             if (
@@ -108,13 +130,35 @@ def auto_failover(
             ):
                 return (h.get("model") or "", h.get("name") or "")
 
-    # 兜底：任何在线但不是失败的；显式跳过 Claude（备用模型用户偏好排除）
+    # 非 DeepSeek 层级用完，最后才试 DeepSeek 层级
+    for h in health:
+        if (
+            isinstance(h, dict)
+            and h.get("status") == "ok"
+            and h.get("name") not in (failed_provider, "")
+            and h.get("name") in all_online
+            and h.get("tier") == _DEEPSEEK_TIER
+        ):
+            return (h.get("model") or "", h.get("name") or "")
+
+    # 兜底：任何在线但不是 DeepSeek 和失败的
     for h in health:
         if (
             isinstance(h, dict)
             and h.get("status") == "ok"
             and h.get("name") != failed_provider
-            and h.get("tier") != "C"
+            and not _provider_is_deepseek(
+                str(h.get("name", "")), str(h.get("model", ""))
+            )
+        ):
+            return (h.get("model") or "", h.get("name") or "")
+
+    # 绝对最后兜底：连 DeepSeek 也可以
+    for h in health:
+        if (
+            isinstance(h, dict)
+            and h.get("status") == "ok"
+            and h.get("name") != failed_provider
         ):
             return (h.get("model") or "", h.get("name") or "")
 
