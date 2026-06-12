@@ -68,7 +68,63 @@ def _manifest_append(key: str, val: dict) -> None:
     except Exception as e:
         print(f"[WARN] manifest: {e}")
 
+# ── Phase 0: Daily Learning ───────────────────────────────────────────
+
+def run_daily_learning() -> dict:
+    """Run PGG Daily Learning Pipeline as Phase 0 of self-healing."""
+    r = _run([str(BIN/"pgg-daily-learning")], timeout=300)
+    if r["rc"] != 0:
+        return {"status": "WARN", "detail": r["output"][:200]}
+    return {"status": "PASS", "detail": "daily learning completed"}
+
 # ── Fix: Inject real evidence for gates ───────────────────────────────
+
+def run_gene_intake() -> dict:
+    """Run automated gene intake pipeline: scan code → score → write candidates → fusion dry-run → reflexion."""
+    py = _py_path()
+    t0 = time.time()
+    
+    # Module-level gene intake (code scan → candidate → DB)
+    code = f"""
+from agent.pgg_gene_intake_loop import run_intake_loop, gather_reflexion_candidates
+from agent.pgg_archon_gene_fusion_engine import DEFAULT_DB
+import json
+
+r1 = run_intake_loop(write_candidates=True, top_n=5, db_path=DEFAULT_DB)
+r2 = gather_reflexion_candidates(write=True, db_path=DEFAULT_DB)
+
+import sqlite3
+con = sqlite3.connect(DEFAULT_DB)
+total = con.execute('SELECT COUNT(*) FROM evolution_genes').fetchone()[0]
+cand = con.execute(\"SELECT COUNT(*) FROM evolution_genes WHERE status='candidate'\").fetchone()[0]
+ver = con.execute(\"SELECT COUNT(*) FROM evolution_genes WHERE verification_status LIKE '%verified%'\").fetchone()[0]
+reflex = con.execute(\"SELECT COUNT(*) FROM evolution_genes WHERE gate_type='reflexion_discovery'\").fetchone()[0]
+avg_f = con.execute(\"SELECT AVG(fitness) FROM evolution_genes WHERE fitness IS NOT NULL\").fetchone()[0]
+fusion_pass = sum(1 for r in r1.get('fusion_dry_run_results', []) if r.get('fusion_status') == 'PASS')
+con.close()
+
+print(json.dumps({{
+    'gene_total': total,
+    'candidate_count': cand,
+    'verified_count': ver,
+    'reflexion_count': reflex,
+    'avg_fitness': round(avg_f, 1) if avg_f else 0,
+    'fusion_pass': fusion_pass,
+    'fusion_total': len(r1.get('fusion_dry_run_results', [])),
+    'new_intake_written': (r1.get('written_to_genedb') or {{}}).get('written_count', 0),
+    'new_reflexion_written': (r2.get('written_to_genedb') or {{}}).get('written_count', 0),
+    'intake_status': r1.get('status'),
+}}))
+"""
+    r = _run([py, "-c", code], cwd=REPO, timeout=120)
+    if r["rc"] != 0:
+        return {"status": "ERROR", "error": r["output"][:300]}
+    try:
+        data = json.loads(r["output"])
+        return {"status": "PASS", **data}
+    except:
+        return {"status": "PASS", "note": "gene intake completed", "output": r["output"][:200]}
+
 
 def fix_evm_evidence() -> dict:
     """Calibrate EVM evidence to reflect current real state."""
@@ -238,8 +294,14 @@ def main() -> int:
     print(f"Started: {datetime.now(timezone.utc).isoformat()}")
     print("=" * 60)
     
+    # Step 0: Daily learning
+    print("\n[0/6] 每日学习管线（多源 + 璇玑对齐）...")
+    t_learn = time.time()
+    learn_result = run_daily_learning()
+    print(f"  {learn_result.get('status','?')} | {learn_result.get('detail','')} | {time.time()-t_learn:.0f}s")
+    
     # Step 1: Run hermes-goal to get current state
-    print("\n[1/5] 扫描当前状态...")
+    print("\n[1/6] 扫描当前状态...")
     t0 = time.time()
     r = _run([str(BIN/"hermes-goal")], timeout=120)
     if r["rc"] != 0:
@@ -248,8 +310,20 @@ def main() -> int:
     goal = json.loads(r["output"])
     print(f"  {goal.get('summary', '?')} | {time.time()-t0:.0f}s")
     
+    # Step 2: Run gene intake (scan → write → fusion → reflexion)
+    print("\n[2/6] 基因采集管线...")
+    t_gene = time.time()
+    gene_result = run_gene_intake()
+    print(f"  {gene_result.get('status', '?')} | "
+          f"genes={gene_result.get('gene_total', '?')}, "
+          f"candidates={gene_result.get('candidate_count', '?')}, "
+          f"fusion={gene_result.get('fusion_pass', '?')}/{gene_result.get('fusion_total', '?')}, "
+          f"intake_wrote={gene_result.get('new_intake_written', 0)}, "
+          f"reflexion_wrote={gene_result.get('new_reflexion_written', 0)}, "
+          f"avg_fitness={gene_result.get('avg_fitness', '?')} | {time.time()-t_gene:.0f}s")
+    
     # Step 2: Identify WATCH/BLOCKED
-    print("\n[2/5] 识别可修复项...")
+    print("\n[3/6] 识别可修复项...")
     watch_items = scan_watch_items(goal)
     if not watch_items:
         print("  ✅ 无待修复项")
@@ -259,7 +333,7 @@ def main() -> int:
             print(f"    {item['name']}: {item['status']} (score={item['score']})")
     
     # Step 3: Apply auto-fixes
-    print("\n[3/5] 执行自动修复...")
+    print("\n[4/6] 执行自动修复...")
     fix_results = apply_fixes(watch_items) if watch_items else []
     for r in fix_results:
         s = r.get("status", r.get("action", "?"))
@@ -268,7 +342,7 @@ def main() -> int:
             print(f"    → {r['output'][:200]}")
     
     # Step 4: Verify & Reload
-    print("\n[4/5] 验证修复效果...")
+    print("\n[5/6] 验证修复效果...")
     verify = verify_and_reload()
     print(f"  {verify.get('status', '?')}: {verify.get('summary', '?')}")
     print(f"  {verify.get('pass_count', '?')}/{verify.get('total', '?')} PASS")
@@ -278,7 +352,7 @@ def main() -> int:
         print(f"  WATCH: {verify.get('watch')}")
     
     # Step 5: Knowledge Settle
-    print("\n[5/5] 知识沉淀...")
+    print("\n[6/6] 知识沉淀...")
     settle = settle_knowledge(fix_results, verify)
     print(f"  已写入 manifest: {settle['manifest_key']}")
     

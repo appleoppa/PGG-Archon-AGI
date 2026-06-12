@@ -99,10 +99,37 @@ def promote_candidates(db_path: Path = DEFAULT_DB, *, dry_run: bool = False) -> 
     for row in candidates:
         gid = row["gene_id"]
 
-        # 跳过已经是 verified_by_standard_gene_fusion_engine 的
+        # 跳过已经是 verified_by_* 的
         vstat = str(row["verification_status"] or "")
         if vstat.startswith("verified"):
             skipped_reasons["already_verified"] = skipped_reasons.get("already_verified", 0) + 1
+            continue
+
+        # ═══════════════════════════════════════════════════════════
+        # 永久基因膨胀门禁：绝对不自动晋升未经验证的回填/待审查基因
+        # 2026-06-12: 发现 88 条 STANDARD_ 被误升 → 增加此门禁
+        # ═══════════════════════════════════════════════════════════
+        BLOCKED_PREFIXES = [
+            "auto_backfilled",     # 自动回填，未验证
+            "needs_review",        # 明确需要人工审查
+            "pending_review",      # 待审查
+            "pending_",            # 任何 pending 状态
+            "backfill",            # 回填标记
+            "unverified",          # 未验证
+            "preliminary",         # 初步
+            "candidate",           # 本身就是候选
+            "stage2",              # 未完成
+            "sampled_",            # 抽样
+            "closed_by_",          # 已关闭
+            "retired_",            # 已退役
+            "SELECT",              # SELECT/LENGTH等状态字段
+            "INSERT",              # INSERT验证
+        ]
+        vstat_lower = vstat.lower()
+        is_blocked = any(vstat_lower.startswith(prefix.lower()) for prefix in BLOCKED_PREFIXES)
+
+        if is_blocked:
+            skipped_reasons[f"blocked_by_gene_inflation_gate_{vstat}"] = skipped_reasons.get(f"blocked_by_gene_inflation_gate_{vstat}", 0) + 1
             continue
 
         if dry_run:

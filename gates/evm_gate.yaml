@@ -1,0 +1,93 @@
+gate:
+  id: evm-gate-v1
+  name: "Evolved Value Measurement Gate"
+  version: "1.0.0"
+
+  metadata:
+    author: "PGG Archon"
+    created: "2026-06-12"
+    category: quality
+    risk: low
+    boundary: "local sqlite/file only, no network/credential mutation"
+
+  preconditions:
+    - condition: "gate.has_runtime_evidence"
+      check: "file_exists(${HOME}/.hermes/data/evm_runtime_evidence.json)"
+    - condition: "gate.defects_tracked"
+      check: "12_defects_registered"
+
+  inputs:
+    defects:
+      type: array
+      items:
+        type: object
+        properties:
+          name: { type: string, enum: [Tok, Clw, Agt, Pan, Prm, Soul, Run, Net, Err, Mem, Res, Log] }
+          before: { type: number, range: [0, 1] }
+          after: { type: number, range: [0, 1] }
+    weights:
+      type: object
+      properties:
+        eval_e: { type: number }
+        eval_v: { type: number }
+        eval_m: { type: number }
+        eval_a: { type: number }
+        eval_base: { type: number }
+        eval_ancient: { type: number }
+    parameters:
+      type: object
+      properties:
+        boost_coeff: { type: number, default: 0 }
+        epsilon: { type: number, default: 0 }
+
+  execution:
+    steps:
+      - id: "load_evidence"
+        action: "read_json"
+        path: "${HOME}/.hermes/data/evm_runtime_evidence.json"
+        output: "evm_data"
+
+      - id: "compute_defect_rate"
+        description: "weighted_residual_defect_rate = avg(defects_after[i]/defects_before[i]) + boost_coeff * epsilon^1.5"
+        formula: |
+          defects_before = [defect.before for defect in evm_data.defects]
+          defects_after = [defect.after for defect in evm_data.defects]
+          defect_ratios = [after/before for before, after in zip(defects_before, defects_after) if before > 0]
+          base_rate = sum(defect_ratios) / len(defect_ratios) if defect_ratios else 0
+          boost_coeff = evm_data.parameters.boost_coeff if evm_data.parameters.boost_coeff is defined else 0
+          epsilon = evm_data.parameters.epsilon if evm_data.parameters.epsilon is defined else 0
+          penalty = boost_coeff * (epsilon ** 1.5) if epsilon > 0 else 0
+          weighted_residual_defect_rate = base_rate + penalty
+          rate = weighted_residual_defect_rate
+        output: "defect_rate"
+
+      - id: "compute_evm"
+        description: "EVM_gate = 1 - weighted_residual_defect_rate"
+        formula: "EVM_gate = 1 - defect_rate"
+        output: "evm_score"
+
+      - id: "determine_status"
+        conditions:
+          - if: "evm_score >= 0.90"
+            then: "status = PASS, detail = 'healthy'"
+          - if: "evm_score >= 0.70 and evm_score < 0.90"
+            then: "status = WATCH, detail = 'acceptable_with_gaps'"
+          - else: "status = BLOCKED, detail = 'needs_improvement'"
+        output: "gate_status"
+
+  postconditions:
+    - "gate.score_updated_in_manifest"
+    - "gate.defects_logged"
+    - "evidence_file_not_mutated"
+
+  scoring:
+    pass_threshold: 0.90
+    watch_threshold: 0.70
+    block_below: 0.70
+    max_score: 1.0
+    min_score: 0.0
+    score_formula: "EVM_gate = 1 - weighted_residual_defect_rate"
+
+  integration:
+    hermes_goal_component: "evm_gate"
+    pins: ["EVM_Governance", "Agent_Evolve"]
