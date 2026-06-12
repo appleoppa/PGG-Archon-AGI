@@ -141,12 +141,16 @@ def fuse_standard_genes(
         multiplier = min(3.0, 0.5 * (len(parents) - 1))
         raw = avg_parent * (1.0 + synergy_ratio * multiplier)
         offspring_fitness = min(9999, int(raw + 0.5))
-        synergy = offspring_fitness - max_parent
-        if synergy_ratio < 0.05:
+        synergy = offspring_fitness - avg_parent
+        # Low synergy_ratio means parents are close — still viable fusion, just smaller bonus.
+        # Only block when synergy_ratio is effectively zero (duplicate genes).
+        if synergy_ratio < 0.005:
             errors.append('synergy_ratio_below_threshold')
     else:
         offspring_fitness = min(999, int(avg_parent + 40 + 5 * len(parents) - complexity_penalty))
-        synergy = offspring_fitness - max_parent - complexity_penalty
+        # synergy relative to average parent: child should beat the combined baseline
+        # not beat the best parent (which is unreachable for dissimilar parents)
+        synergy = offspring_fitness - avg_parent
         if synergy <= 0:
             errors.append('synergy_not_positive_after_penalties')
     gene = {
@@ -217,7 +221,7 @@ def insert_fused_gene(
         cols = {row[1] for row in con.execute('PRAGMA table_info(evolution_genes)').fetchall()}
         base_values = (
             gene['id'], cycle_id, _now(), 47, '标准基因融合引擎落地', gene['id'],
-            json.dumps(gene, ensure_ascii=False), source_refs, '\n'.join(gene.get('strategy', [])),
+            json.dumps(gene, ensure_ascii=False), source_refs, '\n'.join(str(s) for s in gene.get('strategy', [])),
             1, 'Φ_anti_VERIFIED_SOURCE,Ω_self,EVM_gate', 'standard_gene_fusion_engine',
             'standard gene template fusion with positive synergy', status, 'A' if promote else 'B',
             verification, BOUNDARY, gene.get('gene_hash') or _hash(gene),

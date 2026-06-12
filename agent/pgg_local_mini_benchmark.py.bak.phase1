@@ -26,10 +26,9 @@ BOUNDARY = (
 )
 
 # ---------------------------------------------------------------------------
-# Benchmark 基因结构 (用于 benchmark 测试的状态 schema)
-# 注意: 这不是标准基因模板定义。标准模板见 pgg_archon_gene_fusion_engine.py::validate_standard_gene()
+# 标准基因结构 (模拟 GeneDB 中的基因记录)
 # ---------------------------------------------------------------------------
-BENCHMARK_GENE_SCHEMA: dict[str, type] = {
+STANDARD_GENE_SCHEMA: dict[str, type] = {
     "gene_id": str,
     "gene_name": str,
     "fitness": int,
@@ -40,7 +39,7 @@ BENCHMARK_GENE_SCHEMA: dict[str, type] = {
     "last_executed": str,
 }
 
-BENCHMARK_GENE: dict[str, Any] = {
+STANDARD_GENE: dict[str, Any] = {
     "gene_id": "gene_001",
     "gene_name": "test_gene",
     "fitness": 800,
@@ -68,9 +67,8 @@ REQUIRED_GENEDB_COLUMNS: list[str] = [
 # ---------------------------------------------------------------------------
 
 
-def validate_benchmark_gene(gene: Any) -> dict[str, Any]:
-    """验证单个基因结构是否符合 benchmark schema。
-    注意: 这不是标准基因模板门禁。标准模板门禁见 fusion_engine 的 validate_standard_gene()。
+def validate_standard_gene(gene: Any) -> dict[str, Any]:
+    """验证单个基因结构是否符合标准 schema。
 
     Args:
         gene: 任意输入，期望为 dict。
@@ -84,7 +82,7 @@ def validate_benchmark_gene(gene: Any) -> dict[str, Any]:
     missing: list[str] = []
     type_mismatch: list[str] = []
 
-    for field, expected_type in BENCHMARK_GENE_SCHEMA.items():
+    for field, expected_type in STANDARD_GENE_SCHEMA.items():
         if field not in gene:
             missing.append(field)
         elif not isinstance(gene[field], expected_type):
@@ -120,7 +118,7 @@ def _synergy_score(gene_a: dict[str, Any], gene_b: dict[str, Any]) -> float:
     return min(synergy, 1.0)
 
 
-def fuse_benchmark_genes(
+def fuse_standard_genes(
     gene_a: dict[str, Any],
     gene_b: dict[str, Any],
     mode: str = "additive",
@@ -143,8 +141,8 @@ def fuse_benchmark_genes(
         }
     """
     # 先验证两个基因
-    va = validate_benchmark_gene(gene_a)
-    vb = validate_benchmark_gene(gene_b)
+    va = validate_standard_gene(gene_a)
+    vb = validate_standard_gene(gene_b)
 
     if not va["valid"]:
         return {
@@ -324,7 +322,7 @@ test_gene_2 = {
 def _test_validate_standard_gene() -> dict[str, Any]:
     """测试 a) validate_standard_gene: 标准基因 PASS, 残缺 BLOCK。"""
     # 1) 标准基因 → PASS
-    result_ok = validate_benchmark_gene(BENCHMARK_GENE)
+    result_ok = validate_standard_gene(STANDARD_GENE)
     ok_pass = result_ok["valid"]
 
     # 2) 残缺基因 → BLOCK
@@ -332,11 +330,11 @@ def _test_validate_standard_gene() -> dict[str, Any]:
         "gene_id": "broken",
         # 缺少 gene_name, fitness, status, gate_type 等
     }
-    result_broken = validate_benchmark_gene(broken_gene)
+    result_broken = validate_standard_gene(broken_gene)
     broken_block = not result_broken["valid"]
 
     # 3) 非 dict → BLOCK
-    result_nondict = validate_benchmark_gene("not_a_dict")
+    result_nondict = validate_standard_gene("not_a_dict")
     nondict_block = not result_nondict["valid"]
 
     passed = ok_pass and broken_block and nondict_block
@@ -358,11 +356,11 @@ def _test_validate_standard_gene() -> dict[str, Any]:
 
 def _test_fuse_standard_genes() -> dict[str, Any]:
     """测试 b) fuse_standard_genes: 2个 fitness=800 基因 → PASS + synergy>0。"""
-    gene_a = dict(BENCHMARK_GENE)
-    gene_b = dict(BENCHMARK_GENE)
+    gene_a = dict(STANDARD_GENE)
+    gene_b = dict(STANDARD_GENE)
     gene_b["gene_id"] = "gene_002"
 
-    result = fuse_benchmark_genes(gene_a, gene_b, mode="additive")
+    result = fuse_standard_genes(gene_a, gene_b, mode="additive")
 
     passed = (
         result["status"] == "PASS"
@@ -385,12 +383,12 @@ def _test_fuse_standard_genes() -> dict[str, Any]:
 
 def _test_fuse_standard_genes_multiplicative() -> dict[str, Any]:
     """测试 c) fuse_standard_genes (multiplicative): 不同 fitness → PASS。"""
-    gene_a = dict(BENCHMARK_GENE)  # fitness=800
-    gene_b = dict(BENCHMARK_GENE)
+    gene_a = dict(STANDARD_GENE)  # fitness=800
+    gene_b = dict(STANDARD_GENE)
     gene_b["gene_id"] = "gene_003"
     gene_b["fitness"] = 600
 
-    result = fuse_benchmark_genes(gene_a, gene_b, mode="multiplicative")
+    result = fuse_standard_genes(gene_a, gene_b, mode="multiplicative")
 
     expected_fitness = int((800 * 600) ** 0.5)  # ≈ 692
     passed = result["status"] == "PASS" and result["fused_fitness"] == expected_fitness

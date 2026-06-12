@@ -58,12 +58,12 @@ def _qr_route(task: str) -> Dict[str, Any]:
     return {}
 
 
-# 自动降级优先级：DeepSeek 必须最后兜底。
-# 苹果哥策略（2026-06-12）：
-#   A(GPT, 日常主力) → C(Claude, 编程) → E(Ark, 万能补位) → D(MiMo/Agnes, 审计复核) → B(DeepSeek, 最后兜底)
-# 显式指定 DeepSeek 不受此 helper 影响。压缩/标题生成已不再默认走 DeepSeek。
-_FALLOVER_TIER_ORDER = ["A", "C", "E", "D"]
-_DEEPSEEK_TIER = "B"  # 最后兜底
+# 自动降级策略（苹果哥 2026-06-12 v2 — 办案工作流）：
+#   默认降级链：A(Ark主LLM) → B(MiMo/Agnes替补审计)
+#   DeepSeek Tier=C，专门用于法律办案主动调用，
+#   不作为通用自动降级的一部分
+_FALLOVER_TIER_ORDER = ["A", "B"]
+_DEEPSEEK_TIER = "C"  # 办案主办专用层，不走自动降级
 
 
 def _provider_is_deepseek(name: str, model: str = "") -> bool:

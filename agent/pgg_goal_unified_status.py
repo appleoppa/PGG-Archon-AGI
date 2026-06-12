@@ -14,7 +14,14 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-_ROOT_VENV_PYTHON = ROOT / "venv/bin/python"
+_H = Path.home()
+_ROOT_VENV_PYTHON = ROOT / ".venv/bin/python"
+if not _ROOT_VENV_PYTHON.exists():
+    _ROOT_VENV_PYTHON = ROOT / "venv/bin/python"
+if not _ROOT_VENV_PYTHON.exists():
+    _ROOT_VENV_PYTHON = _H / "hermes-agent/.venv/bin/python"
+if not _ROOT_VENV_PYTHON.exists():
+    _ROOT_VENV_PYTHON = _H / "hermes-agent/venv/bin/python"
 VENV_PYTHON = _ROOT_VENV_PYTHON if _ROOT_VENV_PYTHON.exists() else Path(sys.executable)
 HERMES_BIN = Path.home() / ".hermes/bin"
 
@@ -33,7 +40,7 @@ def status_class(status: Any) -> str:
 def run(cmd: list[str], timeout: int = 10) -> tuple[str, int]:
     try:
         env = os.environ.copy()
-        env["PATH"] = f"{HERMES_BIN}:{env.get('PATH', '')}"
+        env["PATH"] = f"{HERMES_BIN}:{Path.home() / '.local/bin'}:{Path.home() / '.cargo/bin'}:{env.get('PATH', '')}"
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, env=env)
         return r.stdout.strip() or r.stderr.strip(), r.returncode
     except Exception as e:  # pragma: no cover - defensive status surface

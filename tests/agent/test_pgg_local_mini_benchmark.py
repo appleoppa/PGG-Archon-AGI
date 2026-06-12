@@ -2,8 +2,8 @@
 
 测试覆盖:
   - run_mini_benchmark() 总体输出结构
-  - validate_standard_gene() 的 PASS/BLOCK 路径
-  - fuse_standard_genes() 的 additive/multiplicative 路径
+  - validate_benchmark_gene() 的 PASS/BLOCK 路径
+  - fuse_benchmark_genes() 的 additive/multiplicative 路径
   - GeneDB schema 查询
   - scan_source 扫描
   - 安全边界声明
@@ -12,13 +12,13 @@
 from __future__ import annotations
 
 from agent.pgg_local_mini_benchmark import (
-    STANDARD_GENE,
+    BENCHMARK_GENE,
     SAMPLE_GENE_SOURCE,
     check_genedb_schema,
-    fuse_standard_genes,
+    fuse_benchmark_genes,
     run_mini_benchmark,
     scan_source,
-    validate_standard_gene,
+    validate_benchmark_gene,
 )
 
 
@@ -62,72 +62,72 @@ class TestRunMiniBenchmark:
 
 
 class TestValidateStandardGene:
-    """validate_standard_gene() 测试。"""
+    """validate_benchmark_gene() 测试。"""
 
     def test_valid_gene_passes(self) -> None:
-        result = validate_standard_gene(STANDARD_GENE)
+        result = validate_benchmark_gene(BENCHMARK_GENE)
         assert result["valid"] is True
         assert result["reason"] == "PASS"
 
     def test_missing_fields_blocked(self) -> None:
         broken: dict = {"gene_id": "broken"}
-        result = validate_standard_gene(broken)
+        result = validate_benchmark_gene(broken)
         assert result["valid"] is False
         assert "BLOCK" in result["reason"]
 
     def test_non_dict_blocked(self) -> None:
-        result = validate_standard_gene("not_a_dict")
+        result = validate_benchmark_gene("not_a_dict")
         assert result["valid"] is False
         assert "BLOCK" in result["reason"] or "not a dict" in result["reason"]
 
     def test_type_mismatch_blocked(self) -> None:
-        wrong_type: dict = dict(STANDARD_GENE)
+        wrong_type: dict = dict(BENCHMARK_GENE)
         wrong_type["fitness"] = "not_an_int"  # should be int
-        result = validate_standard_gene(wrong_type)
+        result = validate_benchmark_gene(wrong_type)
         assert result["valid"] is False
 
 
 class TestFuseStandardGenes:
-    """fuse_standard_genes() 测试。"""
+    """fuse_benchmark_genes() 测试。"""
 
     def test_additive_two_equal_fitness(self) -> None:
-        gene_a = dict(STANDARD_GENE)
-        gene_b = dict(STANDARD_GENE)
+        gene_a = dict(BENCHMARK_GENE)
+        gene_b = dict(BENCHMARK_GENE)
         gene_b["gene_id"] = "gene_002"
-        result = fuse_standard_genes(gene_a, gene_b, mode="additive")
+        result = fuse_benchmark_genes(gene_a, gene_b, mode="additive")
         assert result["status"] == "PASS"
         assert result["fused_fitness"] == 1600  # 800 + 800
         assert result["synergy"] > 0.0
 
     def test_multiplicative_different_fitness(self) -> None:
-        gene_a = dict(STANDARD_GENE)  # fitness=800
-        gene_b = dict(STANDARD_GENE)
+        gene_a = dict(BENCHMARK_GENE)  # fitness=800
+        gene_b = dict(BENCHMARK_GENE)
         gene_b["gene_id"] = "gene_003"
         gene_b["fitness"] = 600
-        result = fuse_standard_genes(gene_a, gene_b, mode="multiplicative")
+        result = fuse_benchmark_genes(gene_a, gene_b, mode="multiplicative")
         expected = int((800 * 600) ** 0.5)  # ≈ 692
         assert result["status"] == "PASS"
         assert result["fused_fitness"] == expected
 
     def test_broken_gene_blocked(self) -> None:
         gene_a = {"gene_id": "broken"}
-        gene_b = dict(STANDARD_GENE)
-        result = fuse_standard_genes(gene_a, gene_b)
+        gene_b = dict(BENCHMARK_GENE)
+        result = fuse_benchmark_genes(gene_a, gene_b)
         assert result["status"] == "BLOCK"
 
     def test_fusion_returns_synergy(self) -> None:
-        gene_a = dict(STANDARD_GENE)
-        gene_b = dict(STANDARD_GENE)
+        gene_a = dict(BENCHMARK_GENE)
+        gene_b = dict(BENCHMARK_GENE)
         gene_b["gene_id"] = "gene_004"
-        result = fuse_standard_genes(gene_a, gene_b)
+        result = fuse_benchmark_genes(gene_a, gene_b)
         assert "synergy" in result
         assert isinstance(result["synergy"], float)
 
     def test_fusion_mode_default_additive(self) -> None:
-        gene_a = dict(STANDARD_GENE)
-        gene_b = dict(STANDARD_GENE)
+        gene_a = dict(BENCHMARK_GENE)
+        gene_b = dict(BENCHMARK_GENE)
         gene_b["gene_id"] = "gene_005"
-        result = fuse_standard_genes(gene_a, gene_b)
+        result = fuse_benchmark_genes(gene_a, gene_b)
         assert result["mode"] == "additive"
         assert result["fused_fitness"] == 1600
 

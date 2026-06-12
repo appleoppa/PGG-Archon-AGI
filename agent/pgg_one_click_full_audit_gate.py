@@ -16,10 +16,14 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-PY = ROOT / "venv/bin/python"
-if not PY.exists():
-    PY = Path(sys.executable)
 HOME = Path.home()
+PY = ROOT / ".venv/bin/python"
+if not PY.exists():
+    PY = ROOT / "venv/bin/python"
+if not PY.exists():
+    PY = HOME / "hermes-agent/.venv/bin/python"
+if not PY.exists():
+    PY = HOME / "hermes-agent/venv/bin/python"
 HERMES_BIN = HOME / ".hermes/bin"
 
 
