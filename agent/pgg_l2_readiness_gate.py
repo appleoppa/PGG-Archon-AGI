@@ -17,7 +17,11 @@ from typing import Any
 
 HOME = Path.home() / ".hermes"
 ROOT = Path(__file__).resolve().parents[1]
-PY = ROOT / "venv/bin/python"
+PY = ROOT / ".venv/bin/python"
+if not PY.exists():
+    PY = ROOT / "venv/bin/python"
+if not PY.exists():
+    PY = HOME / "hermes-agent/.venv/bin/python"
 if not PY.exists():
     PY = HOME / "hermes-agent/venv/bin/python"
 DATA = HOME / "data"

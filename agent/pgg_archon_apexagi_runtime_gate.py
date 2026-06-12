@@ -44,7 +44,14 @@ class ApexAgiP7Pipeline:
 
     def evaluate(self, config: dict[str, Any] | None = None) -> dict[str, Any]:
         if config is None:
-            config = self._runtime_evidence_config()
+            try:
+                evidence_path = Path.home() / ".hermes" / "data" / "apexagi_evidence.json"
+                if evidence_path.exists():
+                    config = json.loads(evidence_path.read_text())
+                else:
+                    config = self._runtime_evidence_config()
+            except Exception:
+                config = self._runtime_evidence_config()
         if self._wrapper:
             result = self._wrapper.evaluate_config(json.dumps(config, ensure_ascii=False))
             d = json.loads(result)

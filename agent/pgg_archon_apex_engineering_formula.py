@@ -5,6 +5,7 @@ Formula: APEX_NEW(t+1) = APEX_CORE(t) ⊛ ΔG[规范收敛 ⊗ 纪律锁止 ⊗ 
 Backed by hermes_pgg_apex_engineering_formula_gate native .so
 """
 import json, sys, os
+from pathlib import Path
 
 try:
     import hermes_pgg_apex_engineering_formula_gate as _native
@@ -33,7 +34,16 @@ class PggApexEngineeringFormulaGate:
         if _NATIVE:
             cfg = json.dumps(config) if config else _native.sample_input_json()
             return json.loads(_native.evaluate_evidence_json(cfg))
-        return self._evaluate_py(config or self.sample_config())
+        if config is None:
+            try:
+                evidence_path = Path.home() / ".hermes" / "data" / "engineering_evidence.json"
+                if evidence_path.exists():
+                    config = json.loads(evidence_path.read_text())
+                else:
+                    config = self.sample_config()
+            except Exception:
+                config = self.sample_config()
+        return self._evaluate_py(config)
 
     def anti_overclaim_scan(self, config: dict = None) -> dict:
         if _NATIVE:

@@ -21,8 +21,12 @@ LANES = ["legal", "audit", "agi_architecture"]
 
 
 def _run(cmd: list[str], timeout: int = 60) -> dict[str, Any]:
+    import os
+    env = os.environ.copy()
+    env.setdefault("PYTHONPATH", str(Path(__file__).resolve().parents[1]))
+    env.setdefault("HERMES_HOME", str(Path.home() / ".hermes"))
     try:
-        p = subprocess.run(cmd, text=True, capture_output=True, timeout=timeout)
+        p = subprocess.run(cmd, text=True, capture_output=True, timeout=timeout, env=env)
         return {"returncode": p.returncode, "stdout": p.stdout[-4000:], "stderr": p.stderr[-1000:]}
     except Exception as exc:  # noqa: BLE001
         return {"returncode": 999, "stdout": "", "stderr": repr(exc)}

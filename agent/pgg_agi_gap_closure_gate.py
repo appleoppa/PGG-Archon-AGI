@@ -17,7 +17,9 @@ from typing import Any
 
 HOME = Path.home() / ".hermes"
 ROOT = HOME / "hermes-agent"
-PY = ROOT / "venv/bin/python"
+PY = ROOT / ".venv/bin/python"
+if not PY.exists():
+    PY = ROOT / "venv/bin/python"
 DATA = HOME / "data"
 LATEST = DATA / "pgg_agi_gap_closure_gate_latest.json"
 LEDGER = DATA / "pgg_agi_gap_closure_gate_ledger.jsonl"
