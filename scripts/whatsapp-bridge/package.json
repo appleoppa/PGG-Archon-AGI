@@ -8,10 +8,10 @@
     "start": "node bridge.js"
   },
   "dependencies": {
-    "@whiskeysockets/baileys": "WhiskeySockets/Baileys#1aee6ed6011ef77035c2b072eff478fc5f327809",
+    "@whiskeysockets/baileys": "github:WhiskeySockets/Baileys#v7.0.0-rc12",
     "express": "^4.22.2",
-    "qrcode-terminal": "^0.12.0",
-    "pino": "^9.0.0"
+    "pino": "^9.0.0",
+    "qrcode-terminal": "^0.12.0"
   },
   "overrides": {
     "protobufjs": "^7.5.5"
