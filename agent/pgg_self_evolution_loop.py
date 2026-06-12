@@ -500,7 +500,7 @@ def run_evolution_cycle(*, promote: bool = True, fusion: bool = True, intake: bo
         result["phases"]["fusion"] = fusion_result
         _log(f"  → fused: {fusion_result['fused']} new offspring")
 
-    # Phase 4: 3层ARIS反思
+# Phase 4: 3层ARIS反思
     if aris_reflect:
         _log("Phase 4: ARIS 3层反思（偏差/逻辑/架构边界）...")
         try:
