@@ -12,11 +12,13 @@ import time
 from pathlib import Path
 from typing import Any, Callable
 
-SCHEMA = "PGGBatchProofMetabolismLoop/v0.1"
-BOUNDARY = "BATCH_LOOP_MAX10_BACKUP_DIFF_ROLLBACK_NO_LEGAL_SECURITY_AUTO_PROMOTION"
+SCHEMA = "PGGBatchProofMetabolismLoop/v0.2"
+BOUNDARY = "BATCH_LOOP_MAX10_BACKUP_DIFF_ROLLBACK_RUST_MUTATION_PREFERRED_NO_LEGAL_SECURITY_AUTO_PROMOTION"
 HOME = Path.home()
 BIN = HOME / ".hermes/bin"
 DEFAULT_ROOT = HOME / ".hermes/workspace/pgg-archon-governance/metabolic-evolution-phase5-batch-loop"
+DEFAULT_GENEDB = HOME / ".hermes/workspace/04_knowledge/开智/02-进化基因/apex_evolution_genes.sqlite3"
+RUST_RUNNER = BIN / "pgg-batch-proof-metabolism-runner-rs"
 
 Runner = Callable[[list[str], int], dict[str, Any]]
 
@@ -67,6 +69,8 @@ def run_batch_metabolism_loop(
     *,
     limit: int = 10,
     execute: bool = False,
+    prefer_rust_mutation: bool = True,
+    db_path: str | Path = DEFAULT_GENEDB,
     runner: Runner = _run_cmd,
 ) -> dict[str, Any]:
     """Run one bounded batch metabolism loop."""
@@ -86,12 +90,24 @@ def run_batch_metabolism_loop(
     phase3_cmd = [str(BIN / "pgg-proof-packet-completion"), "--queue", str(queue), "--outdir", str(phase3_dir), "--limit", str(limit)]
     phase3 = _parse_json_output(runner(phase3_cmd, 300), "phase3")
 
-    phase4_cmd = [
-        str(BIN / "pgg-controlled-genedb-mutation"),
-        "--proposal", str(phase3_dir / "controlled_promotion_proposal.json"),
-        "--results", str(phase3_dir / "completion_results.json"),
-        "--outdir", str(phase4_dir),
-    ]
+    proposal_path = phase3_dir / "controlled_promotion_proposal.json"
+    results_path = phase3_dir / "completion_results.json"
+    use_rust_mutation = prefer_rust_mutation and RUST_RUNNER.exists()
+    if use_rust_mutation:
+        phase4_cmd = [
+            str(RUST_RUNNER),
+            "--rust-controlled-mutation", str(Path(db_path)),
+            str(proposal_path),
+            str(results_path),
+            "--outdir", str(phase4_dir),
+        ]
+    else:
+        phase4_cmd = [
+            str(BIN / "pgg-controlled-genedb-mutation"),
+            "--proposal", str(proposal_path),
+            "--results", str(results_path),
+            "--outdir", str(phase4_dir),
+        ]
     if execute:
         phase4_cmd.append("--execute")
     phase4 = _parse_json_output(runner(phase4_cmd, 300), "phase4")
@@ -109,6 +125,9 @@ def run_batch_metabolism_loop(
         "limit": limit,
         "execute": execute,
         "db_mutation": bool(phase4.get("db_mutation")),
+        "mutation_backend": "rust" if use_rust_mutation else "python",
+        "db_path": str(Path(db_path)),
+        "backup_path": phase4.get("backup_path"),
         "phase2": phase2,
         "phase3": phase3,
         "phase4": phase4,
