@@ -652,4 +652,69 @@ mod tests {
         assert_eq!(status, "candidate");
         let _ = fs::remove_dir_all(root);
     }
+
+    #[test]
+    fn rust_controlled_mutation_execute_creates_backup_and_can_restore() {
+        let root = std::env::temp_dir().join(format!("pgg_rust_execute_{}", now_epoch()));
+        fs::create_dir_all(&root).unwrap();
+        let db = root.join("genes.sqlite3");
+        let con = Connection::open(&db).unwrap();
+        con.execute("CREATE TABLE evolution_genes (gene_id TEXT PRIMARY KEY,status TEXT,evidence_grade TEXT,verification_status TEXT,boundary TEXT,fitness INTEGER,source_refs_json TEXT)", []).unwrap();
+        con.execute(
+            "INSERT INTO evolution_genes VALUES (?1,?2,?3,?4,?5,?6,?7)",
+            params!["g1", "candidate", "B", "pending", "", 80, "{}"],
+        )
+        .unwrap();
+        con.execute(
+            "INSERT INTO evolution_genes VALUES (?1,?2,?3,?4,?5,?6,?7)",
+            params!["g2", "candidate", "B", "pending", "", 70, "{}"],
+        )
+        .unwrap();
+        drop(con);
+        let proposal = root.join("proposal.json");
+        let results = root.join("results.json");
+        fs::write(&proposal, serde_json::to_string(&vec![json!({"capability_id":"g1","risk_lane":"low_engineering","verdict":"PASS_CONTROLLED_PROMOTION_PROPOSAL","task_id":"t1"})]).unwrap()).unwrap();
+        fs::write(
+            &results,
+            serde_json::to_string(&vec![
+                json!({"capability_id":"g2","verdict":"BLOCKED_SOURCE_MISSING","task_id":"t2"}),
+            ])
+            .unwrap(),
+        )
+        .unwrap();
+        let outdir = root.join("out_execute");
+        let summary = rust_controlled_mutation(&db, &proposal, &results, &outdir, true).unwrap();
+        assert_eq!(summary["db_mutation"], true);
+        let backup = PathBuf::from(summary["backup_path"].as_str().unwrap());
+        assert!(backup.exists());
+        let con = Connection::open(&db).unwrap();
+        let g1_status: String = con
+            .query_row(
+                "SELECT status FROM evolution_genes WHERE gene_id='g1'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        let g2_status: String = con
+            .query_row(
+                "SELECT status FROM evolution_genes WHERE gene_id='g2'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(g1_status, "verified");
+        assert_eq!(g2_status, "blocked");
+        drop(con);
+        fs::copy(&backup, &db).unwrap();
+        let con = Connection::open(&db).unwrap();
+        let restored_status: String = con
+            .query_row(
+                "SELECT status FROM evolution_genes WHERE gene_id='g1'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(restored_status, "candidate");
+        let _ = fs::remove_dir_all(root);
+    }
 }
