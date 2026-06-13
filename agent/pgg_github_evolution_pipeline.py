@@ -79,17 +79,23 @@ def _run(cmd: Sequence[str], *, cwd: Path | None = None, timeout: int = 30) -> C
 def _github_source_readable(gh: CommandResult) -> bool:
     """Return whether the configured GitHub source is readable.
 
-    Prefer ``gh repo view`` when GitHub CLI auth is healthy, but keep the
-    pipeline useful when ``gh`` auth is stale and the local source checkout or
-    git credential helper can still perform read-only remote discovery.
+    Prefer ``gh repo view`` when GitHub CLI auth is healthy. If ``gh`` auth is
+    stale, keep the bounded read-only pipeline useful by proving source
+    reachability through either an existing local checkout's remote or a direct
+    public ``git ls-remote`` probe. This deliberately does not imply GitHub API
+    auth, push, PR creation, or credential health.
     """
     if gh.exit == 0:
         return True
+
     source_repo = DEFAULT_HOME / ".hermes" / "workspace" / "github" / "z-dashen"
-    if not source_repo.exists():
-        return False
-    remote = _run(["git", "ls-remote", "origin", "HEAD", "refs/heads/main"], cwd=source_repo, timeout=20)
-    return remote.exit == 0 and bool(remote.stdout.strip())
+    if source_repo.exists():
+        remote = _run(["git", "ls-remote", "origin", "HEAD", "refs/heads/main"], cwd=source_repo, timeout=20)
+        if remote.exit == 0 and bool(remote.stdout.strip()):
+            return True
+
+    public_remote = _run(["git", "ls-remote", "https://github.com/appleoppa/z-dashen.git", "HEAD", "refs/heads/main"], timeout=20)
+    return public_remote.exit == 0 and bool(public_remote.stdout.strip())
 
 
 def _github_auth_status(gh: CommandResult) -> str:

@@ -44,6 +44,20 @@ def test_github_source_readable_falls_back_to_local_git_remote(tmp_path: Path, m
     assert pipe._github_source_readable(stale_gh) is True
 
 
+def test_github_source_readable_falls_back_to_direct_public_remote_when_no_local_checkout(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(pipe, "DEFAULT_HOME", tmp_path)
+
+    def fake_run(cmd, cwd=None, timeout=30):
+        assert cwd is None
+        assert cmd[:2] == ["git", "ls-remote"]
+        assert "https://github.com/appleoppa/z-dashen.git" in cmd
+        return pipe.CommandResult(list(cmd), 0, "abc123\tHEAD\nabc123\trefs/heads/main\n", "")
+
+    monkeypatch.setattr(pipe, "_run", fake_run)
+    stale_gh = pipe.CommandResult(["gh", "repo", "view"], 1, "", "HTTP 401")
+    assert pipe._github_source_readable(stale_gh) is True
+
+
 def test_github_auth_status_exposes_watch_without_secret() -> None:
     stale_gh = pipe.CommandResult(["gh", "repo", "view"], 1, "", "HTTP 401: Requires authentication")
     assert pipe._github_auth_status(stale_gh) == "WATCH_GH_CLI_AUTH_REQUIRED"

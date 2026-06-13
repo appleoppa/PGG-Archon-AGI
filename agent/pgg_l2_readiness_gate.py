@@ -61,7 +61,12 @@ def _json_live_or_latest(cmd: list[str], latest_path: Path, timeout: int = 45) -
         data = {"status": "ERROR_PARSE_LIVE", "stderr_tail": r["stderr"][-300:], "stdout_tail": r["stdout"][-300:]}
     data["_returncode"] = r["returncode"]
     data["_source"] = "live"
-    if data.get("summary") == "16/16 components PASS" or str(data.get("status", "")).startswith("PASS"):
+    # Prefer a successfully parsed live status even when it is WATCH/BLOCKED.
+    # Falling back to stale/missing latest data for non-PASS states hides the
+    # actual blocker (for example, showing goal=MISSING while hermes-goal is live
+    # and correctly reporting 13/16 PASS). Only fall back when the live command is
+    # not parseable as JSON.
+    if data.get("status") != "ERROR_PARSE_LIVE" and any(k in data for k in ("status", "summary", "overall_status")):
         return data
     latest = _load_json_file(latest_path)
     latest["_fallback_live_status"] = data.get("status")

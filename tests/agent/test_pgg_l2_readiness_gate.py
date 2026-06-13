@@ -56,6 +56,25 @@ def test_l2_readiness_is_internal_not_external(monkeypatch, tmp_path):
     assert rec["dimensions"]["自主行动"] == 88
     assert "external AGI L2" in rec["must_not_claim"]
 
+
+def test_l2_prefers_live_watch_goal_over_stale_missing_latest(monkeypatch, tmp_path):
+    monkeypatch.setattr(l2, "DATA", tmp_path)
+    missing_latest = tmp_path / "pgg_goal_unified_status_latest.json"
+
+    def fake_run(cmd, timeout=45):
+        return {
+            "returncode": 0,
+            "stdout": '{"schema":"PGGGoalUnifiedStatus/v2","overall_status":"WATCH","summary":"13/16 components PASS","watch_count":3,"blocked_count":0}',
+            "stderr": "",
+        }
+
+    monkeypatch.setattr(l2, "_run", fake_run)
+    rec = l2._json_live_or_latest(["hermes-goal"], missing_latest, 45)
+    assert rec["_source"] == "live"
+    assert rec["summary"] == "13/16 components PASS"
+    assert rec["overall_status"] == "WATCH"
+
+
 def test_historical_backfill_classifies_internal_only(monkeypatch, tmp_path):
     monkeypatch.setattr(hist, "DATA", tmp_path / "data")
     monkeypatch.setattr(hist, "LATEST", tmp_path / "data/latest.json")
