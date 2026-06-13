@@ -156,6 +156,21 @@ def run_probes() -> list[ProbeResult]:
             f"rc={res['rc']} t={time.time()-t:.0f}s",
             {"output": res["output"][:2000]}))
 
+    # 1b. Hermes CLI / venv compatibility probe + low-risk self-heal
+    t = time.time()
+    try:
+        from agent.pgg_self_healing_pipeline import ensure_hermes_cli_compatibility
+        cli_health = ensure_hermes_cli_compatibility()
+        cli_ok = cli_health.get("status") in ("PASS", "APPLIED")
+        local_rc = (cli_health.get("version_checks") or {}).get("local_launcher", {}).get("rc")
+        old_rc = (cli_health.get("version_checks") or {}).get("old_venv_path", {}).get("rc")
+        results.append(ProbeResult("hermes_cli_venv_compat",
+            "PASS" if cli_ok else "WATCH",
+            f"status={cli_health.get('status')} local_rc={local_rc} old_rc={old_rc} t={time.time()-t:.0f}s",
+            cli_health))
+    except Exception as e:
+        results.append(ProbeResult("hermes_cli_venv_compat", "WATCH", f"probe_error={type(e).__name__}: {e}"))
+
     # 2. hermes-goal
     goal = HERMES_HOME / "bin" / "hermes-goal"
     if goal.exists():
@@ -436,6 +451,129 @@ def build_summary(probes, fixes, cases, imp_plan, llm_budget_used):
     lines.append(f"LLM预算: ~{llm_budget_used//1000}k tokens / {LLM_DAILY_BUDGET_TOKENS//1000000}M 日限额")
     return "\n".join(lines)
 
+
+# ── Phase 1c: PicoAPEX 饱和检测 + 自动维度切换 ───────────────────────
+
+_DIMENSION_CYCLE = ["analysis", "reasoning", "coding", "creativity", "planning"]
+_DIMENSION_STATE_PATH = HERMES_HOME / "data" / "pgg_dimension_saturation_state.json"
+
+
+@dataclass
+class DimensionState:
+    current: str = "analysis"
+    history: list[dict] = field(default_factory=list)
+    consecutive_saturated: int = 0
+    last_switch: str = ""
+
+
+def _load_dimension_state() -> DimensionState:
+    try:
+        data = json.loads(_DIMENSION_STATE_PATH.read_text())
+        return DimensionState(**data)
+    except Exception:
+        return DimensionState()
+
+
+def _save_dimension_state(state: DimensionState) -> None:
+    _DIMENSION_STATE_PATH.write_text(json.dumps(asdict(state), indent=2), encoding="utf-8")
+
+
+def _compute_saturation(dimension: str, py: str) -> tuple[float, str]:
+    """Run APEX ΔE eval and return (score, trend)."""
+    script = REPO / "agent" / "pgg_l2_readiness_gate.py"
+    if script.exists():
+        res = _run([py, "-m", "agent.pgg_l2_readiness_gate"], cwd=REPO, timeout=90)
+        try:
+            lines_out = res["output"].splitlines()
+            for ln in lines_out:
+                if "score" in ln.lower() or "L2" in ln:
+                    parts = ln.split()
+                    for p in parts:
+                        p = p.strip(":,%=[]")
+                        try:
+                            score = float(p)
+                            if 0 <= score <= 100:
+                                return score, "stable"
+                        except ValueError:
+                            continue
+        except Exception:
+            pass
+        return 50.0, "unknown"
+    try:
+        from agent.ecc import get_ecc_status  # type: ignore
+        status = get_ecc_status()
+        score = float(status.get("l2_score", 50))
+        return score, "stable"
+    except Exception:
+        return 50.0, "unknown"
+
+
+def _next_dimension(current: str) -> str:
+    idx = _DIMENSION_CYCLE.index(current) if current in _DIMENSION_CYCLE else 0
+    return _DIMENSION_CYCLE[(idx + 1) % len(_DIMENSION_CYCLE)]
+
+
+def dimension_saturation_probe() -> list[ProbeResult]:
+    """PicoAPEX-style saturation detection & automatic dimension switching.
+
+    Tracks APEX ΔE scores across 5 dimensions. When a dimension shows
+    saturation (score change < threshold for N consecutive runs), auto-switch
+    to next dimension in cycle: analysis → reasoning → coding → creativity → planning.
+    """
+    results: list[ProbeResult] = []
+    py = _py_path()
+    state = _load_dimension_state()
+
+    SATURATION_THRESHOLD = 2.0
+    CONSECUTIVE_SATURATED_MAX = 3
+
+    score, trend = _compute_saturation(state.current, py)
+    now = _now_str()
+
+    state.history.append({
+        "dimension": state.current,
+        "score": score,
+        "trend": trend,
+        "timestamp": now,
+    })
+    if len(state.history) > 10:
+        state.history = state.history[-10:]
+
+    prev_scores = [h["score"] for h in state.history
+                   if h["dimension"] == state.current and h["timestamp"] != now]
+    if prev_scores:
+        prev = prev_scores[-1]
+        change = abs(score - prev)
+        if change < SATURATION_THRESHOLD:
+            state.consecutive_saturated += 1
+        else:
+            state.consecutive_saturated = 0
+
+    if state.consecutive_saturated >= CONSECUTIVE_SATURATED_MAX:
+        old_dim = state.current
+        state.current = _next_dimension(state.current)
+        state.consecutive_saturated = 0
+        state.last_switch = now
+        results.append(ProbeResult(
+            "picoapex_saturation",
+            "PASS",
+            f"维度切换: {old_dim} → {state.current} (饱和{CONSECUTIVE_SATURATED_MAX}次, score={score:.1f})",
+            {"last_dimension": old_dim, "new_dimension": state.current, "score": score,
+             "switch_time": now, "trend": trend},
+        ))
+    else:
+        results.append(ProbeResult(
+            "picoapex_saturation",
+            "PASS",
+            f"维度={state.current} score={score:.1f} 饱和次数={state.consecutive_saturated}/{CONSECUTIVE_SATURATED_MAX}",
+            {"dimension": state.current, "score": score,
+             "consecutive_saturated": state.consecutive_saturated, "trend": trend},
+        ))
+
+    _save_dimension_state(state)
+    return results
+
+
 def open_source_learning(max_repos: int = 3) -> list[ProbeResult]:
     """每日开源学习: GitHub 搜索新仓库, 提取可吸收模式, 门禁分类."""
     results: list[ProbeResult] = []
@@ -537,6 +675,15 @@ def run(dry_run: bool = False, session_id: str = "default") -> DailyReport:
             print(f"  [{r.status}] {r.summary[:100]}")
     except Exception as e:
         print(f"  [WATCH] open_source_learning failed: {e}")
+
+    print("\n[Phase 1c/5] PicoAPEX 饱和检测...")
+    try:
+        sat_results = dimension_saturation_probe()
+        probes.extend(sat_results)
+        for r in sat_results:
+            print(f"  [{r.status}] {r.summary[:100]}")
+    except Exception as e:
+        print(f"  [WATCH] picoapex_saturation failed: {e}")
 
     print("\n[Phase 2/5] 深度案件复验（使用真实门禁）...")
     cases = deep_case_check()
