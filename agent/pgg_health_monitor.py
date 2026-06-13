@@ -11,18 +11,20 @@ Boundary: local OS commands + local SQLite reads + local JSON report write.
 from __future__ import annotations
 
 import json
-import re
-import shutil
-import sqlite3
-import subprocess
-import time
 from pathlib import Path
 from typing import Any
+
+# ── Rust native bridge ────────────────────────────────────────────
+try:
+    import hermes_pgg_health_monitor as _native_mod
+    _NATIVE = True
+except ImportError:
+    _NATIVE = False
 
 DEFAULT_DB = Path("/Users/appleoppa/.hermes/workspace/04_knowledge/开智/02-进化基因/apex_evolution_genes.sqlite3")
 DEFAULT_REPORT_PATH = Path("/Users/appleoppa/.hermes/data/health-monitor/latest.json")
 SERVICE_PREFIX = "ai.hermes.pgg"
-ENGINE_VERSION = "pgg_health_monitor/v1"
+ENGINE_VERSION = "pgg_health_monitor_rust/v1" if _NATIVE else "pgg_health_monitor/v1"
 BOUNDARY = "pgg_health_monitor; local metrics/launchd/GeneDB read + health JSON write; no LLM/network"
 
 CPU_ALERT_THRESHOLD = 80.0
@@ -36,25 +38,15 @@ SEVERITY_COLORS = {
 
 
 def _now() -> str:
+    import time
     return time.strftime("%Y-%m-%dT%H:%M:%S%z")
-
-
-def _run(command: list[str], timeout: int = 10) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(command, text=True, capture_output=True, timeout=timeout, check=False)
-
-
-def _safe_float(value: Any, default: float = 0.0) -> float:
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return default
 
 
 class HealthMonitor:
     """Collect PGG runtime health and write latest.json.
 
-    Public method:
-      - collect_and_report() -> dict
+    When Rust native is available, delegates core collection to
+    native_collect_health() — replaces all subprocess/sysinfo/SQLite logic.
     """
 
     def __init__(
@@ -68,26 +60,41 @@ class HealthMonitor:
         self.service_prefix = service_prefix
 
     def collect_and_report(self) -> dict[str, Any]:
-        """Collect host/service/gene health, write latest JSON, and return it."""
-        resources = self._collect_resources()
-        launchd = self._collect_launchd_services()
-        gene_db = self._collect_gene_db_health()
-        alerts = self._evaluate_alerts(resources, launchd)
-        level = self._severity_level(alerts)
+        """Collect host/service/gene health → write latest.json → return dict."""
+        if _NATIVE:
+            # Rust native: one-shot collection, no Python subprocess/sysinfo/sqlite3
+            raw = _native_mod.native_collect_health(str(self.db_path))
+            report = json.loads(raw)
+        else:
+            # Python fallback
+            resources = self._collect_resources()
+            launchd = self._collect_launchd_services()
+            gene_db = self._collect_gene_db_health()
+            alerts = self._evaluate_alerts(resources, launchd)
+            level = self._severity_level(alerts)
+            report = {
+                "schema": ENGINE_VERSION,
+                "created_at": _now(),
+                "level": level,
+                "status": "PASS" if level == "green" else ("WARN" if level == "yellow" else "FAIL"),
+                "resources": resources,
+                "launchd": launchd,
+                "gene_db": gene_db,
+                "alerts": alerts,
+                "feishu_card": self._build_feishu_card(level, resources, launchd, gene_db, alerts),
+                "report_path": str(self.report_path),
+                "boundary": BOUNDARY,
+            }
 
-        report = {
-            "schema": ENGINE_VERSION,
-            "created_at": _now(),
-            "level": level,
-            "status": "PASS" if level == "green" else ("WARN" if level == "yellow" else "FAIL"),
-            "resources": resources,
-            "launchd": launchd,
-            "gene_db": gene_db,
-            "alerts": alerts,
-            "feishu_card": self._build_feishu_card(level, resources, launchd, gene_db, alerts),
-            "report_path": str(self.report_path),
-            "boundary": BOUNDARY,
-        }
+        report["feishu_card"] = self._build_feishu_card(
+            report.get("level", "green"),
+            report.get("resources", {}),
+            report.get("launchd", {}),
+            report.get("gene_db", {}),
+            report.get("alerts", []),
+        )
+        report["report_path"] = str(self.report_path)
+        report["boundary"] = BOUNDARY
 
         self.report_path.parent.mkdir(parents=True, exist_ok=True)
         tmp = self.report_path.with_suffix(self.report_path.suffix + ".tmp")
@@ -95,299 +102,113 @@ class HealthMonitor:
         tmp.replace(self.report_path)
         return report
 
-    # ─── Resource collection ──────────────────────────────────────────────
+    # ─── Python fallback resource collection ──────────────────────────────
 
     def _collect_resources(self) -> dict[str, Any]:
-        try:
-            import psutil  # type: ignore
-
-            cpu_percent = float(psutil.cpu_percent(interval=0.2))
-            memory = psutil.virtual_memory()
-            disk = psutil.disk_usage("/")
-            load_avg = tuple(round(float(x), 4) for x in (psutil.getloadavg() if hasattr(psutil, "getloadavg") else (0, 0, 0)))
-            return {
-                "collector": "psutil",
-                "cpu_percent": round(cpu_percent, 2),
-                "memory_percent": round(float(memory.percent), 2),
-                "disk_percent": round(float(disk.percent), 2),
-                "load_avg": load_avg,
-                "memory_total_bytes": int(memory.total),
-                "memory_available_bytes": int(memory.available),
-                "disk_total_bytes": int(disk.total),
-                "disk_free_bytes": int(disk.free),
-            }
-        except Exception as exc:
-            fallback = self._collect_resources_fallback()
-            fallback["psutil_error"] = f"{type(exc).__name__}: {exc}"
-            return fallback
-
-    def _collect_resources_fallback(self) -> dict[str, Any]:
-        """Fallback resource collection using macOS vm_stat/df/ps commands."""
-        cpu_percent = 0.0
-        memory_percent = 0.0
-        disk_percent = 0.0
-        load_avg: tuple[float, float, float] = (0.0, 0.0, 0.0)
-
-        # CPU: sum process %CPU from ps. It can exceed 100 on multi-core systems;
-        # normalize by hw.logicalcpu when available.
-        try:
-            ps = _run(["ps", "-A", "-o", "%cpu"], timeout=10)
-            values = [_safe_float(x.strip()) for x in ps.stdout.splitlines()[1:] if x.strip()]
-            total_cpu = sum(values)
-            cpus_proc = _run(["sysctl", "-n", "hw.logicalcpu"], timeout=5)
-            cpu_count = max(int(_safe_float(cpus_proc.stdout.strip(), 1)), 1)
-            cpu_percent = max(0.0, min(100.0, total_cpu / cpu_count))
-        except Exception:
-            cpu_percent = 0.0
-
-        try:
-            uptime = _run(["uptime"], timeout=5).stdout
-            matches = re.findall(r"load averages?:\s*([0-9.]+)\s+([0-9.]+)\s+([0-9.]+)", uptime)
-            if matches:
-                load_avg = tuple(_safe_float(x) for x in matches[-1])  # type: ignore[assignment]
-        except Exception:
-            pass
-
-        try:
-            vm = _run(["vm_stat"], timeout=10).stdout
-            page_size_match = re.search(r"page size of (\d+) bytes", vm)
-            page_size = int(page_size_match.group(1)) if page_size_match else 4096
-            pages: dict[str, int] = {}
-            for line in vm.splitlines():
-                if ":" not in line:
-                    continue
-                key, raw = line.split(":", 1)
-                num = re.sub(r"[^0-9]", "", raw)
-                if num:
-                    pages[key.strip()] = int(num)
-            free_pages = pages.get("Pages free", 0) + pages.get("Pages speculative", 0)
-            used_pages = sum(v for k, v in pages.items() if k not in {"Pages free", "Pages speculative"})
-            total_pages = free_pages + used_pages
-            if total_pages > 0:
-                memory_percent = used_pages / total_pages * 100.0
-        except Exception:
-            memory_percent = 0.0
-
-        try:
-            usage = shutil.disk_usage("/")
-            disk_percent = (usage.used / usage.total * 100.0) if usage.total else 0.0
-        except Exception:
-            try:
-                df = _run(["df", "-Pk", "/"], timeout=10).stdout.splitlines()
-                if len(df) >= 2:
-                    parts = df[1].split()
-                    disk_percent = _safe_float(parts[4].rstrip("%")) if len(parts) >= 5 else 0.0
-            except Exception:
-                disk_percent = 0.0
-
+        import psutil
+        cpu_percent = float(psutil.cpu_percent(interval=0.2))
+        memory = psutil.virtual_memory()
+        disk = psutil.disk_usage("/")
+        load_avg = tuple(round(float(x), 4) for x in (psutil.getloadavg() if hasattr(psutil, "getloadavg") else (0, 0, 0)))
         return {
-            "collector": "subprocess_fallback",
+            "collector": "psutil",
             "cpu_percent": round(cpu_percent, 2),
-            "memory_percent": round(memory_percent, 2),
-            "disk_percent": round(disk_percent, 2),
-            "load_avg": tuple(round(float(x), 4) for x in load_avg),
+            "memory_percent": round(float(memory.percent), 2),
+            "disk_percent": round(float(disk.percent), 2),
+            "load_avg": load_avg,
+            "memory_total_bytes": int(memory.total),
+            "memory_available_bytes": int(memory.available),
+            "disk_total_bytes": int(disk.total),
+            "disk_free_bytes": int(disk.free),
         }
-
-    # ─── launchd ──────────────────────────────────────────────────────────
 
     def _collect_launchd_services(self) -> dict[str, Any]:
-        """Collect launchd status for labels matching ai.hermes.pgg*."""
-        try:
-            proc = _run(["launchctl", "list"], timeout=15)
-            if proc.returncode != 0:
-                return {
-                    "collector": "launchctl list",
-                    "services": [],
-                    "count": 0,
-                    "error": proc.stderr.strip() or f"launchctl exited {proc.returncode}",
-                }
-
-            services = []
-            for line in proc.stdout.splitlines():
-                if self.service_prefix not in line:
-                    continue
-                parsed = self._parse_launchctl_list_line(line)
-                if parsed:
-                    services.append(parsed)
-
-            return {
-                "collector": "launchctl list",
-                "prefix": self.service_prefix,
-                "count": len(services),
-                "services": services,
-            }
-        except Exception as exc:
-            return {
-                "collector": "launchctl list",
-                "services": [],
-                "count": 0,
-                "error": f"{type(exc).__name__}: {exc}",
-            }
-
-    def _parse_launchctl_list_line(self, line: str) -> dict[str, Any] | None:
-        # launchctl list columns: PID Status Label. PID may be '-'.
-        parts = line.split(None, 2)
-        if len(parts) < 3 or parts[0].lower() == "pid":
-            return None
-        pid_raw, status_raw, label = parts
-        if self.service_prefix not in label:
-            return None
-        pid = None if pid_raw == "-" else int(_safe_float(pid_raw, 0))
-        exit_code = int(_safe_float(status_raw, 0))
-        running = pid is not None and exit_code == 0
-        return {
-            "label": label.strip(),
-            "pid": pid,
-            "exit_code": exit_code,
-            "running": running,
-            "healthy": exit_code == 0,
-            "raw": line,
-        }
-
-    # ─── GeneDB ───────────────────────────────────────────────────────────
+        import subprocess
+        proc = subprocess.run(["launchctl", "list"], text=True, capture_output=True, timeout=15, check=False)
+        services = []
+        for line in proc.stdout.splitlines():
+            if self.service_prefix not in line:
+                continue
+            parts = line.split(None, 2)
+            if len(parts) < 3 or parts[0].lower() == "pid":
+                continue
+            pid_raw, status_raw, label = parts
+            pid = None if pid_raw == "-" else int(float(pid_raw))
+            exit_code = int(float(status_raw))
+            services.append({
+                "label": label.strip(), "pid": pid, "exit_code": exit_code,
+                "running": pid is not None and exit_code == 0,
+                "healthy": exit_code == 0, "raw": line,
+            })
+        return {"collector": "launchctl list", "prefix": self.service_prefix,
+                "count": len(services), "services": services}
 
     def _collect_gene_db_health(self) -> dict[str, Any]:
-        statuses = ["candidate", "verified", "active", "retired", "rejected"]
-        counts = {status: 0 for status in statuses}
-
+        import sqlite3
+        counts = {s: 0 for s in ["candidate", "verified", "active", "retired", "rejected"]}
         if not self.db_path.exists():
-            return {
-                "db_path": str(self.db_path),
-                "exists": False,
-                "counts": counts,
-                "total_tracked": 0,
-                "error": "GeneDB not found",
-            }
-
-        try:
-            with sqlite3.connect(str(self.db_path)) as con:
-                rows = con.execute(
-                    """
-                    SELECT status, COUNT(*) AS n
-                    FROM evolution_genes
-                    WHERE status IN ('candidate', 'verified', 'active', 'retired', 'rejected')
-                    GROUP BY status
-                    """
-                ).fetchall()
-            for status, n in rows:
-                counts[str(status)] = int(n or 0)
-            return {
-                "db_path": str(self.db_path),
-                "exists": True,
-                "counts": counts,
-                "total_tracked": sum(counts.values()),
-            }
-        except Exception as exc:
-            return {
-                "db_path": str(self.db_path),
-                "exists": True,
-                "counts": counts,
-                "total_tracked": 0,
-                "error": f"{type(exc).__name__}: {exc}",
-            }
-
-    # ─── Alerts and Feishu card ───────────────────────────────────────────
+            return {"db_path": str(self.db_path), "exists": False, "counts": counts, "total_tracked": 0}
+        with sqlite3.connect(str(self.db_path)) as con:
+            for status, n in con.execute(
+                "SELECT status, COUNT(*) FROM evolution_genes WHERE status IN "
+                "('candidate','verified','active','retired','rejected') GROUP BY status"
+            ).fetchall():
+                counts[str(status)] = int(n)
+        return {"db_path": str(self.db_path), "exists": True, "counts": counts,
+                "total_tracked": sum(counts.values())}
 
     def _evaluate_alerts(self, resources: dict[str, Any], launchd: dict[str, Any]) -> list[dict[str, Any]]:
         alerts: list[dict[str, Any]] = []
-        cpu_percent = _safe_float(resources.get("cpu_percent"))
-        disk_percent = _safe_float(resources.get("disk_percent"))
-
-        if cpu_percent > CPU_ALERT_THRESHOLD:
-            alerts.append({
-                "level": "red",
-                "type": "cpu_high",
-                "message": f"CPU usage {cpu_percent:.2f}% > {CPU_ALERT_THRESHOLD:.0f}%",
-                "value": cpu_percent,
-                "threshold": CPU_ALERT_THRESHOLD,
-            })
-
-        if disk_percent > DISK_ALERT_THRESHOLD:
-            alerts.append({
-                "level": "red",
-                "type": "disk_high",
-                "message": f"Disk usage {disk_percent:.2f}% > {DISK_ALERT_THRESHOLD:.0f}%",
-                "value": disk_percent,
-                "threshold": DISK_ALERT_THRESHOLD,
-            })
-
-        for service in launchd.get("services", []) or []:
-            exit_code = int(_safe_float(service.get("exit_code"), 0))
-            if exit_code != 0:
-                alerts.append({
-                    "level": "red",
-                    "type": "launchd_exit_nonzero",
-                    "message": f"{service.get('label')} exit_code={exit_code}",
-                    "label": service.get("label"),
-                    "exit_code": exit_code,
-                })
-
+        cpu_pct = float(resources.get("cpu_percent", 0))
+        disk_pct = float(resources.get("disk_percent", 0))
+        if cpu_pct > CPU_ALERT_THRESHOLD:
+            alerts.append({"level": "red", "type": "cpu_high",
+                          "message": f"CPU usage {cpu_pct:.2f}% > {CPU_ALERT_THRESHOLD:.0f}%",
+                          "value": cpu_pct, "threshold": CPU_ALERT_THRESHOLD})
+        if disk_pct > DISK_ALERT_THRESHOLD:
+            alerts.append({"level": "red", "type": "disk_high",
+                          "message": f"Disk usage {disk_pct:.2f}% > {DISK_ALERT_THRESHOLD:.0f}%",
+                          "value": disk_pct, "threshold": DISK_ALERT_THRESHOLD})
+        for svc in launchd.get("services", []):
+            ec = int(svc.get("exit_code", 0))
+            if ec != 0:
+                alerts.append({"level": "red", "type": "launchd_exit_nonzero",
+                              "message": f"{svc.get('label')} exit_code={ec}",
+                              "label": svc.get("label"), "exit_code": ec})
         if launchd.get("error"):
-            alerts.append({
-                "level": "yellow",
-                "type": "launchd_collect_error",
-                "message": str(launchd.get("error")),
-            })
-
+            alerts.append({"level": "yellow", "type": "launchd_collect_error",
+                          "message": str(launchd["error"])})
         return alerts
 
-    def _severity_level(self, alerts: list[dict[str, Any]]) -> str:
+    @staticmethod
+    def _severity_level(alerts: list[dict[str, Any]]) -> str:
         if any(a.get("level") == "red" for a in alerts):
             return "red"
-        if alerts:
-            return "yellow"
-        return "green"
+        return "yellow" if alerts else "green"
 
-    def _build_feishu_card(
-        self,
-        level: str,
-        resources: dict[str, Any],
-        launchd: dict[str, Any],
-        gene_db: dict[str, Any],
-        alerts: list[dict[str, Any]],
-    ) -> dict[str, Any]:
+    def _build_feishu_card(self, level: str, resources: dict, launchd: dict,
+                          gene_db: dict, alerts: list) -> dict:
         color = SEVERITY_COLORS.get(level, SEVERITY_COLORS["yellow"])
-        title = {
-            "green": "PGG Health OK",
-            "yellow": "PGG Health Warning",
-            "red": "PGG Health Alert",
-        }.get(level, "PGG Health Warning")
-
+        title = {"green": "PGG Health OK", "yellow": "PGG Health Warning",
+                "red": "PGG Health Alert"}.get(level, "PGG Health Warning")
         counts = gene_db.get("counts", {}) or {}
         alert_text = "\n".join(f"- {a.get('message')}" for a in alerts) if alerts else "- No active alerts"
         service_summary = f"{launchd.get('count', 0)} ai.hermes.pgg* services found"
-        gene_summary = ", ".join(f"{k}:{counts.get(k, 0)}" for k in ["candidate", "verified", "active", "retired", "rejected"])
-
-        # This is a Feishu interactive-card compatible structure with explicit
-        # three-color CSS-like tokens for downstream renderers/bridges.
+        gene_summary = ", ".join(f"{k}:{counts.get(k, 0)}"
+                                for k in ["candidate", "verified", "active", "retired", "rejected"])
         return {
             "config": {"wide_screen_mode": True},
-            "header": {
-                "template": {"green": "green", "yellow": "orange", "red": "red"}[level],
-                "title": {"tag": "plain_text", "content": title},
-            },
-            "css": {
-                "severity": level,
-                "color": color,
-                "palette": SEVERITY_COLORS,
-            },
-            "elements": [
-                {
-                    "tag": "div",
-                    "text": {
-                        "tag": "lark_md",
-                        "content": (
-                            f"**Level:** <font color='{color}'>{level.upper()}</font>\n"
-                            f"**CPU:** {resources.get('cpu_percent')}% | "
-                            f"**Memory:** {resources.get('memory_percent')}% | "
-                            f"**Disk:** {resources.get('disk_percent')}%\n"
-                            f"**launchd:** {service_summary}\n"
-                            f"**GeneDB:** {gene_summary}\n"
-                            f"**Alerts:**\n{alert_text}"
-                        ),
-                    },
-                }
-            ],
+            "header": {"template": {"green": "green", "yellow": "orange", "red": "red"}[level],
+                       "title": {"tag": "plain_text", "content": title}},
+            "css": {"severity": level, "color": color, "palette": SEVERITY_COLORS},
+            "elements": [{"tag": "div", "text": {"tag": "lark_md", "content":
+                f"**Level:** <font color='{color}'>{level.upper()}</font>\n"
+                f"**CPU:** {resources.get('cpu_percent')}% | "
+                f"**Memory:** {resources.get('memory_percent')}% | "
+                f"**Disk:** {resources.get('disk_percent')}%\n"
+                f"**launchd:** {service_summary}\n"
+                f"**GeneDB:** {gene_summary}\n"
+                f"**Alerts:**\n{alert_text}"}}],
         }
 
 

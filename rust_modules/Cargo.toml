@@ -6,6 +6,7 @@ members = [
     "hermes_pgg_bridge_review",
     "hermes_pgg_cmmi_industrial_gate",
     "hermes_pgg_evm_runtime_gate", "hermes_pgg_gene_fusion",
+    "hermes_pgg_health_monitor",
     "hermes_pgg_gene_scoring",
     "hermes_pgg_mini_benchmark",
     "pgg_batch_proof_metabolism_runner",
