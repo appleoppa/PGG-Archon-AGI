@@ -183,12 +183,33 @@ dependencies = [
 ]
 
 [[package]]
+name = "hermes_pgg_autonomy_core"
+version = "0.1.0"
+dependencies = [
+ "pyo3",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "hermes_pgg_bridge_review"
 version = "0.1.0"
 dependencies = [
  "pyo3",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "hermes_pgg_gene_fusion"
+version = "0.1.0"
+dependencies = [
+ "hex",
+ "pyo3",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sha2",
 ]
 
 [[package]]

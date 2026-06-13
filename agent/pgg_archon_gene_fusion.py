@@ -35,7 +35,7 @@ from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 
 DEFAULT_GENE_DB_PATH = Path(
-    "/Users/appleoppa/.hermes/workspace/开智/02-进化基因/apex_evolution_genes.sqlite3"
+    "/Users/appleoppa/.hermes/workspace/04_knowledge/开智/02-进化基因/apex_evolution_genes.sqlite3"
 )
 DEFAULT_AUDIT_DIR = Path(
     "/Users/appleoppa/.hermes/workspace/agi-routing/gene-fusions"
@@ -48,6 +48,15 @@ FUSION_BOUNDARY = (
     "受控融合：合并同一缺陷下的多条候选基因，不调用模型、不修改核心代码、"
     "不声称 AGI 完成；任一成员被反证可整体回滚"
 )
+
+# ── Rust native bridge ──────────────────────
+_NATIVE = False
+_rust_fusion = None
+try:
+    import hermes_pgg_gene_fusion as _rust_fusion  # type: ignore[import-untyped]
+    _NATIVE = True
+except ImportError:
+    pass
 
 
 def _sha256_obj(value: Mapping[str, Any]) -> str:
@@ -363,6 +372,28 @@ def build_pgg_archon_gene_fusion_surface(
             "audit_path": None,
             "error": "gene_db_missing",
         }
+
+    # ── Rust native shortcut ──
+    if _NATIVE:
+        import json as _json
+        raw = _rust_fusion.native_run_fusion(
+            str(path), bool(write), int(min_member_count), bool(enabled)
+        )
+        data = _json.loads(raw)
+        summary = {
+            **base_summary,
+            "status": data["status"],
+            "fusion_candidates": data["fusion_candidates"],
+            "fusion_records_written": data["fusion_records_written"],
+            "side_effects": "wrote_fusion_genes_and_marked_members" if write and data["fusion_records_written"] else "read_only",
+        }
+        if data.get("error"):
+            summary["error"] = data["error"]
+        audit_path = _write_audit(Path(audit_dir), summary)
+        summary["audit_path"] = str(audit_path)
+        return summary
+
+    # ── Python fallback ──
     conn = sqlite3.connect(path)
     conn.row_factory = sqlite3.Row
     try:
