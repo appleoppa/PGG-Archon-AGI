@@ -29,6 +29,15 @@ LOG_DIR = HERMES_HOME / "logs"
 CASES_ROOT = HERMES_HOME / "workspace" / "苹果中枢办案库"
 CMS_GUARD = HERMES_HOME / "bin" / "cms_case_guard"
 TRUSTED_GATE = HERMES_HOME / "bin" / "case_trusted_workflow_gate"
+METABOLIC_NET_GAIN_ROOT = WORKSPACE / "metabolic-net-gain"
+METABOLIC_EXECUTE_ENV = "PGG_AUTONOMY_METABOLISM_EXECUTE"
+
+METABOLIC_ACCELERATION_PROFILES: dict[str, dict[str, int | str]] = {
+    "safe": {"acceleration": "safe", "max_batches": 3, "batch_size": 10, "daily_cap": 30},
+    "balanced": {"acceleration": "balanced", "max_batches": 5, "batch_size": 20, "daily_cap": 100},
+    "fast": {"acceleration": "fast", "max_batches": 10, "batch_size": 25, "daily_cap": 250},
+    "turbo": {"acceleration": "turbo", "max_batches": 20, "batch_size": 50, "daily_cap": 1000},
+}
 
 LLM_DAILY_BUDGET_TOKENS = 120_000_000
 
@@ -446,7 +455,7 @@ def build_summary(probes, fixes, cases, imp_plan, llm_budget_used, metabolic=Non
     lines = []
     lines.append(f"探针: {len(probes)}个 - {p} PASS / {w} WATCH / {e} ERROR")
     if metabolic:
-        lines.append(f"代谢进化: {metabolic.get('status')} backend={metabolic.get('mutation_backend')} db_mutation={metabolic.get('db_mutation')} net_gain={metabolic.get('net_gain')}")
+        lines.append(f"代谢进化: {metabolic.get('status')} accel={metabolic.get('acceleration')} batches={metabolic.get('total_batches')} backend={metabolic.get('mutation_backend')} db_mutation={metabolic.get('db_mutation')} net_gain={metabolic.get('net_gain')}")
     if fx: lines.append(f"自动修复: {fx}/{len(fixes)} 项已执行")
     if cases: lines.append(f"案件复验: {cp} PASS / {cw} WATCH")
     if imp_plan:
@@ -538,32 +547,157 @@ def auto_create_pr_from_fixes(fixes, imp_plan, repo_dir):
         return [{"status": "ERROR", "reason": str(e)[:200]}]
 
 
-def run_metabolic_evolution_probe(session_id: str, *, execute: bool = False, limit: int = 3) -> dict[str, Any]:
-    """Phase 1d: run bounded GeneDB metabolism through Rust-preferred batch loop.
+def resolve_metabolic_acceleration(acceleration: str | None = None) -> dict[str, int | str]:
+    """Resolve Phase13 acceleration profile.
 
-    Default is dry-run. Execute is intentionally opt-in and remains bounded.
+    Phase13 intentionally moves from tiny fixed batches to a dynamic high-throughput
+    lane while retaining explicit execute gating and fuse/rollback evidence.
     """
-    outdir = HERMES_HOME / "workspace" / "pgg-archon-governance" / "autonomy-default" / "metabolic-net-gain" / session_id
+    key = (acceleration or os.environ.get("PGG_METABOLISM_ACCELERATION_LEVEL") or "balanced").strip().lower()
+    if key not in METABOLIC_ACCELERATION_PROFILES:
+        key = "balanced"
+    return dict(METABOLIC_ACCELERATION_PROFILES[key])
+
+
+def _truthy_env(value: str | None) -> bool:
+    return str(value or "").strip().lower() in {"1", "true", "yes", "on", "execute", "enabled"}
+
+
+def _empty_net_gain() -> dict[str, int]:
+    return {"promoted": 0, "blocked_source_missing": 0, "queue_reduced_estimate": 0}
+
+
+def _sum_net_gain(total: dict[str, int], current: dict[str, Any] | None) -> dict[str, int]:
+    current = current or {}
+    return {
+        "promoted": int(total.get("promoted", 0)) + int(current.get("promoted", 0) or 0),
+        "blocked_source_missing": int(total.get("blocked_source_missing", 0)) + int(current.get("blocked_source_missing", 0) or 0),
+        "queue_reduced_estimate": int(total.get("queue_reduced_estimate", 0)) + int(current.get("queue_reduced_estimate", 0) or 0),
+    }
+
+
+def run_metabolic_evolution_probe(
+    session_id: str,
+    *,
+    execute: bool = False,
+    limit: int | None = None,
+    acceleration: str | None = None,
+    daily_cap: int | None = None,
+    batch_size: int | None = None,
+    max_batches: int | None = None,
+    run_batch=None,
+    env_execute: str | None = None,
+) -> dict[str, Any]:
+    """Phase 1d/Phase13: high-throughput bounded GeneDB metabolism.
+
+    Fast path is A/B low-risk metabolism only: controlled promotion + source-missing
+    blocking. Execute still requires an explicit env gate; otherwise the same high
+    throughput loop runs as dry-run evidence.
+    """
+    profile = resolve_metabolic_acceleration(acceleration)
+    resolved_batch_size = int(batch_size or limit or profile["batch_size"])
+    resolved_max_batches = int(max_batches or profile["max_batches"])
+    resolved_daily_cap = int(daily_cap or profile["daily_cap"])
+    resolved_batch_size = max(1, min(resolved_batch_size, 50))
+    resolved_max_batches = max(1, resolved_max_batches)
+    resolved_daily_cap = max(1, resolved_daily_cap)
+
+    explicit_gate = _truthy_env(os.environ.get(METABOLIC_EXECUTE_ENV) if env_execute is None else env_execute)
+    execute_allowed = bool(execute and explicit_gate)
+    outdir = METABOLIC_NET_GAIN_ROOT / session_id
+    batches: list[dict[str, Any]] = []
+    aggregate = _empty_net_gain()
+    processed_estimate = 0
+    consecutive_zero_gain = 0
+    fuse_triggered = False
+    fuse_reason = ""
+    last_result: dict[str, Any] = {}
+
     try:
-        from agent.pgg_batch_proof_metabolism_loop import run_batch_metabolism_loop
-        result = run_batch_metabolism_loop(outdir, limit=min(limit, 10), execute=execute, prefer_rust_mutation=True)
+        if run_batch is None:
+            from agent.pgg_batch_proof_metabolism_loop import run_batch_metabolism_loop as run_batch
+
+        batch_no = 0
+        while batch_no < resolved_max_batches and processed_estimate < resolved_daily_cap:
+            batch_no += 1
+            remaining = resolved_daily_cap - processed_estimate
+            current_limit = min(resolved_batch_size, remaining)
+            batch_outdir = outdir / f"batch-{batch_no:02d}"
+            result = run_batch(batch_outdir, limit=current_limit, execute=execute_allowed, prefer_rust_mutation=True)
+            last_result = result
+            net_gain = result.get("net_gain") or _empty_net_gain()
+            queue_delta = int(net_gain.get("queue_reduced_estimate", 0) or 0)
+            aggregate = _sum_net_gain(aggregate, net_gain)
+            processed_estimate += current_limit
+            batches.append({
+                "batch": batch_no,
+                "outdir": result.get("outdir"),
+                "limit": current_limit,
+                "execute": bool(result.get("execute")),
+                "mutation_backend": result.get("mutation_backend"),
+                "db_mutation": bool(result.get("db_mutation")),
+                "backup_path": result.get("backup_path"),
+                "net_gain": net_gain,
+                "repair_backlog_count": result.get("repair_backlog_count"),
+            })
+
+            if result.get("mutation_backend") != "rust":
+                fuse_triggered = True
+                fuse_reason = "non_rust_mutation_backend"
+                break
+            if execute_allowed and not result.get("db_mutation") and queue_delta > 0:
+                fuse_triggered = True
+                fuse_reason = "execute_requested_but_no_db_mutation"
+                break
+            if queue_delta <= 0:
+                consecutive_zero_gain += 1
+                if consecutive_zero_gain >= 2:
+                    fuse_triggered = True
+                    fuse_reason = "zero_net_gain_two_consecutive_batches"
+                    break
+            else:
+                consecutive_zero_gain = 0
+
+        status = "PASS_EXECUTED_BOUNDED" if execute_allowed and aggregate["queue_reduced_estimate"] > 0 else "PASS_DRY_RUN_ONLY"
+        if fuse_triggered and fuse_reason.startswith("zero_net_gain"):
+            status = "FUSED_NO_NET_GAIN"
+        elif fuse_triggered:
+            status = "FUSED_BLOCKED"
+
         return {
-            "status": "PASS",
-            "execute": bool(execute),
-            "schema": result.get("schema"),
-            "mutation_backend": result.get("mutation_backend"),
-            "db_mutation": result.get("db_mutation"),
-            "db_path": result.get("db_path"),
-            "backup_path": result.get("backup_path"),
-            "net_gain": result.get("net_gain"),
-            "repair_backlog_count": result.get("repair_backlog_count"),
-            "outdir": result.get("outdir"),
-            "boundary": "autonomy Phase1d uses Rust-preferred batch loop; default dry-run; no legal/security/credential auto-promotion",
+            "status": status,
+            "requested_execute": bool(execute),
+            "execute_allowed": execute_allowed,
+            "execute_env": METABOLIC_EXECUTE_ENV,
+            "acceleration": profile["acceleration"],
+            "profile": {
+                "max_batches": resolved_max_batches,
+                "batch_size": resolved_batch_size,
+                "daily_cap": resolved_daily_cap,
+            },
+            "total_batches": len(batches),
+            "processed_estimate": processed_estimate,
+            "schema": last_result.get("schema"),
+            "mutation_backend": last_result.get("mutation_backend"),
+            "db_mutation": any(bool(b.get("db_mutation")) for b in batches),
+            "db_path": last_result.get("db_path"),
+            "backup_path": last_result.get("backup_path"),
+            "rollback_paths": [b.get("backup_path") for b in batches if b.get("backup_path")],
+            "net_gain": aggregate,
+            "aggregate_net_gain": aggregate,
+            "repair_backlog_count": last_result.get("repair_backlog_count"),
+            "batches": batches,
+            "outdir": str(outdir),
+            "fuse_triggered": fuse_triggered,
+            "fuse_reason": fuse_reason,
+            "boundary": "Phase13 high-throughput bounded GeneDB metabolism: A/B/C fast lanes only; legal/security/credential remain audit-only; no AGI/T5/external benchmark claim",
         }
     except Exception as e:
         return {
             "status": "WATCH",
-            "execute": bool(execute),
+            "requested_execute": bool(execute),
+            "execute_allowed": execute_allowed,
+            "acceleration": profile["acceleration"],
             "error": f"{type(e).__name__}: {e}",
             "boundary": "metabolic probe failed before any trusted autonomy execute claim",
         }
@@ -589,9 +723,10 @@ def run(dry_run: bool = False, session_id: str = "default") -> DailyReport:
     except Exception as e:
         print(f"  [WATCH] open_source_learning failed: {e}")
 
-    print("\n[Phase 1d/5] 代谢型进化净增益（Rust batch dry-run）...")
-    metabolic = run_metabolic_evolution_probe(session_id, execute=False, limit=3)
-    print(f"  [{metabolic.get('status')}] backend={metabolic.get('mutation_backend')} db_mutation={metabolic.get('db_mutation')} net_gain={metabolic.get('net_gain')}")
+    print("\n[Phase 1d/5] 代谢型进化净增益（Phase13 high-throughput Rust batch）...")
+    metabolic_execute = bool(not dry_run and _truthy_env(os.environ.get(METABOLIC_EXECUTE_ENV)))
+    metabolic = run_metabolic_evolution_probe(session_id, execute=metabolic_execute, acceleration=os.environ.get("PGG_METABOLISM_ACCELERATION_LEVEL") or "balanced")
+    print(f"  [{metabolic.get('status')}] accel={metabolic.get('acceleration')} batches={metabolic.get('total_batches')} backend={metabolic.get('mutation_backend')} db_mutation={metabolic.get('db_mutation')} net_gain={metabolic.get('net_gain')}")
 
     print("\n[Phase 2/5] 深度案件复验（使用真实门禁）...")
     cases = deep_case_check()
@@ -661,6 +796,11 @@ def run(dry_run: bool = False, session_id: str = "default") -> DailyReport:
         "metabolic_backend": metabolic.get("mutation_backend"),
         "metabolic_db_mutation": metabolic.get("db_mutation"),
         "metabolic_net_gain": metabolic.get("net_gain"),
+        "metabolic_acceleration": metabolic.get("acceleration"),
+        "metabolic_total_batches": metabolic.get("total_batches"),
+        "metabolic_processed_estimate": metabolic.get("processed_estimate"),
+        "metabolic_execute_allowed": metabolic.get("execute_allowed"),
+        "metabolic_fuse_triggered": metabolic.get("fuse_triggered"),
         "improvement_plan_count": len(imp_plan),
         "artifact": str(art),
     })

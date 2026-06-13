@@ -27,7 +27,7 @@ def test_run_batch_metabolism_loop_stops_before_execute_when_dry_run(tmp_path):
 
     result = run_batch_metabolism_loop(tmp_path / "run", limit=3, execute=False, runner=fake_runner)
 
-    assert result["schema"] == "PGGBatchProofMetabolismLoop/v0.2"
+    assert result["schema"] == "PGGBatchProofMetabolismLoop/v0.3"
     assert result["db_mutation"] is False
     assert result["mutation_backend"] == "rust"
     assert result["net_gain"]["promoted"] == 1

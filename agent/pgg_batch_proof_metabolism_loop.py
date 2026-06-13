@@ -12,8 +12,9 @@ import time
 from pathlib import Path
 from typing import Any, Callable
 
-SCHEMA = "PGGBatchProofMetabolismLoop/v0.2"
-BOUNDARY = "BATCH_LOOP_MAX10_BACKUP_DIFF_ROLLBACK_RUST_MUTATION_PREFERRED_NO_LEGAL_SECURITY_AUTO_PROMOTION"
+SCHEMA = "PGGBatchProofMetabolismLoop/v0.3"
+MAX_BATCH_LIMIT = 50
+BOUNDARY = "BATCH_LOOP_MAX50_BACKUP_DIFF_ROLLBACK_RUST_MUTATION_PREFERRED_NO_LEGAL_SECURITY_AUTO_PROMOTION"
 HOME = Path.home()
 BIN = HOME / ".hermes/bin"
 DEFAULT_ROOT = HOME / ".hermes/workspace/pgg-archon-governance/metabolic-evolution-phase5-batch-loop"
@@ -74,8 +75,8 @@ def run_batch_metabolism_loop(
     runner: Runner = _run_cmd,
 ) -> dict[str, Any]:
     """Run one bounded batch metabolism loop."""
-    if limit > 10:
-        raise ValueError("limit must be <= 10 for bounded metabolism loop")
+    if limit > MAX_BATCH_LIMIT:
+        raise ValueError(f"limit must be <= {MAX_BATCH_LIMIT} for bounded metabolism loop")
     root = Path(outdir) if outdir else DEFAULT_ROOT / _now_tag()
     root.mkdir(parents=True, exist_ok=True)
     phase2_dir = root / "phase2"
