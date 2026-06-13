@@ -76,6 +76,7 @@ class DailyReport:
     probes: list[ProbeResult] = field(default_factory=list)
     auto_fixes: list[AutoFixCandidate] = field(default_factory=list)
     case_reverifications: list[dict[str, Any]] = field(default_factory=list)
+    metabolic_evolution: dict[str, Any] = field(default_factory=dict)
     improvement_plan: list[ImprovementPlan] = field(default_factory=list)
     llm_budget_used: int = 0
     llm_budget_remaining: int = LLM_DAILY_BUDGET_TOKENS
@@ -91,6 +92,7 @@ class DailyReport:
             "probes": [asdict(p) for p in self.probes],
             "auto_fixes": [asdict(f) for f in self.auto_fixes],
             "case_reverifications": self.case_reverifications,
+            "metabolic_evolution": self.metabolic_evolution,
             "improvement_plan": [asdict(p) for p in self.improvement_plan],
             "llm_budget_used": self.llm_budget_used,
             "llm_budget_remaining": self.llm_budget_remaining,
@@ -432,7 +434,7 @@ def generate_improvement_plan(probes: list[ProbeResult],
 
 # ── Phase 5: Retrospect ─────────────────────────────────────────────────
 
-def build_summary(probes, fixes, cases, imp_plan, llm_budget_used):
+def build_summary(probes, fixes, cases, imp_plan, llm_budget_used, metabolic=None):
     p = sum(1 for x in probes if x.status in ("PASS", "SKIP"))
     w = sum(1 for x in probes if x.status in ("WATCH", "BLOCKED"))
     e = sum(1 for x in probes if x.status == "ERROR")
@@ -443,6 +445,8 @@ def build_summary(probes, fixes, cases, imp_plan, llm_budget_used):
 
     lines = []
     lines.append(f"探针: {len(probes)}个 - {p} PASS / {w} WATCH / {e} ERROR")
+    if metabolic:
+        lines.append(f"代谢进化: {metabolic.get('status')} backend={metabolic.get('mutation_backend')} db_mutation={metabolic.get('db_mutation')} net_gain={metabolic.get('net_gain')}")
     if fx: lines.append(f"自动修复: {fx}/{len(fixes)} 项已执行")
     if cases: lines.append(f"案件复验: {cp} PASS / {cw} WATCH")
     if imp_plan:
@@ -534,6 +538,37 @@ def auto_create_pr_from_fixes(fixes, imp_plan, repo_dir):
         return [{"status": "ERROR", "reason": str(e)[:200]}]
 
 
+def run_metabolic_evolution_probe(session_id: str, *, execute: bool = False, limit: int = 3) -> dict[str, Any]:
+    """Phase 1d: run bounded GeneDB metabolism through Rust-preferred batch loop.
+
+    Default is dry-run. Execute is intentionally opt-in and remains bounded.
+    """
+    outdir = HERMES_HOME / "workspace" / "pgg-archon-governance" / "autonomy-default" / "metabolic-net-gain" / session_id
+    try:
+        from agent.pgg_batch_proof_metabolism_loop import run_batch_metabolism_loop
+        result = run_batch_metabolism_loop(outdir, limit=min(limit, 10), execute=execute, prefer_rust_mutation=True)
+        return {
+            "status": "PASS",
+            "execute": bool(execute),
+            "schema": result.get("schema"),
+            "mutation_backend": result.get("mutation_backend"),
+            "db_mutation": result.get("db_mutation"),
+            "db_path": result.get("db_path"),
+            "backup_path": result.get("backup_path"),
+            "net_gain": result.get("net_gain"),
+            "repair_backlog_count": result.get("repair_backlog_count"),
+            "outdir": result.get("outdir"),
+            "boundary": "autonomy Phase1d uses Rust-preferred batch loop; default dry-run; no legal/security/credential auto-promotion",
+        }
+    except Exception as e:
+        return {
+            "status": "WATCH",
+            "execute": bool(execute),
+            "error": f"{type(e).__name__}: {e}",
+            "boundary": "metabolic probe failed before any trusted autonomy execute claim",
+        }
+
+
 # ── Main Loop ─────────────────────────────────────────────────────────────
 
 def run(dry_run: bool = False, session_id: str = "default") -> DailyReport:
@@ -553,6 +588,10 @@ def run(dry_run: bool = False, session_id: str = "default") -> DailyReport:
             print(f"  [{r.status}] {r.summary[:100]}")
     except Exception as e:
         print(f"  [WATCH] open_source_learning failed: {e}")
+
+    print("\n[Phase 1d/5] 代谢型进化净增益（Rust batch dry-run）...")
+    metabolic = run_metabolic_evolution_probe(session_id, execute=False, limit=3)
+    print(f"  [{metabolic.get('status')}] backend={metabolic.get('mutation_backend')} db_mutation={metabolic.get('db_mutation')} net_gain={metabolic.get('net_gain')}")
 
     print("\n[Phase 2/5] 深度案件复验（使用真实门禁）...")
     cases = deep_case_check()
@@ -588,11 +627,12 @@ def run(dry_run: bool = False, session_id: str = "default") -> DailyReport:
     report = DailyReport(
         generated_at=_now_str(), session_id=session_id,
         probes=probes, auto_fixes=fixes,
-        case_reverifications=cases, improvement_plan=imp_plan,
+        case_reverifications=cases, metabolic_evolution=metabolic,
+        improvement_plan=imp_plan,
         llm_budget_used=llm_budget_used,
         llm_budget_remaining=max(0, LLM_DAILY_BUDGET_TOKENS - llm_budget_used),
     )
-    report.summary = build_summary(probes, fixes, cases, imp_plan, llm_budget_used)
+    report.summary = build_summary(probes, fixes, cases, imp_plan, llm_budget_used, metabolic)
     report.boundary = ("internal bounded self-evolution loop v1.1; "
                        "not full AGI, not external L2/T5, not legal correctness proof")
 
@@ -617,6 +657,10 @@ def run(dry_run: bool = False, session_id: str = "default") -> DailyReport:
         "auto_fixes_applied": sum(1 for f in fixes if f.result.get("applied")),
         "case_pass": sum(1 for c in cases if c.get("status") == "PASS"),
         "case_watch": sum(1 for c in cases if c.get("status") == "WATCH"),
+        "metabolic_status": metabolic.get("status"),
+        "metabolic_backend": metabolic.get("mutation_backend"),
+        "metabolic_db_mutation": metabolic.get("db_mutation"),
+        "metabolic_net_gain": metabolic.get("net_gain"),
         "improvement_plan_count": len(imp_plan),
         "artifact": str(art),
     })
