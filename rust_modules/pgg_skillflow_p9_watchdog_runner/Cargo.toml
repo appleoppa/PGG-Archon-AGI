@@ -1,0 +1,6 @@
+[package]
+name = "pgg-skillflow-p9-watchdog-runner"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
