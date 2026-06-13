@@ -1,0 +1,6 @@
+[workspace]
+resolver = "2"
+members = [
+    "hermes_pgg_cmmi_industrial_gate",
+    "pgg_gene_intake_runner",
+]
