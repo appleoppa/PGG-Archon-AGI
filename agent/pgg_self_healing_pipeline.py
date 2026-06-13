@@ -157,7 +157,7 @@ def fix_apex_v10_evidence() -> dict:
     try:
         r = _run([str(BIN/"hermes-goal")], timeout=60)
         if r["rc"] == 0:
-            d = json.loads(r["output"])
+            d = _extract_first_json_object(r["output"])
             apex_core = d.get("components", {}).get("apex_core_gate", {}).get("score", 85)
             asi = d.get("components", {}).get("asi_gate", {}).get("score", 80)
             score = min(100, (apex_core + asi) / 2)
@@ -193,6 +193,22 @@ def scan_watch_items(goal_output: dict) -> list[dict]:
                 "gaps": val.get("gaps", []),
             })
     return items
+
+def _daily_learning_runtime_status() -> dict[str, Any]:
+    """Daily learning may be supervised by the batch scheduler, not launchd."""
+    cli = BIN / "pgg-daily-learning"
+    latest_candidates = [
+        DATA / "daily-learning" / "latest.json",
+        DATA / "pgg-daily-learning" / "latest.json",
+        HOME / ".hermes" / "workspace" / "pgg-daily-learning" / "latest.json",
+    ]
+    latest = next((p for p in latest_candidates if p.exists()), None)
+    if cli.exists() and latest:
+        return {"action": "managed_by_batch_scheduler", "cli": str(cli), "latest": str(latest)}
+    if cli.exists():
+        return {"action": "cli_present_no_latest_yet", "cli": str(cli)}
+    return {"action": "plist_missing", "detail": "no launchd plist and no pgg-daily-learning CLI"}
+
 
 # ── Phase 2: Apply fixes ─────────────────────────────────────────────
 
@@ -252,15 +268,14 @@ def apply_fixes(watch_items: list[dict]) -> list[dict]:
                 code = """import sqlite3, json
 db = "/Users/appleoppa/.hermes/workspace/04_knowledge/开智/02-进化基因/apex_evolution_genes.sqlite3"
 con = sqlite3.connect(db)
-low = con.execute("SELECT gene_id, fitness FROM evolution_genes WHERE status='verified' AND (fitness IS NULL OR fitness < 500)").fetchall()
-for gid, fit in low:
-    con.execute("UPDATE evolution_genes SET status='candidate', verification_status=verification_status||';AUTO_DEMOTED_HEALTH_GATE' WHERE gene_id=?", (gid,))
-con.commit()
+# Low fitness on A/B evidence verified genes often means score not backfilled, not fake evidence.
+# Never auto-demote here; report samples and let the quality fixer recompute fitness.
+low = con.execute("SELECT gene_id, fitness, evidence_grade, length(coalesce(source_refs_json,'')) AS src_len FROM evolution_genes WHERE status='verified' AND (fitness IS NULL OR fitness < 500) ORDER BY coalesce(fitness,0) ASC LIMIT 20").fetchall()
 con.close()
-print(json.dumps({"demoted": len(low), "ids": [r[0] for r in low[:10]]}))"""
+print(json.dumps({"review_required": len(low), "ids": [r[0] for r in low[:10]], "action": "NO_AUTO_DEMOTE_SCORE_BACKFILL_REQUIRED"}))"""
                 r = _run([py, "-c", code], cwd=REPO, timeout=15)
-                results.append({"name": "gene_health", "action": "auto_demote_low_fitness", 
-                              "signals": health_signals, "result": r.get("output", "")[:200]})
+                results.append({"name": "gene_health", "action": "review_low_fitness_no_auto_demote", 
+                              "signals": health_signals, "result": r.get("output", "")[:240]})
             if "RETIRE_EXCEEDS_ACTIVE" in sig:
                 results.append({"name": "gene_health", "action": "WATCH_retire_exceeds_active",
                               "note": "需要人工评估"})
@@ -295,8 +310,12 @@ else:
     else:
         results.append({"name": "agentspex_sandbox", "action": "sandbox_not_built_yet"})
     
-    # ── Pattern 9: Launchd健康检查 ──
+    # ── Pattern 9: Runtime健康检查 ──
     for label in ["ai.hermes.pgg-self-evolution-loop", "ai.hermes.pgg-daily-learning", "ai.hermes.webui"]:
+        if label == "ai.hermes.pgg-daily-learning":
+            daily = _daily_learning_runtime_status()
+            results.append({"name": f"runtime_{label}", **daily})
+            continue
         lr = _run(["launchctl", "list", label], timeout=5)
         if lr["rc"] != 0 or "PID" not in lr["output"]:
             plist_path = HOME / "Library/LaunchAgents" / f"{label}.plist"
@@ -326,7 +345,7 @@ def verify_and_reload() -> dict:
     if r["rc"] != 0:
         return {"status": "VERIFY_FAILED", "output": r["output"][:500]}
     try:
-        d = json.loads(r["output"])
+        d = _extract_first_json_object(r["output"])
         pass_count = len([v for v in d.get("components",{}).values()
                          if str(v.get("status","")).startswith("PASS")])
         blocked = d.get("blocked_count", -1)
@@ -362,6 +381,21 @@ def settle_knowledge(fix_results: list[dict], verify_result: dict) -> dict:
 
 # ── Main Pipeline ────────────────────────────────────────────────────
 
+def _extract_first_json_object(text: str) -> dict:
+    """Extract the first top-level JSON object from mixed CLI output."""
+    decoder = json.JSONDecoder()
+    for i, ch in enumerate(text or ""):
+        if ch != "{":
+            continue
+        try:
+            obj, _ = decoder.raw_decode(text[i:])
+        except json.JSONDecodeError:
+            continue
+        if isinstance(obj, dict):
+            return obj
+    raise json.JSONDecodeError("no top-level JSON object found", text or "", 0)
+
+
 def main() -> int:
     WORKSPACE.mkdir(parents=True, exist_ok=True)
     
@@ -383,7 +417,11 @@ def main() -> int:
     if r["rc"] != 0:
         print(f"  ERROR: hermes-goal failed: {r['output'][:200]}")
         return 1
-    goal = json.loads(r["output"])
+    try:
+        goal = _extract_first_json_object(r["output"])
+    except json.JSONDecodeError as e:
+        print(f"  ERROR: hermes-goal JSON parse failed: {e}; output_head={r['output'][:300]!r}")
+        return 1
     print(f"  {goal.get('summary', '?')} | {time.time()-t0:.0f}s")
     
     # Step 2: Run gene intake (scan → write → fusion → reflexion)

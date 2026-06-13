@@ -64,6 +64,12 @@ def _open_db(db_path: Path = DEFAULT_DB) -> sqlite3.Connection:
 
 
 def promote_candidates(db_path: Path = DEFAULT_DB, *, dry_run: bool = False) -> dict[str, Any]:
+    from agent.pgg_bridge_processor import gene_db_write_lock
+    with gene_db_write_lock("self_evolution_promote"):
+        return _promote_candidates_unlocked(db_path, dry_run=dry_run)
+
+
+def _promote_candidates_unlocked(db_path: Path = DEFAULT_DB, *, dry_run: bool = False) -> dict[str, Any]:
     """批量晋升所有符合条件的 candidate 基因。
 
     条件：
@@ -535,22 +541,25 @@ def run_evolution_cycle(*, promote: bool = True, fusion: bool = True, intake: bo
                 _log(f"  → execution_bridge error: {e}")
 
         # ═══════════════════════════════════════════════════════════
-        # Phase 2.5: Bridge Processor — LLM审核candidate基因
-        # 用户授权 2026-06-13: "授权自循环通过桥执行LLM审核promotion"
+        # Phase 2.5: ARS Batch Gate — 小批量proof-review→transaction
+        # 用户授权 2026-06-13: 自循环通过桥执行LLM审核promotion。
+        # 2026-06-13 升级：不再让旧 bridge_processor 裸批量晋升；
+        # 使用 pgg_ars_batch_promotion.run_batch，默认最多3个，严格要求
+        # PASS_DUAL_REVIEW_NO_MUTATION + approve + dual_agreed/deepseek。
         # ═══════════════════════════════════════════════════════════
         if not dry_run:
             try:
-                from agent.pgg_bridge_processor import process_promotion_batch
-                _log("Phase 2.5: Bridge Processor — LLM审核promotion...")
-                bp_result = process_promotion_batch()
-                result["phases"]["bridge_processor"] = bp_result
-                reviewed = bp_result.get("status", "")
-                approved = bp_result.get("approved", 0)
-                rejected = bp_result.get("rejected", 0)
-                _log(f"  → LLM审核: {approved}条approved, {rejected}条rejected, status={reviewed}")
+                from agent.pgg_ars_batch_promotion import run_batch
+                _log("Phase 2.5: ARS Batch Gate — proof-review gated promotion...")
+                ars_result = run_batch(limit=3, min_fitness=700)
+                result["phases"]["ars_batch_gate"] = ars_result
+                promoted_n = ars_result.get("promoted", 0)
+                held_n = ars_result.get("held", 0)
+                verdict = ars_result.get("verdict", "")
+                _log(f"  → ARS gate: {promoted_n}条promoted, {held_n}条held, verdict={verdict}")
             except Exception as e:
-                _log(f"  → bridge_processor error: {e}")
-                result["phases"]["bridge_processor"] = {"error": str(e)}
+                _log(f"  → ars_batch_gate error: {e}")
+                result["phases"]["ars_batch_gate"] = {"error": str(e)}
 
     # Phase 3: 融合
     if fusion:

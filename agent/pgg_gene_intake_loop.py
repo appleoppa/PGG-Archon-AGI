@@ -122,15 +122,43 @@ def scan_for_candidates(
 def score_candidates(
     candidates: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
-    """Attach fitness/confidence to candidate genes."""
+    """Attach fitness/confidence to candidate genes.
+
+    Conservative scoring: ordinary scanned symbols stay below promotion range,
+    while genuinely structured candidates with high-confidence methods,
+    validation evidence, preconditions, and source references can cross the
+    review threshold (>=700). This fixes the previous supply problem where all
+    intake-loop candidates clustered at 500-599 and could never reach dual
+    review/promotion proof without manual score inflation.
+    """
     scored: list[dict[str, Any]] = []
     for g in candidates:
         strategy = g.get('strategy', [])
         method_count = len(strategy) if isinstance(strategy, list) else 0
         confidences = [s.get('confidence', 'low') for s in strategy if isinstance(s, dict)]
         high_count = sum(1 for c in confidences if c == 'high')
-        # Compute fitness: base 500 + 50 per high-confidence method
-        base_fitness = min(999, 500 + high_count * 50 + method_count * 10)
+        medium_count = sum(1 for c in confidences if c == 'medium')
+        signals = g.get('signals_match', [])
+        signal_count = len(signals) if isinstance(signals, list) else 0
+        preconditions = g.get('preconditions', [])
+        precondition_count = len(preconditions) if isinstance(preconditions, list) else 0
+        validation = g.get('validation', [])
+        validation_count = len(validation) if isinstance(validation, list) else 0
+        has_source = bool(g.get('source_file') or g.get('scan_file') or g.get('source_hash'))
+
+        base_fitness = (
+            500
+            + high_count * 45
+            + medium_count * 25
+            + method_count * 8
+            + min(signal_count, 8) * 10
+            + min(precondition_count, 4) * 12
+            + min(validation_count, 4) * 25
+            + (25 if has_source else 0)
+        )
+        # Cap weak candidates even if they have many shallow methods.
+        if high_count == 0 and validation_count == 0:
+            base_fitness = min(base_fitness, 640)
         fitness = max(0, min(999, base_fitness))
         g['fitness'] = fitness
         g['intake_score'] = fitness

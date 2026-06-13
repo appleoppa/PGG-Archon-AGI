@@ -245,6 +245,31 @@ def run_probes() -> list[ProbeResult]:
         results.append(ProbeResult("omniroute",
             "PASS" if res["rc"] == 0 else "WATCH", res["output"].strip()[:200]))
 
+    # 8. Self-feed daemon status
+    sfd = HERMES_HOME / "bin" / "pgg-self-feed-daemon"
+    if sfd.exists():
+        t = time.time()
+        res = _run([str(sfd), "status"], timeout=15)
+        status = "PASS" if res["rc"] == 0 else "WATCH"
+        summary = res["output"].strip()[:200] if res["rc"] == 0 else f"rc={res['rc']}"
+        results.append(ProbeResult("self_feed_daemon", status, summary))
+
+    # 9. Dream mode health
+    dm = HERMES_HOME / "bin" / "pgg-dream-mode"
+    if dm.exists():
+        t = time.time()
+        res = _run([str(dm), "status"], timeout=15)
+        results.append(ProbeResult("dream_mode",
+            "PASS" if res["rc"] == 0 else "WATCH", res["output"].strip()[:200]))
+
+    # 10. PicoAPEX saturation
+    pa = HERMES_HOME / "bin" / "pgg_picoapex_saturation_gate"
+    if pa.exists():
+        t = time.time()
+        res = _run([str(pa)], timeout=15)
+        results.append(ProbeResult("picoapex_saturation",
+            "PASS" if res["rc"] == 0 else "WATCH", res["output"].strip()[:200]))
+
     return results
 
 

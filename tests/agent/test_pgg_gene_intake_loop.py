@@ -23,12 +23,36 @@ def test_scan_for_candidates_produces_genes():
 
 def test_score_candidates_orders_by_fitness():
     raw = [
-        {'id': 'g1', 'strategy': [{'confidence': 'high'}] * 3},
+        {'id': 'g1', 'strategy': [{'confidence': 'high'}] * 3,
+         'signals_match': ['a', 'b', 'c'], 'preconditions': ['p1'], 'validation': ['v1'], 'source_file': 'f.py'},
         {'id': 'g2', 'strategy': [{'confidence': 'low'}]},
     ]
     scored = score_candidates(raw)
     assert len(scored) == 2
     assert scored[0]['fitness'] >= scored[1]['fitness']
+
+
+def test_score_candidates_structured_high_quality_crosses_review_threshold():
+    raw = [{
+        'id': 'high_quality',
+        'strategy': [{'confidence': 'high'}] * 4,
+        'signals_match': ['s1', 's2', 's3', 's4'],
+        'preconditions': ['p1', 'p2'],
+        'validation': ['unit_pass', 'smoke_pass'],
+        'source_file': 'agent/example.py',
+    }]
+    scored = score_candidates(raw)
+    assert scored[0]['fitness'] >= 700
+
+
+def test_score_candidates_weak_shallow_candidate_capped_below_review_threshold():
+    raw = [{
+        'id': 'weak',
+        'strategy': [{'confidence': 'low'}] * 30,
+        'signals_match': ['s1'] * 20,
+    }]
+    scored = score_candidates(raw)
+    assert scored[0]['fitness'] < 700
 
 
 def test_dedup_empty_db():

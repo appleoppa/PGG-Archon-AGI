@@ -198,10 +198,11 @@ class TestScanSource:
             assert 'name' in annotations
             assert 'greeting' in annotations
 
-    def test_validation_empty_phase1(self, sample_simple_py: Path) -> None:
+    def test_validation_static_evidence_present(self, sample_simple_py: Path) -> None:
         genes = scan_source(str(sample_simple_py))
         gene = genes[0]
-        assert gene['validation'] == []
+        assert 'static_ast_parse_passed' in gene['validation']
+        assert 'standard_gene_template_constructed' in gene['validation']
 
     def test_private_classes_skipped(self, sample_private_py: Path) -> None:
         genes = scan_source(str(sample_private_py))
@@ -386,3 +387,13 @@ class TestCliSmoke:
         assert output['genedb']['all_pass'] is True
         for r in output['genedb']['results']:
             assert r['status'] == 'DRY_RUN'
+
+
+def test_scanner_emits_static_validation_evidence(sample_simple_py: Path) -> None:
+    genes = scan_source(str(sample_simple_py))
+    assert genes
+    validation = genes[0]['validation']
+    assert 'static_ast_parse_passed' in validation
+    assert 'standard_gene_template_constructed' in validation
+    assert any(v.startswith('source_hash_present:True') for v in validation)
+    assert any(v.startswith('scan_kind:') for v in validation)

@@ -261,9 +261,21 @@ def _extract_func_strategy(func_node: ast.FunctionDef) -> list[dict[str, Any]]:
     }]
 
 
-def _extract_validation() -> list[str]:
-    """Phase 1: return empty validation array."""
-    return []
+def _extract_validation(source_hash: str = "", kind: str = "symbol") -> list[str]:
+    """Return static-analysis validation evidence for scanner genes.
+
+    This is intentionally not runtime verification. It records deterministic
+    evidence that the source parsed and the standard gene template was built
+    from a concrete file/hash, so downstream scoring can distinguish structured
+    source-linked candidates from shallow symbol names.
+    """
+    validation = [
+        "static_ast_parse_passed",
+        "standard_gene_template_constructed",
+        f"source_hash_present:{bool(source_hash)}",
+        f"scan_kind:{kind}",
+    ]
+    return validation
 
 
 # ── Core scan functions ──────────────────────────────────────────────
@@ -307,7 +319,7 @@ def scan_source(path: str) -> list[dict[str, Any]]:
         preconditions = _extract_preconditions(node)
         strategy = _extract_strategy(node)
         constraints = _extract_constraints(node)
-        validation = _extract_validation()
+        validation = _extract_validation(_hash(source), kind="class")
 
         genes.append({
             'type': TYPE_PGG_GENE,
@@ -337,7 +349,7 @@ def scan_source(path: str) -> list[dict[str, Any]]:
         signals = _extract_signals(node.name, combined_doc)
         preconditions = _func_preconditions(node)
         strategy = _extract_func_strategy(node)
-        validation = _extract_validation()
+        validation = _extract_validation(_hash(source), kind="function")
 
         genes.append({
             'type': TYPE_PGG_GENE,

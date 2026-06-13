@@ -124,19 +124,32 @@ def scan_gene_db_gaps() -> dict[str, Any]:
             if domain.lower() in name.lower():
                 domain_counts[domain] += 1
 
-    # 璇玑50步覆盖
+    # 璇玑50步覆盖：区分 recorded/candidate/verified，避免把“已记录候选”误报为完全缺失。
     xuanji_coverage = []
+    xuanji_summary = {"verified_or_active": 0, "candidate_or_recorded": 0, "missing": 0}
     # 搜索 gene_name, gate_type, absorbed_knowledge
     for step_num, step_name in XUANJI_STEPS:
         query = f"%{step_name}%"
-        found = db.execute(
+        verified_found = db.execute(
             "SELECT COUNT(*) FROM evolution_genes WHERE "
             "(gene_name LIKE ? OR gate_type LIKE ? OR absorbed_knowledge LIKE ?) "
             "AND status IN ('verified', 'active')",
             (query, query, query)
         ).fetchone()[0]
-        if found == 0:
-            xuanji_coverage.append({"step": step_num, "name": step_name, "covered": False})
+        candidate_found = db.execute(
+            "SELECT COUNT(*) FROM evolution_genes WHERE "
+            "(gene_name LIKE ? OR gate_type LIKE ? OR absorbed_knowledge LIKE ?) "
+            "AND status='candidate'",
+            (query, query, query)
+        ).fetchone()[0]
+        if verified_found > 0:
+            xuanji_summary["verified_or_active"] += 1
+        elif candidate_found > 0:
+            xuanji_summary["candidate_or_recorded"] += 1
+            xuanji_coverage.append({"step": step_num, "name": step_name, "coverage": "candidate_recorded", "covered": False, "candidate_count": candidate_found})
+        else:
+            xuanji_summary["missing"] += 1
+            xuanji_coverage.append({"step": step_num, "name": step_name, "coverage": "missing", "covered": False})
 
     # 低覆盖率 domain（小于3条 verified）
     low_coverage_domains = [
@@ -156,8 +169,10 @@ def scan_gene_db_gaps() -> dict[str, Any]:
         "gate_distribution": dict(gate_dist),
         "domain_coverage": dict(domain_counts),
         "low_coverage_domains": low_coverage_domains,
-        "xuanji_uncovered_steps": len(xuanji_coverage),
-        "xuanji_uncovered_detail": xuanji_coverage[:10],  # 前10个未覆盖步
+        "xuanji_coverage_summary": xuanji_summary,
+        "xuanji_uncovered_steps": xuanji_summary["missing"],
+        "xuanji_candidate_or_recorded_steps": xuanji_summary["candidate_or_recorded"],
+        "xuanji_uncovered_detail": xuanji_coverage[:10],  # 前10个未 verified/active 的步
     }
 
 

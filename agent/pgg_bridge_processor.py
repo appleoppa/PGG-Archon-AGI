@@ -11,11 +11,13 @@
 - 不创建PR（标记need_human_review=True）
 """
 
+import fcntl
 import json
 import os
 import sqlite3
 import subprocess
 import time
+from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -23,6 +25,39 @@ from typing import Any
 DB_PATH = Path("/Users/appleoppa/.hermes/workspace/04_knowledge/开智/02-进化基因/apex_evolution_genes.sqlite3")
 ENV_PATH = Path("/Users/appleoppa/.hermes/.env")
 BRIDGE_DIR = Path(os.path.expanduser("~/.hermes/workspace/execution-bridge"))
+LOCK_PATH = Path("/Users/appleoppa/.hermes/workspace/04_knowledge/开智/02-进化基因/apex_evolution_genes.lock")
+
+
+@contextmanager
+def gene_db_write_lock(owner: str = "pgg_bridge_processor", timeout: int = 900):
+    """Exclusive cross-process lock for GeneDB promotion/rejection writes.
+
+    The lock prevents proof-review/batch promotion from racing with the launchd
+    self-evolution loop. It is file-based so independent Python processes share
+    it without requiring SQLite schema changes.
+    """
+    LOCK_PATH.parent.mkdir(parents=True, exist_ok=True)
+    start = time.time()
+    with LOCK_PATH.open("a+") as fh:
+        while True:
+            try:
+                fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                fh.seek(0)
+                fh.truncate()
+                fh.write(json.dumps({"owner": owner, "pid": os.getpid(), "acquired_at": datetime.now().isoformat()}, ensure_ascii=False))
+                fh.flush()
+                try:
+                    yield {"lock_path": str(LOCK_PATH), "owner": owner, "pid": os.getpid()}
+                finally:
+                    fh.seek(0)
+                    fh.truncate()
+                    fh.flush()
+                    fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
+                return
+            except BlockingIOError:
+                if time.time() - start > timeout:
+                    raise TimeoutError(f"GeneDB write lock timeout after {timeout}s: {LOCK_PATH}")
+                time.sleep(0.25)
 
 LLM_API_URL = "https://5yuantoken.org/v1/chat/completions"
 LLM_MODEL = "gpt-5.5-turbo"
@@ -263,6 +298,11 @@ def _reject_gene(gene_id: str, reason: str) -> dict[str, Any]:
 
 
 def process_promotion_batch(gene_ids: Any = None) -> dict[str, Any]:
+    with gene_db_write_lock("process_promotion_batch"):
+        return _process_promotion_batch_unlocked(gene_ids)
+
+
+def _process_promotion_batch_unlocked(gene_ids: Any = None) -> dict[str, Any]:
     """批量审核候选candidate基因。
     
     通道策略：

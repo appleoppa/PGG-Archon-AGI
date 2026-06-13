@@ -358,6 +358,7 @@ def main() -> int:
     
     # Extract genes from learning
     learned_genes = learner.extract_genes(items)
+    learning_write = {"attempted": len(learned_genes), "written": 0, "skipped_existing": 0, "errors": []}
     # Write to GeneDB
     if learned_genes:
         try:
@@ -365,6 +366,7 @@ def main() -> int:
             now = datetime.now(timezone.utc).isoformat()
             w = 0
             for g in learned_genes:
+                before = con.total_changes
                 con.execute(
                     """INSERT OR IGNORE INTO evolution_genes
                        (gene_id, gate_type, status, gene_name,
@@ -374,12 +376,21 @@ def main() -> int:
                     (g["gene_id"], g["gate_type"], g["status"], g.get("name", g.get("category", "external")),
                      g["fitness"], g.get("content", ""), g["created_at"])
                 )
-                if con.total_changes > 0: w += 1
+                if con.total_changes > before:
+                    w += 1
+                else:
+                    learning_write["skipped_existing"] += 1
             con.commit()
             con.close()
+            learning_write["written"] = w
             print(f"  写入 GeneDB: {w} 个新基因")
+            if w == 0:
+                print(f"  [INFO] 外部学习未新增: skipped_existing={learning_write['skipped_existing']}, attempted={learning_write['attempted']}")
         except Exception as e:
+            learning_write["errors"].append(str(e)[:240])
             print(f"  [WARN] GeneDB write: {e}")
+    else:
+        print("  [INFO] 外部学习未新增: no_learning_items_or_no_gene_candidates")
     
     # Phase 2: 基因采集
     print("\n[2/5] 基因采集管线（intake + fusion + reflexion）...")
@@ -416,6 +427,11 @@ def main() -> int:
     # Phase 5: 报告
     print("\n[5/5] 报告生成 + Manifest 沉淀...")
     report = generate_report(items, gene_result, xuanji_result, bench_result)
+    report["learning"]["write_attempted"] = learning_write.get("attempted", 0)
+    report["learning"]["write_inserted"] = learning_write.get("written", 0)
+    report["learning"]["write_skipped_existing"] = learning_write.get("skipped_existing", 0)
+    report["learning"]["write_errors"] = learning_write.get("errors", [])
+    _manifest_append(report["manifest_key"], report)
     print(f"  已写入 manifest: {report.get('manifest_key', '?')}")
     
     # Summary

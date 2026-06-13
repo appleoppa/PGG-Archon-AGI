@@ -336,8 +336,10 @@ def main(argv: Optional[List[str]] = None) -> int:
     summary = safe_summary(status)
     ok = summary.get("overall", {}).get("score_percent") == 100.0 and summary.get("overall", {}).get("failed_or_watch") == []
     if args.json or args.safe_json:
-        # Keep CLI JSON redacted and not derived from config/provider secret values.
-        print("{\"schema\":\"PGGMemorySystemStatus/v1\",\"status\":\"PASS_READ_ONLY_SUMMARY\",\"score_percent\":100.0,\"failed_or_watch\":[]}" if ok else "{\"schema\":\"PGGMemorySystemStatus/v1\",\"status\":\"WATCH_READ_ONLY_SUMMARY\"}")
+        # Print a complete redacted summary, not a PASS-looking placeholder.
+        payload = dict(summary)
+        payload["status"] = "PASS_READ_ONLY_SUMMARY" if ok else "WATCH_READ_ONLY_SUMMARY"
+        print(json.dumps(payload, ensure_ascii=False, sort_keys=True))
     else:
         _print_text(status)
     return 0
