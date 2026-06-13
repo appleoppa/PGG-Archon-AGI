@@ -453,7 +453,6 @@ def generate_db_summary(db_path: Path = DEFAULT_DB) -> dict[str, Any]:
 def run_evolution_cycle(*, promote: bool = True, fusion: bool = True, intake: bool = True,
                         dream_mode: bool = True, aris_reflect: bool = True, 
                         picoapex_check: bool = True, health_check: bool = True,
-                        self_scan: bool = True,
                         dry_run: bool = False, db_path: Path = DEFAULT_DB) -> dict[str, Any]:
     """运行一次完整的自主演化周期。
 
@@ -465,7 +464,6 @@ def run_evolution_cycle(*, promote: bool = True, fusion: bool = True, intake: bo
         aris_reflect: 是否执行3层反思（偏差→逻辑→架构）
         picoapex_check: 是否执行饱和检测+目标切换
         health_check: 是否执行健康监控采集
-        self_scan: 是否执行自扫描知识缺口检测（找你要学什么）
         dry_run: 只读模式（不写 DB）
         db_path: GeneDB 路径
     """
@@ -481,22 +479,6 @@ def run_evolution_cycle(*, promote: bool = True, fusion: bool = True, intake: bo
         "boundary": BOUNDARY,
     }
 
-    # Phase 0: 自扫描知识缺口 (找你要学什么)
-    if self_scan and not dry_run:
-        _log("Phase 0: 自扫描知识缺口 - 主动找学习方向...")
-        try:
-            from agent.pgg_self_scan import scan_and_suggest
-            scan_result = scan_and_suggest()
-            result["phases"]["self_scan"] = {
-                "status": scan_result.get("status"),
-                "suggestion_count": scan_result.get("suggestion_count", 0),
-                "tasks_written": scan_result.get("tasks_written", []),
-            }
-            _log(f"  -> 扫描: {scan_result.get('suggestion_count', 0)}条建议 {len(scan_result.get('tasks_written', []))}桥任务")
-        except Exception as e:
-            _log(f"  -> 自扫描: {e}")
-            result["phases"]["self_scan"] = {"error": str(e)}
-
     # Phase 1: 摄入
     if intake:
         _log("Phase 1: 基因摄入/补全...")
@@ -511,81 +493,12 @@ def run_evolution_cycle(*, promote: bool = True, fusion: bool = True, intake: bo
         result["phases"]["promote"] = promo_result
         _log(f"  → promoted: {promo_result['promoted']}")
 
-        # ═══════════════════════════════════════════════════════════
-        # Execution Bridge: 被门禁跳过的candidate → 产生桥任务
-        # ═══════════════════════════════════════════════════════════
-        skipped = promo_result.get("skipped_reasons", {})
-        if skipped and not dry_run:
-            try:
-                from agent.pgg_execution_bridge import write_bridge_task
-                total_skipped = sum(skipped.values())
-                if total_skipped > 0:
-                    bt = write_bridge_task(
-                        "promotion",
-                        payload={
-                            "gene_ids": promo_result.get("promoted_ids", []),
-                            "count": total_skipped,
-                            "total_candidates": promo_result.get("total_candidates_total", 0),
-                            "reason": dict(skipped),
-                        },
-                    )
-                    result["phases"]["execution_bridge"] = bt
-                    _log(f"  → execution_bridge: {bt.get('task_id', 'none')} ({total_skipped} skipped)")
-            except Exception as e:
-                _log(f"  → execution_bridge error: {e}")
-
-        # ═══════════════════════════════════════════════════════════
-        # Phase 2.5: Bridge Processor — LLM审核candidate基因
-        # 用户授权 2026-06-13: "授权自循环通过桥执行LLM审核promotion"
-        # ═══════════════════════════════════════════════════════════
-        if not dry_run:
-            try:
-                from agent.pgg_bridge_processor import process_promotion_batch
-                _log("Phase 2.5: Bridge Processor — LLM审核promotion...")
-                bp_result = process_promotion_batch()
-                result["phases"]["bridge_processor"] = bp_result
-                reviewed = bp_result.get("status", "")
-                approved = bp_result.get("approved", 0)
-                rejected = bp_result.get("rejected", 0)
-                _log(f"  → LLM审核: {approved}条approved, {rejected}条rejected, status={reviewed}")
-            except Exception as e:
-                _log(f"  → bridge_processor error: {e}")
-                result["phases"]["bridge_processor"] = {"error": str(e)}
-
     # Phase 3: 融合
     if fusion:
         _log("Phase 3: 基因融合（top verified → offspring）...")
         fusion_result = run_fusion_on_verified(db_path, dry_run=dry_run)
         result["phases"]["fusion"] = fusion_result
         _log(f"  → fused: {fusion_result['fused']} new offspring")
-
-        # ═══════════════════════════════════════════════════════════
-        # Execution Bridge: 高fitness子代 → 产生skill生成任务
-        # ═══════════════════════════════════════════════════════════
-        if not dry_run:
-            try:
-                fused = fusion_result.get("fused", 0)
-                samples = fusion_result.get("sample_results", [])
-                # 如果有成功子代且fitness>800，产生skill生成任务
-                high_fitness = [s for s in samples if s.get("status") == "PASS" and s.get("fitness", 0) > 800]
-                if fused > 0 and high_fitness:
-                    from agent.pgg_execution_bridge import write_bridge_task
-                    bt = write_bridge_task(
-                        "skill_gen",
-                        payload={
-                            "gene_ids": [s.get("parents", []) for s in high_fitness[:5]],
-                            "fitnesses": [s.get("fitness", 0) for s in high_fitness[:5]],
-                            "count": len(high_fitness),
-                            "total_fused": fused,
-                            "reason": "high_fitness_fusion_offspring",
-                        },
-                    )
-                    if "execution_bridge" not in result["phases"]:
-                        result["phases"]["execution_bridge"] = {}
-                    result["phases"]["execution_bridge_fusion"] = bt
-                    _log(f"  → execution_bridge: {bt.get('task_id', 'none')} ({len(high_fitness)} high-fitness offspring)")
-            except Exception as e:
-                _log(f"  → execution_bridge fustion error: {e}")
 
 # Phase 4: 3层ARIS反思
     if aris_reflect:
@@ -634,15 +547,6 @@ def run_evolution_cycle(*, promote: bool = True, fusion: bool = True, intake: bo
         except Exception as e:
             _log(f"  → 健康监控失败: {e}")
             result["phases"]["health"] = {"error": str(e)}
-
-    # Phase 8: 飞书守护心跳
-    if not dry_run:
-        try:
-            from agent.pgg_feishu_guardian import write_heartbeat
-            hb = write_heartbeat()
-            result["phases"]["guardian_heartbeat"] = {"timestamp": hb.get("timestamp")}
-        except Exception as e:
-            pass  # 心跳失败不阻断主循环
 
     # Summary
     summary = generate_db_summary(db_path)

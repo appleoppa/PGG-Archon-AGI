@@ -156,6 +156,21 @@ def run_probes() -> list[ProbeResult]:
             f"rc={res['rc']} t={time.time()-t:.0f}s",
             {"output": res["output"][:2000]}))
 
+    # 1b. Hermes CLI / venv compatibility probe + low-risk self-heal
+    t = time.time()
+    try:
+        from agent.pgg_self_healing_pipeline import ensure_hermes_cli_compatibility
+        cli_health = ensure_hermes_cli_compatibility()
+        cli_ok = cli_health.get("status") in ("PASS", "APPLIED")
+        local_rc = (cli_health.get("version_checks") or {}).get("local_launcher", {}).get("rc")
+        old_rc = (cli_health.get("version_checks") or {}).get("old_venv_path", {}).get("rc")
+        results.append(ProbeResult("hermes_cli_venv_compat",
+            "PASS" if cli_ok else "WATCH",
+            f"status={cli_health.get('status')} local_rc={local_rc} old_rc={old_rc} t={time.time()-t:.0f}s",
+            cli_health))
+    except Exception as e:
+        results.append(ProbeResult("hermes_cli_venv_compat", "WATCH", f"probe_error={type(e).__name__}: {e}"))
+
     # 2. hermes-goal
     goal = HERMES_HOME / "bin" / "hermes-goal"
     if goal.exists():
@@ -163,7 +178,8 @@ def run_probes() -> list[ProbeResult]:
         res = _run([str(goal)], timeout=120)
         if res["rc"] == 0:
             try:
-                data = json.loads(res["output"])
+                decoder = json.JSONDecoder()
+                data, _ = decoder.raw_decode(res["output"].lstrip())
                 overall = data.get("overall_status", "?")
                 watch = data.get("watch_count", -1)
                 blocked = data.get("blocked_count", -1)
@@ -171,8 +187,8 @@ def run_probes() -> list[ProbeResult]:
                     "PASS" if overall == "PASS" else "WATCH",
                     f"overall={overall} W={watch} B={blocked} t={time.time()-t:.0f}s",
                     {"data": data}))
-            except Exception:
-                results.append(ProbeResult("hermes_goal", "PASS", res["output"][:200]))
+            except Exception as e:
+                results.append(ProbeResult("hermes_goal", "WATCH", f"parse_error={type(e).__name__}: {e}; raw={res['output'][:200]}"))
         else:
             results.append(ProbeResult("hermes_goal", "WATCH", f"rc={res['rc']}"))
 
