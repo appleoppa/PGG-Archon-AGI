@@ -8,6 +8,8 @@ Boundary:
 - does not promote or verify genes;
 - all external capability numbers/levels are preserved only as UNVERIFIED_CLAIM;
 - write mode inserts candidate genes only and leaves promotion to separate gates.
+
+Engine: Rust native PyO3 (hermes_pgg_actpath_intake) with pure Python fallback.
 """
 
 from __future__ import annotations
@@ -20,6 +22,23 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable, Mapping
+
+# ── Rust native engine ───────────────────────────────────────────────
+
+try:
+    from hermes_pgg_actpath_intake import (  # type: ignore[import-untyped]
+        native_build_candidates as _rust_build_candidates,
+        native_extract_claims as _rust_extract_claims,
+        native_stable_gene_id as _rust_stable_gene_id,
+        native_sha256 as _rust_sha256,
+        native_now as _rust_now,
+        native_version as _rust_version,
+    )
+    _NATIVE = True
+    _NATIVE_VERSION = _rust_version()
+except ImportError:
+    _NATIVE = False
+    _NATIVE_VERSION = None
 
 DEFAULT_GENE_DB_PATH = Path(
     "/Users/appleoppa/.hermes/workspace/开智/02-进化基因/apex_evolution_genes.sqlite3"
@@ -113,7 +132,6 @@ COARSE_TEMPLATES: tuple[CandidateTemplate, ...] = (
         "Agent_Evolve;Memory5D;Ralph_Hold",
     ),
 )
-
 
 ROUTE_MATRIX_TEMPLATES: tuple[CandidateTemplate, ...] = COARSE_TEMPLATES + (
     CandidateTemplate(
@@ -228,11 +246,13 @@ ROUTE_MATRIX_TEMPLATES: tuple[CandidateTemplate, ...] = COARSE_TEMPLATES + (
     ),
 )
 
-
 TEMPLATE_MODES: dict[str, tuple[CandidateTemplate, ...]] = {
     "coarse": COARSE_TEMPLATES,
     "route_matrix": ROUTE_MATRIX_TEMPLATES,
 }
+
+
+# ── Helpers ───────────────────────────────────────────────────────────
 
 
 def _templates_for_mode(mode: str) -> tuple[CandidateTemplate, ...]:
@@ -243,15 +263,28 @@ def _templates_for_mode(mode: str) -> tuple[CandidateTemplate, ...]:
 
 
 def _now() -> str:
+    if _NATIVE:
+        return _rust_now()
     return time.strftime("%Y-%m-%dT%H:%M:%S%z")
 
 
 def _sha256_text(text: str) -> str:
+    if _NATIVE:
+        return _rust_sha256(text)
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
 def _sha256_obj(value: Mapping[str, Any]) -> str:
-    return hashlib.sha256(json.dumps(value, ensure_ascii=False, sort_keys=True).encode("utf-8")).hexdigest()
+    return hashlib.sha256(
+        json.dumps(value, ensure_ascii=False, sort_keys=True).encode("utf-8")
+    ).hexdigest()
+
+
+def _stable_gene_id(source_hash: str, suffix: str) -> str:
+    if _NATIVE:
+        return _rust_stable_gene_id(source_hash, suffix)
+    digest = hashlib.sha256(f"{source_hash}:{suffix}".encode("utf-8")).hexdigest()[:16].upper()
+    return f"GENE-ACTPATH-{digest}"
 
 
 def _read_source(source_file: str | Path) -> tuple[Path, str]:
@@ -261,7 +294,37 @@ def _read_source(source_file: str | Path) -> tuple[Path, str]:
     return path, path.read_text(encoding="utf-8")
 
 
+def _patterns_to_json() -> str:
+    return json.dumps(
+        [{"pattern": p, "label": l} for p, l in UNVERIFIED_PATTERNS],
+        ensure_ascii=False,
+    )
+
+
+def _templates_to_json(templates: tuple[CandidateTemplate, ...]) -> str:
+    return json.dumps(
+        [
+            {
+                "gene_id_suffix": t.gene_id_suffix,
+                "defect_no": t.defect_no,
+                "defect_name": t.defect_name,
+                "gene_name": t.gene_name,
+                "absorbed_knowledge": t.absorbed_knowledge,
+                "repair_mechanism": t.repair_mechanism,
+                "reusable_rule": t.reusable_rule,
+                "severity_rank": t.severity_rank,
+                "apex_variables": t.apex_variables,
+            }
+            for t in templates
+        ],
+        ensure_ascii=False,
+    )
+
+
 def extract_unverified_claims(text: str) -> list[dict[str, str]]:
+    if _NATIVE:
+        raw = _rust_extract_claims(text, _patterns_to_json())
+        return json.loads(raw) if raw != "[]" else []
     claims: list[dict[str, str]] = []
     seen: set[tuple[str, str]] = set()
     for pattern, label in UNVERIFIED_PATTERNS:
@@ -294,15 +357,55 @@ def _ensure_cycle(conn: sqlite3.Connection) -> None:
     )
 
 
-def _stable_gene_id(source_hash: str, suffix: str) -> str:
-    digest = hashlib.sha256(f"{source_hash}:{suffix}".encode("utf-8")).hexdigest()[:16].upper()
-    return f"GENE-ACTPATH-{digest}"
-
-
 def _build_candidate_records(source_path: Path, text: str, *, mode: str = "coarse") -> list[dict[str, Any]]:
+    """Build candidate genes — uses Rust native engine when available."""
+    templates = _templates_for_mode(mode)
+
+    if _NATIVE:
+        raw = _rust_build_candidates(text, str(source_path), _templates_to_json(templates), _patterns_to_json())
+        summaries: list[dict[str, Any]] = json.loads(raw) if raw != "[]" else []
+        # Hydrate full records from summaries + template data
+        source_hash = _sha256_text(text)
+        claims = extract_unverified_claims(text) if not summaries else []
+        source_ref = {
+            "source_file": str(source_path),
+            "source_sha256": source_hash,
+            "source_kind": "uploaded_activation_path_note",
+            "unverified_claims": claims,
+            "boundary": BOUNDARY,
+        }
+        now = _now()
+        records: list[dict[str, Any]] = []
+        for s, t in zip(summaries, templates):
+            record: dict[str, Any] = {
+                "gene_id": s["gene_id"],
+                "cycle_id": CYCLE_ID,
+                "created_at": now,
+                "defect_no": t.defect_no,
+                "defect_name": t.defect_name,
+                "gene_name": t.gene_name,
+                "absorbed_knowledge": t.absorbed_knowledge,
+                "source_refs_json": json.dumps(
+                    [{**source_ref, "candidate_template": t.gene_id_suffix}],
+                    ensure_ascii=False,
+                ),
+                "repair_mechanism": t.repair_mechanism,
+                "severity_rank": t.severity_rank,
+                "apex_variables": t.apex_variables,
+                "gate_type": GATE_TYPE,
+                "reusable_rule": t.reusable_rule,
+                "status": "candidate",
+                "evidence_grade": "B+: deterministic extraction from uploaded path; requires review before promotion",
+                "verification_status": "pending_review_activation_path_intake",
+                "boundary": BOUNDARY,
+            }
+            record["gene_hash"] = _sha256_obj(record)
+            records.append(record)
+        return records
+
+    # Pure Python fallback
     source_hash = _sha256_text(text)
     claims = extract_unverified_claims(text)
-    templates = _templates_for_mode(mode)
     source_ref = {
         "source_file": str(source_path),
         "source_sha256": source_hash,
@@ -320,7 +423,10 @@ def _build_candidate_records(source_path: Path, text: str, *, mode: str = "coars
             "defect_name": template.defect_name,
             "gene_name": template.gene_name,
             "absorbed_knowledge": template.absorbed_knowledge,
-            "source_refs_json": json.dumps([{**source_ref, "candidate_template": template.gene_id_suffix}], ensure_ascii=False),
+            "source_refs_json": json.dumps(
+                [{**source_ref, "candidate_template": template.gene_id_suffix}],
+                ensure_ascii=False,
+            ),
             "repair_mechanism": template.repair_mechanism,
             "severity_rank": template.severity_rank,
             "apex_variables": template.apex_variables,
@@ -380,6 +486,8 @@ def build_activation_path_gene_intake(
 
     Dry-run is the default. Write mode inserts ``candidate`` rows only; it never
     marks rows verified/promoted.
+
+    Uses Rust native engine when available (hermes_pgg_actpath_intake).
     """
     base = {
         "schema": "PGGActivationPathGeneIntake/v1",
@@ -393,6 +501,7 @@ def build_activation_path_gene_intake(
         "promotion_performed": False,
         "mode": mode,
         "available_modes": sorted(TEMPLATE_MODES),
+        "engine": _NATIVE_VERSION if _NATIVE else "pure_python",
     }
     if not enabled:
         return {**base, "status": "DISABLED", "candidate_count": 0, "records_written": 0, "candidates": [], "audit_path": None}
