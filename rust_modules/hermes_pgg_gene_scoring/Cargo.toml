@@ -1,0 +1,14 @@
+[package]
+name = "hermes-pgg-gene-scoring"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "hermes_pgg_gene_scoring"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+pyo3 = { version = "0.24", features = ["abi3-py311"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+regex = "1"
