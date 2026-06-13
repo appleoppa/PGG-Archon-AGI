@@ -88,6 +88,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "hermes_pgg_mini_benchmark"
+version = "0.1.0"
+dependencies = [
+ "pyo3",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "indoc"
 version = "2.0.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -130,7 +139,23 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9f7c3e4beb33f85d45ae3e3a1792185706c8e16d043238c593331cc7cd313b50"
 
 [[package]]
+name = "pgg-python-module-runner"
+version = "0.1.0"
+
+[[package]]
+name = "pgg-skillflow-p9-watchdog-runner"
+version = "0.1.0"
+
+[[package]]
+name = "pgg_daily_learning_runner"
+version = "0.1.0"
+
+[[package]]
 name = "pgg_gene_intake_runner"
+version = "0.1.0"
+
+[[package]]
+name = "pgg_self_evolution_runner"
 version = "0.1.0"
 
 [[package]]

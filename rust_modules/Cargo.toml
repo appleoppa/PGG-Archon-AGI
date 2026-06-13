@@ -2,5 +2,11 @@
 resolver = "2"
 members = [
     "hermes_pgg_cmmi_industrial_gate",
+    "hermes_pgg_evm_runtime_gate",
+    "hermes_pgg_mini_benchmark",
+    "pgg_daily_learning_runner",
     "pgg_gene_intake_runner",
+    "pgg_python_module_runner",
+    "pgg_self_evolution_runner",
+    "pgg_skillflow_p9_watchdog_runner",
 ]
