@@ -75,6 +75,7 @@ class DailyReport:
     session_id: str = ""
     probes: list[ProbeResult] = field(default_factory=list)
     auto_fixes: list[AutoFixCandidate] = field(default_factory=list)
+    pr_results: list[dict[str, Any]] = field(default_factory=list)
     case_reverifications: list[dict[str, Any]] = field(default_factory=list)
     improvement_plan: list[ImprovementPlan] = field(default_factory=list)
     llm_budget_used: int = 0
@@ -90,6 +91,7 @@ class DailyReport:
             "session_id": self.session_id,
             "probes": [asdict(p) for p in self.probes],
             "auto_fixes": [asdict(f) for f in self.auto_fixes],
+            "pr_results": self.pr_results,
             "case_reverifications": self.case_reverifications,
             "improvement_plan": [asdict(p) for p in self.improvement_plan],
             "llm_budget_used": self.llm_budget_used,
@@ -140,6 +142,33 @@ def _now_str() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _json_gate_probe(name: str, res: dict[str, Any], elapsed: float) -> ProbeResult:
+    """Render JSON gate output even when the gate exits non-zero for WATCH.
+
+    Several PGG gates deliberately return rc=2 for WATCH/PARTIAL. Treating that
+    as only ``rc=2`` hides the real status/score/reasons in autonomy reports.
+    """
+    raw = (res.get("output") or "").strip()
+    try:
+        data = json.loads(raw)
+    except Exception:
+        return ProbeResult(
+            name,
+            "PASS" if res.get("rc") == 0 else "WATCH",
+            raw[:300] if res.get("rc") == 0 else f"rc={res.get('rc')} t={elapsed:.0f}s",
+            {"output": raw[:2000]},
+        )
+    gate_status = str(data.get("status") or data.get("overall_status") or "UNKNOWN")
+    score = data.get("score")
+    summary = data.get("summary") or gate_status
+    if score is not None:
+        summary = f"{summary} score={score}"
+    if res.get("rc") not in (0, None):
+        summary = f"{summary} rc={res.get('rc')}"
+    status = "PASS" if gate_status.startswith("PASS") else "WATCH"
+    return ProbeResult(name, status, f"{summary} t={elapsed:.0f}s"[:500], {"data": data})
+
+
 # ── Phase 1: Probes ──────────────────────────────────────────────────────
 
 def run_probes() -> list[ProbeResult]:
@@ -178,17 +207,13 @@ def run_probes() -> list[ProbeResult]:
 
     # 3. L2 readiness gate
     t = time.time()
-    res = _run([py, "-m", "agent.pgg_l2_readiness_gate"], cwd=REPO, timeout=90)
-    results.append(ProbeResult("l2_gate",
-        "PASS" if res["rc"] == 0 else "WATCH",
-        res["output"].strip()[:300] if res["rc"] == 0 else f"rc={res['rc']} t={time.time()-t:.0f}s"))
+    res = _run([py, "-m", "agent.pgg_l2_readiness_gate", "--json"], cwd=REPO, timeout=90)
+    results.append(_json_gate_probe("l2_gate", res, time.time() - t))
 
     # 4. AGI gap gate
     t = time.time()
-    res = _run([py, "-m", "agent.pgg_agi_gap_closure_gate"], cwd=REPO, timeout=90)
-    results.append(ProbeResult("agi_gap",
-        "PASS" if res["rc"] == 0 else "WATCH",
-        res["output"].strip()[:300] if res["rc"] == 0 else f"rc={res['rc']} t={time.time()-t:.0f}s"))
+    res = _run([py, "-m", "agent.pgg_agi_gap_closure_gate", "--json"], cwd=REPO, timeout=90)
+    results.append(_json_gate_probe("agi_gap", res, time.time() - t))
 
     # 5. Gene intake
     t = time.time()
@@ -474,19 +499,56 @@ def open_source_learning(max_repos: int = 3) -> list[ProbeResult]:
     return results
 
 
+def _gh_auth_ready(repo_dir: Path) -> dict[str, Any]:
+    """Read-only GitHub auth preflight for draft PR creation."""
+    gh = shutil.which("gh")
+    if not gh:
+        return {"ready": False, "reason": "gh CLI not installed"}
+    res = subprocess.run([gh, "auth", "status", "-h", "github.com"], cwd=repo_dir,
+                         capture_output=True, text=True, timeout=15)
+    out = ((res.stdout or "") + (res.stderr or "")).strip()
+    if res.returncode != 0:
+        return {"ready": False, "reason": out[:500] or f"gh auth status rc={res.returncode}"}
+    return {"ready": True, "reason": out[:500]}
+
+
+def _git_tracked_change_count(repo_dir: Path) -> int:
+    res = subprocess.run(["git", "status", "--porcelain"], cwd=repo_dir,
+                         capture_output=True, text=True, timeout=10)
+    if res.returncode != 0:
+        return -1
+    return len([line for line in res.stdout.splitlines() if line.strip()])
+
+
 def auto_create_pr_from_fixes(fixes, imp_plan, repo_dir):
-    """Auto-create draft PR from applied fixes (no auto-merge)."""
-    import subprocess, datetime
+    """Auto-create draft PR from real applied fixes (no auto-merge).
+
+    Guardrails:
+    - py_compile is verification, not a code modification; do not PR solely for it.
+    - gh auth is checked before branch/commit/push so invalid tokens do not produce blank [ERROR].
+    - errors include stderr/stdout evidence instead of empty strings.
+    """
+    import datetime
+    repo_dir = Path(repo_dir)
     fix_desc = []
     for f in fixes:
-        if isinstance(f, dict): continue
-        if hasattr(f, 'result') and f.result.get("applied"):
+        if isinstance(f, dict):
+            continue
+        if hasattr(f, 'result') and f.result.get("applied") and getattr(f, "fix_type", "") != "py_compile":
             fix_desc.append(f"{f.fix_type}: {f.target_path}")
     for p in imp_plan:
         if hasattr(p, 'applied') and p.applied:
             fix_desc.append(f"{p.source}: {p.issue[:80]}")
     if not fix_desc:
-        return [{"status": "SKIP", "reason": "no fixes to PR"}]
+        return [{"status": "SKIP", "reason": "no code-modifying fixes to PR"}]
+
+    dirty_count = _git_tracked_change_count(repo_dir)
+    if dirty_count <= 0:
+        return [{"status": "SKIP", "reason": "no git changes after fixes"}]
+
+    auth = _gh_auth_ready(repo_dir)
+    if not auth.get("ready"):
+        return [{"status": "BLOCKED_GH_AUTH", "reason": auth.get("reason", "gh auth unavailable")[:500]}]
 
     branch = f"auto-fix-{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}"
     title = f"auto: 日常自动修复 ({len(fix_desc)}项)"
@@ -494,28 +556,32 @@ def auto_create_pr_from_fixes(fixes, imp_plan, repo_dir):
     body_items.append("")
     body_items.append("_由 PGG Autonomy Loop 自动创建，不自动 merge_")
     body = "\n".join(body_items)
-
+    cur = subprocess.run(["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=repo_dir,
+                         capture_output=True, text=True, timeout=10).stdout.strip()
     try:
-        cur = subprocess.run(["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=repo_dir,
-                            capture_output=True, text=True, timeout=10).stdout.strip()
         subprocess.run(["git", "checkout", "-b", branch], cwd=repo_dir,
-                      capture_output=True, text=True, timeout=15, check=True)
+                       capture_output=True, text=True, timeout=15, check=True)
         subprocess.run(["git", "add", "-A"], cwd=repo_dir, capture_output=True, timeout=15, check=True)
         subprocess.run(["git", "commit", "-m", title, "-m", body], cwd=repo_dir,
-                      capture_output=True, text=True, timeout=15, check=True)
+                       capture_output=True, text=True, timeout=30, check=True)
         subprocess.run(["git", "push", "private", branch, "--no-verify"], cwd=repo_dir,
-                      capture_output=True, text=True, timeout=60, check=True)
+                       capture_output=True, text=True, timeout=60, check=True)
         pr = subprocess.run(["gh", "pr", "create", "--repo", "appleoppa/PGG-Archon-AGI",
-                           "--base", cur, "--head", branch,
-                           "--title", title, "--body", body, "--draft"],
-                          cwd=repo_dir, capture_output=True, text=True, timeout=30)
-        subprocess.run(["git", "checkout", cur], cwd=repo_dir, capture_output=True, timeout=10)
-
+                            "--base", cur, "--head", branch,
+                            "--title", title, "--body", body, "--draft"],
+                           cwd=repo_dir, capture_output=True, text=True, timeout=30)
         if pr.returncode == 0:
             return [{"status": "PASS", "url": pr.stdout.strip(), "branch": branch}]
-        return [{"status": "WATCH", "reason": pr.stderr[:200], "branch": branch}]
+        return [{"status": "WATCH", "reason": ((pr.stderr or "") + (pr.stdout or ""))[:500], "branch": branch}]
+    except subprocess.CalledProcessError as e:
+        detail = ((e.stderr or b"").decode(errors="ignore") if isinstance(e.stderr, bytes) else (e.stderr or ""))
+        out = ((e.stdout or b"").decode(errors="ignore") if isinstance(e.stdout, bytes) else (e.stdout or ""))
+        return [{"status": "ERROR", "reason": (detail or out or str(e))[:500], "branch": branch}]
     except Exception as e:
-        return [{"status": "ERROR", "reason": str(e)[:200]}]
+        return [{"status": "ERROR", "reason": f"{type(e).__name__}: {str(e)[:450]}", "branch": branch}]
+    finally:
+        if cur:
+            subprocess.run(["git", "checkout", cur], cwd=repo_dir, capture_output=True, timeout=10)
 
 
 # ── Main Loop ─────────────────────────────────────────────────────────────
@@ -564,7 +630,8 @@ def run(dry_run: bool = False, session_id: str = "default") -> DailyReport:
     print("\n[Phase 4b/5] 全自动 PR 创建（不自动 merge）...")
     pr_results = auto_create_pr_from_fixes(fixes, imp_plan, REPO)
     for r in pr_results:
-        print(f"  [{r['status']}] {r.get('url','')}")
+        detail = r.get('url') or r.get('reason') or r.get('branch') or ''
+        print(f"  [{r['status']}] {detail}")
 
     llm_budget_used = len(probes) * 20000  # rough estimate, zero-L probes
 
@@ -572,6 +639,7 @@ def run(dry_run: bool = False, session_id: str = "default") -> DailyReport:
     report = DailyReport(
         generated_at=_now_str(), session_id=session_id,
         probes=probes, auto_fixes=fixes,
+        pr_results=pr_results,
         case_reverifications=cases, improvement_plan=imp_plan,
         llm_budget_used=llm_budget_used,
         llm_budget_remaining=max(0, LLM_DAILY_BUDGET_TOKENS - llm_budget_used),
@@ -599,6 +667,7 @@ def run(dry_run: bool = False, session_id: str = "default") -> DailyReport:
         "probes_pass": sum(1 for p in probes if p.status in ("PASS", "SKIP")),
         "probes_watch": sum(1 for p in probes if p.status in ("WATCH", "BLOCKED")),
         "auto_fixes_applied": sum(1 for f in fixes if f.result.get("applied")),
+        "pr_results": pr_results,
         "case_pass": sum(1 for c in cases if c.get("status") == "PASS"),
         "case_watch": sum(1 for c in cases if c.get("status") == "WATCH"),
         "improvement_plan_count": len(imp_plan),
@@ -615,7 +684,32 @@ def main():
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--session-id", default="default")
     parser.add_argument("--no-report", action="store_true")
+    parser.add_argument("--status", action="store_true", help="print latest autonomy report metadata without running the loop")
     args = parser.parse_args()
+
+    if args.status:
+        latest = WORKSPACE / "latest.json"
+        target = latest.resolve() if latest.exists() else None
+        payload = {
+            "schema": "PGGAutonomyDefaultStatus/v1",
+            "status": "PASS_LATEST_PRESENT" if target and target.exists() else "WATCH_NO_LATEST_REPORT",
+            "latest": str(target) if target else None,
+        }
+        if target and target.exists():
+            try:
+                data = json.loads(target.read_text(encoding="utf-8"))
+                payload.update({
+                    "generated_at": data.get("generated_at"),
+                    "summary": data.get("summary"),
+                    "probe_count": len(data.get("probes") or []),
+                    "case_count": len(data.get("case_reverifications") or []),
+                    "boundary": data.get("boundary"),
+                })
+            except Exception as e:
+                payload["status"] = "WATCH_LATEST_PARSE_ERROR"
+                payload["error"] = f"{type(e).__name__}: {str(e)[:200]}"
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+        return 0
 
     report = run(dry_run=args.dry_run, session_id=args.session_id)
     if not args.no_report:
