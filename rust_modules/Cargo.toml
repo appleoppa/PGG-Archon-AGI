@@ -2,6 +2,7 @@
 resolver = "2"
 members = [
     "hermes_pgg_actpath_intake",
+    "hermes_pgg_autonomy_core",
     "hermes_pgg_bridge_review",
     "hermes_pgg_cmmi_industrial_gate",
     "hermes_pgg_evm_runtime_gate",

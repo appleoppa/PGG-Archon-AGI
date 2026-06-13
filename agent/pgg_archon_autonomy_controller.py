@@ -25,7 +25,25 @@ import sys
 import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping, Sequence
+
+# ── Rust native bridge ──────────────────────────────────────────
+_NATIVE = False
+try:
+    import hermes_pgg_autonomy_core as _rust_ac
+    _NATIVE = True
+except ImportError:
+    _rust_ac = None
+
+def _rust_bridge(func_name: str, *args) -> Any:
+    if not _NATIVE:
+        raise RuntimeError(f"Rust native not available for {func_name}")
+    fn = getattr(_rust_ac, func_name, None)
+    if fn is None:
+        raise RuntimeError(f"Missing Rust function: {func_name}")
+    raw = fn(*args)
+    return json.loads(raw) if raw and raw[0] in ('{', '[') else raw
+# ────────────────────────────────────────────────────────────────
 
 HOME = Path.home()
 HERMES_HOME = HOME / ".hermes"
@@ -123,6 +141,9 @@ def _read_json(path: Path) -> Any:
 
 def classify_dirty_line(line: str) -> DirtyFileClassification:
     """Classify a `git status --short` line without mutating the repo."""
+    if _NATIVE:
+        raw_str = _rust_bridge("native_classify_dirty_line", line)
+        return DirtyFileClassification(**raw_str)
     raw = line.rstrip("\n")
     git_status = raw[:2].strip() or "??"
     path = raw[3:].strip() if len(raw) > 3 else raw.strip()
@@ -175,10 +196,15 @@ def classify_dirty_line(line: str) -> DirtyFileClassification:
 
 
 def classify_dirty_lines(lines: list[str]) -> list[DirtyFileClassification]:
+    if _NATIVE:
+        raw = _rust_bridge("native_classify_dirty_lines", lines)
+        return [DirtyFileClassification(**item) for item in raw]
     return [classify_dirty_line(line) for line in lines if line.strip()]
 
 
 def dirty_summary(classifications: list[DirtyFileClassification]) -> dict[str, Any]:
+    if _NATIVE:
+        return _rust_bridge("native_dirty_summary", json.dumps([asdict(c) for c in classifications], ensure_ascii=False))
     by_category: dict[str, int] = {}
     by_risk: dict[str, int] = {}
     for item in classifications:
@@ -194,6 +220,8 @@ def dirty_summary(classifications: list[DirtyFileClassification]) -> dict[str, A
 
 def dirty_priority(classifications: list[DirtyFileClassification]) -> str:
     """Classify dirty worktree priority without over-claiming foreign-session files."""
+    if _NATIVE:
+        return _rust_bridge("native_dirty_priority", json.dumps([asdict(c) for c in classifications], ensure_ascii=False))
     if not classifications:
         return "PASS"
     p0_risks = {"LOW_CURRENT_TASK", "HIGH_CREDENTIAL", "HIGH_SECURITY"}
@@ -391,6 +419,9 @@ def _safe_checks_enabled() -> bool:
 
 
 def backlog_from_probes(probes: list[Probe]) -> list[BacklogItem]:
+    if _NATIVE:
+        raw = _rust_bridge("native_backlog_from_probes", json.dumps([asdict(p) for p in probes], ensure_ascii=False))
+        return [BacklogItem(**item) for item in raw]
     items: list[BacklogItem] = []
     by_name = {p.name: p for p in probes}
 
