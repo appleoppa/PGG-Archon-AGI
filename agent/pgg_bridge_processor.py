@@ -9,6 +9,8 @@
 - LLM审核或规则降级用于candidate基因promotion
 - 不修改Hermes core/provider/scheduler/security
 - 不创建PR（标记need_human_review=True）
+
+引擎：Rust native PyO3 (hermes_pgg_bridge_review) + LLM Python
 """
 
 import json
@@ -19,6 +21,23 @@ import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+
+# ── Rust native engine ───────────────────────────────────────────────
+
+try:
+    from hermes_pgg_bridge_review import (  # type: ignore[import-untyped]
+        native_rule_review as _rust_rule_review,
+        native_batch_rule_review as _rust_batch_rule_review,
+        native_filter_candidates as _rust_filter_candidates,
+        native_build_promote_sql as _rust_build_promote_sql,
+        native_build_reject_sql as _rust_build_reject_sql,
+        native_version as _rust_version,
+    )
+    _NATIVE = True
+    _NATIVE_VERSION = _rust_version()
+except ImportError:
+    _NATIVE = False
+    _NATIVE_VERSION = None
 
 DB_PATH = Path("/Users/appleoppa/.hermes/workspace/04_knowledge/开智/02-进化基因/apex_evolution_genes.sqlite3")
 ENV_PATH = Path("/Users/appleoppa/.hermes/.env")
@@ -46,6 +65,28 @@ def _read_env_key(key_name: str) -> str:
     except OSError:
         pass
     return ""
+
+
+def _gene_to_json(gene: dict[str, Any]) -> str:
+    """Serialize a DB gene row to JSON for Rust engine."""
+    return json.dumps({
+        "gene_id": gene["gene_id"],
+        "gene_name": gene.get("gene_name", ""),
+        "fitness": gene.get("fitness", 0) or 0,
+        "evidence_grade": str(gene.get("evidence_grade", "") or ""),
+        "gate_type": str(gene.get("gate_type", "") or ""),
+        "severity_rank": gene.get("severity_rank", 2) or 2,
+        "boundary": str(gene.get("boundary", "") or ""),
+        "absorbed_knowledge": str(gene.get("absorbed_knowledge", "") or ""),
+        "source_refs_json": str(gene.get("source_refs_json", "") or ""),
+    }, ensure_ascii=False)
+
+
+def _genes_to_json_list(genes: list[dict[str, Any]]) -> str:
+    return "[" + ",".join(_gene_to_json(g) for g in genes) + "]"
+
+
+# ── LLM review (Python only — requires network) ──────────────────────
 
 
 def _llm_review_gene(gene: dict[str, Any]) -> dict[str, Any]:
@@ -89,7 +130,7 @@ def _llm_review_gene(gene: dict[str, Any]) -> dict[str, Any]:
             ["curl", "-s", "-m", str(LLM_TIMEOUT),
              "-X", "POST", LLM_API_URL,
              "-H", "Content-Type: application/json",
-             "-H", "Authorization: Bearer " + api_key,
+             "-H", f"Authorization: Bearer {api_key}",
              "-d", payload],
             capture_output=True, text=True, timeout=LLM_TIMEOUT + 5,
         )
@@ -97,11 +138,9 @@ def _llm_review_gene(gene: dict[str, Any]) -> dict[str, Any]:
             return {"decision": "error", "confidence": 0, "reason": "curl_exit_" + str(r.returncode)}
         output = r.stdout
 
-        # 503 → gateway unavailable
         if "Service temporarily unavailable" in output or "503" in output:
             return {"decision": "error", "confidence": 0, "reason": "gateway_503"}
 
-        # 解析
         try:
             resp = json.loads(output)
             content = resp.get("choices", [{}])[0].get("message", {}).get("content", "")
@@ -122,43 +161,51 @@ def _llm_review_gene(gene: dict[str, Any]) -> dict[str, Any]:
         return {"decision": "error", "confidence": 0, "reason": str(e)[:100]}
 
 
+# ── Rule review (Rust native with Python fallback) ───────────────────
+
+
 def _rule_review_gene(gene: dict[str, Any]) -> dict[str, Any]:
-    """通道2: 规则降级。LLM不可达时用静态规则判断。"""
+    """通道2: 规则降级。优先Rust native引擎。"""
+    if _NATIVE:
+        gene_json = _gene_to_json(gene)
+        result_json = _rust_rule_review(gene_json)
+        return json.loads(result_json)
+    # Pure Python fallback
     gid = gene["gene_id"]
     name = gene["gene_name"]
     fitness = gene["fitness"]
     evidence = str(gene["evidence_grade"] or "").upper()
 
-    # 梦境融合子代：fitness>1000 + evidence>=B → approve
     if "dream_auto_fusion" in gid or "dream_auto_fusion" in name:
         if fitness >= RULE_AUTO_APPROVE_FITNESS and evidence >= RULE_AUTO_APPROVE_EVIDENCE:
             return {"decision": "approve", "confidence": 85, "reason": "rule: dream_fusion_high_fitness"}
 
-    # 基因摄入pgg_gene：fitness>800 + evidence>=B → approve
     if "pgg_gene" in gid:
         if fitness >= 800 and evidence >= "B":
             return {"decision": "approve", "confidence": 80, "reason": "rule: pgg_gene_sufficient"}
 
-    # 其他高fitness基因
     if fitness >= RULE_AUTO_APPROVE_FITNESS and evidence >= RULE_AUTO_APPROVE_EVIDENCE:
         return {"decision": "approve", "confidence": 75, "reason": "rule: high_fitness_generic"}
 
-    # 无法规则判断→标记需人工
     return {"decision": "hold", "confidence": 30, "reason": "rule: need_human_review"}
 
 
 def _promote_gene(gene_id: str, evidence_grade: str, confidence: int, method: str) -> dict[str, Any]:
+    """Execute promote SQL — uses native engine for SQL generation, Python for DB I/O."""
     try:
+        if _NATIVE:
+            sql_json = _rust_build_promote_sql(gene_id, evidence_grade, confidence, method)
+            stmt = json.loads(sql_json)
+        else:
+            now = datetime.now().isoformat()
+            verification = f"{method}_by_bridge_processor"
+            stmt = {
+                "sql": "UPDATE evolution_genes SET status = 'verified', verification_status = ?, evidence_grade = ?, last_executed = ? WHERE gene_id = ? AND status = 'candidate'",
+                "params": [verification, evidence_grade, now, gene_id],
+            }
+
         db = sqlite3.connect(str(DB_PATH))
-        db.execute(
-            """UPDATE evolution_genes
-               SET status = 'verified',
-                   verification_status = ?,
-                   evidence_grade = ?,
-                   last_executed = ?
-               WHERE gene_id = ? AND status = 'candidate'""",
-            (f"{method}_by_bridge_processor", evidence_grade, datetime.now().isoformat(), gene_id),
-        )
+        db.execute(stmt["sql"], stmt["params"])
         db.commit()
         affected = db.total_changes
         db.close()
@@ -168,16 +215,21 @@ def _promote_gene(gene_id: str, evidence_grade: str, confidence: int, method: st
 
 
 def _reject_gene(gene_id: str, reason: str) -> dict[str, Any]:
+    """Execute reject SQL — uses native engine for SQL generation."""
     try:
+        if _NATIVE:
+            sql_json = _rust_build_reject_sql(gene_id, reason)
+            stmt = json.loads(sql_json)
+        else:
+            now = datetime.now().isoformat()
+            verification = f"rejected_by_bridge_processor: {reason[:80]}"
+            stmt = {
+                "sql": "UPDATE evolution_genes SET status = 'rejected', verification_status = ?, last_executed = ? WHERE gene_id = ? AND status = 'candidate'",
+                "params": [verification, now, gene_id],
+            }
+
         db = sqlite3.connect(str(DB_PATH))
-        db.execute(
-            """UPDATE evolution_genes
-               SET status = 'rejected',
-                   verification_status = ?,
-                   last_executed = ?
-               WHERE gene_id = ? AND status = 'candidate'""",
-            (f"rejected_by_bridge_processor: {reason[:80]}", datetime.now().isoformat(), gene_id),
-        )
+        db.execute(stmt["sql"], stmt["params"])
         db.commit()
         affected = db.total_changes
         db.close()
@@ -187,7 +239,10 @@ def _reject_gene(gene_id: str, reason: str) -> dict[str, Any]:
 
 
 def process_promotion_batch(gene_ids: Any = None) -> dict[str, Any]:
-    """批量审核候选candidate基因。双通道：先LLM，503降级到规则。"""
+    """批量审核候选candidate基因。双通道：先LLM，503降级到规则。
+
+    规则审核引擎使用Rust native (hermes_pgg_bridge_review)。
+    """
     db = sqlite3.connect(str(DB_PATH))
     db.row_factory = sqlite3.Row
 
@@ -221,7 +276,7 @@ def process_promotion_batch(gene_ids: Any = None) -> dict[str, Any]:
     if not candidates:
         return {"status": "no_candidates", "reviewed": 0}
 
-    results = {
+    results: dict[str, Any] = {
         "status": "completed",
         "total": len(candidates),
         "approved": 0,
@@ -230,6 +285,7 @@ def process_promotion_batch(gene_ids: Any = None) -> dict[str, Any]:
         "errors": 0,
         "channel": "unknown",
         "details": [],
+        "engine": _NATIVE_VERSION if _NATIVE else "pure_python",
     }
 
     # 先测一次GPT是否可达
@@ -241,7 +297,7 @@ def process_promotion_batch(gene_ids: Any = None) -> dict[str, Any]:
                 ["curl", "-s", "-m", "5",
                  "-X", "POST", LLM_API_URL,
                  "-H", "Content-Type: application/json",
-                 "-H", "Authorization: Bearer " + test_key,
+                 "-H", f"Authorization: Bearer {test_key}",
                  "-d", '{"model":"gpt-5.5-turbo","messages":[{"role":"user","content":"ping"}],"max_tokens":5}'],
                 capture_output=True, text=True, timeout=10,
             )
@@ -260,7 +316,7 @@ def process_promotion_batch(gene_ids: Any = None) -> dict[str, Any]:
         else:
             decision = _rule_review_gene(gene)
 
-        detail = {
+        detail: dict[str, Any] = {
             "gene_id": gene["gene_id"],
             "gene_name": gene["gene_name"],
             "fitness": gene["fitness"],
@@ -280,7 +336,6 @@ def process_promotion_batch(gene_ids: Any = None) -> dict[str, Any]:
             detail["db_result"] = r
             results["rejected"] += 1
         elif decision["decision"] == "hold":
-            # 规则无法判断，标记hold但不改DB
             detail["db_result"] = {"held": True, "reason": decision["reason"]}
             results["holds"] += 1
         else:  # error
@@ -327,7 +382,6 @@ def process_bridge_tasks() -> dict[str, Any]:
                 mark_task(task_id, "error", note="审核失败: " + str(review_result.get("status", "unknown")))
                 overall["tasks_errored"] += 1
         elif task_type == "config_fix":
-            # 安全修复配置文件：backup → edit → verify → rollback on fail
             payload = task.get("payload", {})
             file = payload.get("file", "")
             old_str = payload.get("old_string", "")
@@ -384,8 +438,6 @@ def process_bridge_tasks() -> dict[str, Any]:
             mark_task(task_id, "approved", note="标记：需要人工创建skill")
             overall["tasks_skipped"] += 1
         elif task_type == "learn_suggest":
-            # 自扫描学习建议 — 保持 pending，等用户在session里查看
-            # 不标记done，靠 pgg_self_scan --suggest 自动产生 + session呈现
             mark_task(task_id, "approved",
                       note="学习建议已就绪，等待用户查看")
             overall["results"].append({
@@ -400,67 +452,3 @@ def process_bridge_tasks() -> dict[str, Any]:
             overall["tasks_errored"] += 1
 
     return overall
-
-
-def bridge_processor_summary() -> dict[str, Any]:
-    db = sqlite3.connect(str(DB_PATH))
-    db.row_factory = sqlite3.Row
-
-    gate_dist = {}
-    for r in db.execute(
-        "SELECT gate_type, COUNT(*) as c FROM evolution_genes WHERE status='candidate' GROUP BY gate_type ORDER BY c DESC"
-    ).fetchall():
-        gate_dist[r["gate_type"]] = r["c"]
-
-    llm_approved = db.execute(
-        "SELECT COUNT(*) FROM evolution_genes WHERE verification_status LIKE 'llm_reviewed%'"
-    ).fetchone()[0]
-    rule_approved = db.execute(
-        "SELECT COUNT(*) FROM evolution_genes WHERE verification_status LIKE 'rule_reviewed%'"
-    ).fetchone()[0]
-    llm_rejected = db.execute(
-        "SELECT COUNT(*) FROM evolution_genes WHERE verification_status LIKE 'rejected_by_bridge%'"
-    ).fetchone()[0]
-    verified = db.execute("SELECT COUNT(*) FROM evolution_genes WHERE status='verified'").fetchone()[0]
-    candidate = db.execute("SELECT COUNT(*) FROM evolution_genes WHERE status='candidate'").fetchone()[0]
-    active = db.execute("SELECT COUNT(*) FROM evolution_genes WHERE status='active'").fetchone()[0]
-
-    db.close()
-
-    return {
-        "schema": "pgg_bridge_processor/v1/summary",
-        "created_at": datetime.now().isoformat(),
-        "gene_db": {"verified": verified, "active": active, "candidate": candidate},
-        "llm_reviewed_approved": llm_approved,
-        "rule_reviewed_approved": rule_approved,
-        "llm_reviewed_rejected": llm_rejected,
-        "total_bridge_processed": llm_approved + rule_approved + llm_rejected,
-        "candidate_by_gate": gate_dist,
-    }
-
-
-def main():
-    import argparse
-    parser = argparse.ArgumentParser(description="PGG Bridge Processor")
-    parser.add_argument("--process", action="store_true", help="处理所有pending桥任务")
-    parser.add_argument("--review", type=str, nargs="*", help="指定gene_ids审核")
-    parser.add_argument("--summary", action="store_true", help="显示桥处理器摘要")
-    args = parser.parse_args()
-
-    if args.summary:
-        print(json.dumps(bridge_processor_summary(), indent=2, ensure_ascii=False))
-        return
-    if args.process:
-        result = process_bridge_tasks()
-        print(json.dumps(result, indent=2, ensure_ascii=False))
-        return
-    if args.review is not None:
-        gene_ids = args.review if args.review else None
-        result = process_promotion_batch(gene_ids if gene_ids else None)
-        print(json.dumps(result, indent=2, ensure_ascii=False))
-        return
-    parser.print_help()
-
-
-if __name__ == "__main__":
-    main()
