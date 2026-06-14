@@ -1,5 +1,6 @@
 use pyo3::prelude::*;
-use pyo3::types::PyDict;
+use pyo3::types::{PyAny, PyDict};
+type PyObject = Py<PyAny>;
 use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
