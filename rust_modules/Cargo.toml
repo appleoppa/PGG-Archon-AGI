@@ -1,6 +1,5 @@
 [workspace]
 resolver = "2"
 members = [
-    "hermes_pgg_picoapex_saturation",
-    "pgg_sourceref_repair_runner",
+    "hermes_pgg_self_evolution_core",
 ]
