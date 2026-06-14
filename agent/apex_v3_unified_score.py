@@ -194,13 +194,73 @@ def build_apex_v3_unified_score_report(status: Mapping[str, Any]) -> Dict[str, A
     failure_library_status = build_failure_sample_library_status()
     task_retrospective_status = build_task_retrospective_status()
     multi_model_evidence_ledger = build_multi_model_evidence_ledger()
+    case_events = ()
+    try:
+        from agent.pgg_case_experience_bridge import DEFAULT_EVENTS_DIR
+        import json
+
+        events_path = DEFAULT_EVENTS_DIR / "case_events.jsonl"
+        if events_path.exists():
+            loaded_events = []
+            with events_path.open("r", encoding="utf-8") as fh:
+                for line in fh:
+                    if line.strip():
+                        parsed = json.loads(line)
+                        if isinstance(parsed, dict):
+                            loaded_events.append(parsed)
+            case_events = tuple(loaded_events)
+    except Exception:
+        case_events = ()
+    try:
+        from agent.apex_failure_sample_library import load_failure_samples
+        failure_samples = tuple(load_failure_samples())
+    except Exception:
+        failure_samples = ()
+    try:
+        from agent.apex_task_retrospective import DEFAULT_RETROSPECTIVE_DIR
+        import json
+
+        retrospectives_path = DEFAULT_RETROSPECTIVE_DIR / "retrospectives.jsonl"
+        loaded_retrospectives = []
+        if retrospectives_path.exists():
+            with retrospectives_path.open("r", encoding="utf-8") as fh:
+                for line in fh:
+                    if line.strip():
+                        parsed = json.loads(line)
+                        if isinstance(parsed, dict):
+                            loaded_retrospectives.append(parsed)
+        task_retrospectives = tuple(loaded_retrospectives)
+    except Exception:
+        task_retrospectives = ()
+    try:
+        from agent.apex_low_risk_autonomy_candidates import generate_autonomy_candidates
+        autonomy_candidate_report = generate_autonomy_candidates({
+            "failure_samples": failure_samples,
+            "real_capability_metrics": {"status": "WATCH"},
+        })
+        autonomy_candidates = tuple(autonomy_candidate_report.get("candidates", ()))
+    except Exception:
+        autonomy_candidate_report = {"schema": "ApexLowRiskAutonomyCandidates/v1", "status": "ERROR", "candidate_count": 0, "candidates": ()}
+        autonomy_candidates = ()
     real_capability_metrics = build_real_capability_metrics_summary({
-        "events": status.get("events", ()),
-        "failure_samples": status.get("failure_samples", ()),
-        "task_retrospectives": status.get("task_retrospectives", ()),
-        "autonomy_candidates": status.get("autonomy_candidates", ()),
+        "events": tuple(status.get("events", ())) + case_events,
+        "failure_samples": tuple(status.get("failure_samples", ())) + failure_samples,
+        "task_retrospectives": tuple(status.get("task_retrospectives", ())) + task_retrospectives,
+        "autonomy_candidates": tuple(status.get("autonomy_candidates", ())) + autonomy_candidates,
         "multi_model_ledger": multi_model_evidence_ledger.get("entries", ()),
     })
+    try:
+        from agent.pgg_archon_status_surface import build_pgg_archon_status_surface
+        runtime_status_surface = build_pgg_archon_status_surface()
+    except Exception as exc:
+        runtime_status_surface = {
+            "schema": "PGGArchonStatusSurface/v1",
+            "status": "ERROR",
+            "score": 0.0,
+            "missing": ["runtime_status_surface_error"],
+            "error": str(exc)[:200],
+            "agi_completion_claim": False,
+        }
 
     inward_validation = cross_validate_unified_score({
         **base_report,
@@ -250,6 +310,7 @@ def build_apex_v3_unified_score_report(status: Mapping[str, Any]) -> Dict[str, A
         "failure_sample_library": failure_library_status,
         "task_retrospective_status": task_retrospective_status,
         "multi_model_evidence_ledger": multi_model_evidence_ledger,
+        "runtime_status_surface": runtime_status_surface,
     }
 
 

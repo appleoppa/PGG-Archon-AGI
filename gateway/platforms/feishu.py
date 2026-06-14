@@ -48,6 +48,7 @@ user is seen through different apps in the future.
 from __future__ import annotations
 
 import asyncio
+import collections
 import hashlib
 import hmac
 import itertools
@@ -239,6 +240,7 @@ _FEISHU_REACTION_FAILURE = "CrossMark"
 # drain on completion; the cap is a safeguard against unbounded growth from
 # delete-failures, not a capacity plan.
 _FEISHU_PROCESSING_REACTION_CACHE_SIZE = 1024
+_FEISHU_MESSAGE_TEXT_CACHE_SIZE = 512       # LRU cap for reply-context message text lookups
 
 # QR onboarding constants
 _ONBOARD_ACCOUNTS_URLS = {
@@ -393,6 +395,8 @@ class FeishuAdapterSettings:
     group_rules: Dict[str, FeishuGroupRule] = field(default_factory=dict)
     allow_bots: str = "none"  # "none" | "mentions" | "all"
     require_mention: bool = True
+    rigorous_card_enabled: bool = False
+    cardkit_streaming_enabled: bool = False
 
 
 @dataclass
@@ -456,7 +460,217 @@ def _escape_markdown_text(text: str) -> str:
 
 
 def _to_boolean(value: Any) -> bool:
-    return value is True or value == 1 or value == "true"
+    return value is True or value == 1 or str(value).strip().lower() in {"true", "1", "yes", "on"}
+
+
+def _clip_card_text(text: str, limit: int) -> str:
+    value = str(text or "").strip()
+    if len(value) <= limit:
+        return value
+    return value[: max(0, limit - 18)].rstrip() + "\n\n_内容较长，已截断显示。_"
+
+
+_CARD_REPLY_MAX_BYTES = 24 * 1024
+_DANGEROUS_CARD_HTML_RE = re.compile(r"</?(script|style|iframe|object|embed|meta|link)[^>]*>", re.IGNORECASE)
+_DANGEROUS_CARD_LINK_RE = re.compile(r"(\]\()\s*(javascript:|data:text/html)[^)]+(\))", re.IGNORECASE)
+_THINK_TAG_RE = re.compile(r"</?think>", re.IGNORECASE)
+
+
+def _sanitize_card_markdown(text: str, *, preserve_headings: bool = False) -> str:
+    normalized = str(text or "")
+    normalized = normalized.replace("\r\n", "\n").replace("\x00", "")
+    normalized = _THINK_TAG_RE.sub("", normalized)
+    normalized = _DANGEROUS_CARD_HTML_RE.sub("", normalized)
+    normalized = _DANGEROUS_CARD_LINK_RE.sub(r"\1about:blank\3", normalized)
+    normalized = re.sub(r"\n{3,}", "\n\n", normalized).strip()
+    if not preserve_headings:
+        normalized = re.sub(r"^\s{0,3}#{1,6}\s+(.+)$", lambda m: f"**{m.group(1).strip()}**", normalized, flags=re.MULTILINE)
+    if len(normalized.encode("utf-8")) <= _CARD_REPLY_MAX_BYTES:
+        return normalized
+    suffix = "\n\n_内容过长，已截断显示。_"
+    budget = _CARD_REPLY_MAX_BYTES - len(suffix.encode("utf-8"))
+    encoded = normalized.encode("utf-8")[: max(0, budget)]
+    return encoded.decode("utf-8", errors="ignore").rstrip() + suffix
+
+
+
+def _optimize_cardkit_markdown(text: str) -> str:
+    code_blocks: list[str] = []
+    marker = "___HERMES_CARDKIT_CODE_BLOCK_"
+
+    def _stash_code(match: re.Match[str]) -> str:
+        code_blocks.append(match.group(0))
+        return f"{marker}{len(code_blocks) - 1}___"
+
+    normalized = re.sub(r"```[\s\S]*?```", _stash_code, str(text or ""))
+    normalized = _downgrade_cardkit_headings(normalized)
+    normalized = _repair_markdown_tables(normalized)
+    for index, block in enumerate(code_blocks):
+        normalized = normalized.replace(f"{marker}{index}___", f"\n\n{block}\n\n")
+    return re.sub(r"\n{3,}", "\n\n", normalized).strip()
+
+
+def _downgrade_cardkit_headings(text: str) -> str:
+    if not re.search(r"^#{1,3}\s+", str(text or ""), re.MULTILINE):
+        return text
+    value = re.sub(r"^#{2,6}\s+(.+)$", r"##### \1", text, flags=re.MULTILINE)
+    value = re.sub(r"^#\s+(.+)$", r"#### \1", value, flags=re.MULTILINE)
+    return value
+
+
+def _parse_markdown_table_row(line: str) -> Optional[list[str]]:
+    trimmed = str(line or "").strip()
+    if not trimmed.startswith("|") or not trimmed.endswith("|"):
+        return None
+    cells = [cell.strip() for cell in trimmed[1:-1].split("|")]
+    return cells if len(cells) >= 2 else None
+
+
+def _looks_like_table_separator(line: str) -> bool:
+    trimmed = str(line or "").strip()
+    if not trimmed or "-" not in trimmed:
+        return False
+    normalized = trimmed.strip("|")
+    cells = [cell.strip() for cell in normalized.split("|") if cell.strip()]
+    return bool(cells) and all(re.match(r"^:?-{3,}:?$", cell) for cell in cells)
+
+
+def _format_markdown_table_row(cells: list[str]) -> str:
+    return "| " + " | ".join(str(cell).strip() for cell in cells) + " |"
+
+
+def _repair_markdown_tables(text: str) -> str:
+    lines = str(text or "").split("\n")
+    output: list[str] = []
+    previous_was_table = False
+    index = 0
+    while index < len(lines):
+        line = lines[index]
+        header_cells = _parse_markdown_table_row(line)
+        next_line = lines[index + 1] if index + 1 < len(lines) else ""
+        if header_cells and _looks_like_table_separator(next_line):
+            if output and output[-1].strip() and not previous_was_table:
+                output.append("")
+            output.append(_format_markdown_table_row(header_cells))
+            output.append(_format_markdown_table_row(["---"] * len(header_cells)))
+            previous_was_table = True
+            index += 2
+            continue
+        row_cells = _parse_markdown_table_row(line) if previous_was_table else None
+        if row_cells:
+            output.append(_format_markdown_table_row(row_cells))
+            previous_was_table = True
+            index += 1
+            continue
+        if previous_was_table and line.strip():
+            output.append("")
+        output.append(line)
+        previous_was_table = False
+        index += 1
+    return "\n".join(output)
+
+
+def _card_markdown_element(content: str, *, text_size: str = "normal") -> dict[str, Any]:
+    """Build a Feishu CardKit markdown element, following codex-feishu-bridge."""
+    optimized = _optimize_cardkit_markdown(_sanitize_card_markdown(content, preserve_headings=True))
+    return {"tag": "markdown", "content": optimized, "text_size": text_size}
+
+
+def _card_collapsible_panel(title: str, content: str) -> dict[str, Any]:
+    return {
+        "tag": "collapsible_panel",
+        "expanded": False,
+        "header": {
+            "title": {"tag": "plain_text", "content": title},
+            "icon": {"tag": "standard_icon", "token": "down-small-ccm_outlined", "size": "16px 16px"},
+            "icon_position": "follow_text",
+            "icon_expanded_angle": -180,
+        },
+        "border": {"color": "grey", "corner_radius": "5px"},
+        "padding": "8px 8px 8px 8px",
+        "elements": [_card_markdown_element(content, text_size="notation")],
+    }
+
+
+
+
+def _rigorous_card_status_template(status: str) -> str:
+    normalized = str(status or "").strip().lower()
+    if any(token in normalized for token in ("fail", "failed", "error", "未完成", "失败")):
+        return "red"
+    if any(token in normalized for token in ("block", "blocked", "watch", "hold", "阻塞", "等待", "警告")):
+        return "orange"
+    if any(token in normalized for token in ("stream", "running", "处理中", "正在")):
+        return "turquoise"
+    return "blue"
+
+
+def _normalize_rigorous_status(status: Any, *, finalize: bool = True) -> str:
+    if status not in (None, ""):
+        return str(status)
+    return "已完成" if finalize else "正在回复"
+
+
+_CARDKIT_STREAMING_ELEMENT_ID = "hermes_stream_answer"
+
+
+def _cardkit_extract_card_id(response: Any) -> Optional[str]:
+    data = getattr(response, "data", None)
+    for obj in (data, response):
+        if obj is None:
+            continue
+        value = getattr(obj, "card_id", None)
+        if value:
+            return str(value)
+    return None
+
+def _split_rigorous_answer_and_process(text: str) -> tuple[str, str]:
+    value = str(text or "").strip()
+    if not value:
+        return "", ""
+    markers = [
+        "## 执行过程",
+        "## 过程",
+        "## 依据",
+        "## 证据",
+        "## 边界",
+        "## 说明",
+        "## 读回验证",
+        "## Verification",
+        "## Boundaries",
+    ]
+    first = len(value)
+    for marker in markers:
+        idx = value.find(marker)
+        if idx >= 0:
+            first = min(first, idx)
+    if first < len(value):
+        return value[:first].strip(), value[first:].strip()
+    return value, ""
+
+
+_RIGOROUS_STATUS_BLOCK_RE = re.compile(
+    r"(?:^|\n)\s*(?:状态\s*/\s*来源\s*/\s*边界|状态\s*/\s*来源|来源\s*/\s*边界)\s*\n+[\s\S]*?(?=\n\s*#{1,6}\s|\Z)",
+    re.IGNORECASE,
+)
+_RIGOROUS_STATUS_LINE_RE = re.compile(r"^\s*[。·\-•*]*\s*状态\s*[:：].*$", re.MULTILINE)
+
+
+def _strip_rigorous_status_echo(answer: str, metadata: Optional[Dict[str, Any]] = None) -> str:
+    """Remove status/source/boundary echoes from the visible answer body.
+
+    The rigorous Feishu card already renders runtime status in the compact footer
+    and structured evidence in a folded panel. If the gateway/agent body also
+    contains a trailing "状态 / 来源 / 边界" section, Feishu shows the same status
+    twice. Keep the human answer clean and let footer/evidence own metadata.
+    """
+    value = str(answer or "").strip()
+    if not value:
+        return value
+    value = _RIGOROUS_STATUS_BLOCK_RE.sub("", value).strip()
+    # Defensive fallback for short bodies that only contain a single status line.
+    value = _RIGOROUS_STATUS_LINE_RE.sub("", value).strip()
+    return value
 
 
 def _is_style_enabled(style: Dict[str, Any] | None, key: str) -> bool:
@@ -1407,7 +1621,11 @@ def check_feishu_requirements() -> bool:
 class FeishuAdapter(BasePlatformAdapter):
     """Feishu/Lark bot adapter."""
 
+    supports_code_blocks = True  # Feishu renders fenced code blocks
+
     MAX_MESSAGE_LENGTH = 8000
+    # Max distinct chat IDs retained in _chat_locks before LRU eviction kicks in.
+    CHAT_LOCK_MAX_SIZE: int = 1000
     # Threshold for detecting Feishu client-side message splits.
     # When a chunk is near the ~4096-char practical limit, a continuation
     # is almost certain.
@@ -1445,11 +1663,11 @@ class FeishuAdapter(BasePlatformAdapter):
         self._pending_inbound_lock = threading.Lock()
         self._pending_drain_scheduled = False
         self._pending_inbound_max_depth = 1000  # cap queue; drop oldest beyond
-        self._chat_locks: Dict[str, asyncio.Lock] = {}  # chat_id → lock (per-chat serial processing)
+        self._chat_locks: "collections.OrderedDict[str, asyncio.Lock]" = collections.OrderedDict()  # chat_id → lock (per-chat serial processing, LRU-bounded)
         self._sent_message_ids_to_chat: Dict[str, str] = {}  # message_id → chat_id (for reaction routing)
         self._sent_message_id_order: List[str] = []  # LRU order for _sent_message_ids_to_chat
         self._chat_info_cache: Dict[str, Dict[str, Any]] = {}
-        self._message_text_cache: Dict[str, Optional[str]] = {}
+        self._message_text_cache: "OrderedDict[str, Optional[str]]" = OrderedDict()
         self._app_lock_identity: Optional[str] = None
         self._text_batch_state = FeishuBatchState()
         self._pending_text_batches = self._text_batch_state.events
@@ -1569,6 +1787,18 @@ class FeishuAdapter(BasePlatformAdapter):
             require_mention=_to_boolean(
                 extra.get("require_mention", os.getenv("FEISHU_REQUIRE_MENTION", "true"))
             ),
+            rigorous_card_enabled=_to_boolean(
+                extra.get(
+                    "rigorous_card_enabled",
+                    os.getenv("HERMES_FEISHU_RIGOROUS_CARD_ENABLED", "false"),
+                )
+            ),
+            cardkit_streaming_enabled=_to_boolean(
+                extra.get(
+                    "cardkit_streaming_enabled",
+                    os.getenv("HERMES_FEISHU_CARDKIT_STREAMING_ENABLED", "false"),
+                )
+            ),
         )
 
     def _apply_settings(self, settings: FeishuAdapterSettings) -> None:
@@ -1601,6 +1831,9 @@ class FeishuAdapter(BasePlatformAdapter):
         self._ws_ping_timeout = settings.ws_ping_timeout
         self._allow_bots = settings.allow_bots
         self._require_mention = settings.require_mention
+        self._rigorous_card_enabled = settings.rigorous_card_enabled
+        self._cardkit_streaming_enabled = settings.cardkit_streaming_enabled
+        self._cardkit_streams: Dict[str, Dict[str, Any]] = {}
 
     def _build_event_handler(self) -> Any:
         if EventDispatcherHandler is None:
@@ -1626,6 +1859,10 @@ class FeishuAdapter(BasePlatformAdapter):
             .register_p2_customized_event(
                 "drive.notice.comment_add_v1",
                 self._on_drive_comment_event,
+            )
+            .register_p2_customized_event(
+                "vc.bot.meeting_invited_v1",
+                self._on_meeting_invited_event,
             )
             .build()
         )
@@ -1779,6 +2016,21 @@ class FeishuAdapter(BasePlatformAdapter):
         try:
             for chunk in chunks:
                 msg_type, payload = self._build_outbound_payload(chunk)
+                if self._rigorous_card_enabled:
+                    try:
+                        response = await self._feishu_send_with_retry(
+                            chat_id=chat_id,
+                            msg_type="interactive",
+                            payload=self._build_rigorous_card_payload(chunk, metadata=metadata),
+                            reply_to=reply_to,
+                            metadata=metadata,
+                        )
+                        if self._response_succeeded(response):
+                            last_response = response
+                            continue
+                        logger.warning("[Feishu] Rigorous card send did not succeed; falling back to %s", msg_type)
+                    except Exception as exc:
+                        logger.warning("[Feishu] Rigorous card send failed; falling back to %s: %s", msg_type, exc)
                 try:
                     response = await self._feishu_send_with_retry(
                         chat_id=chat_id,
@@ -1818,6 +2070,202 @@ class FeishuAdapter(BasePlatformAdapter):
             logger.error("[Feishu] Send error: %s", exc, exc_info=True)
             return SendResult(success=False, error=str(exc))
 
+    def _build_rigorous_card_payload(
+        self,
+        content: str,
+        metadata: Optional[Dict[str, Any]] = None,
+        *,
+        finalize: bool = True,
+    ) -> str:
+        """Build a compact CardKit reply card inspired by codex-feishu-bridge."""
+        answer, process = _split_rigorous_answer_and_process(self.format_message(content))
+        answer = _strip_rigorous_status_echo(answer, metadata)
+        answer = _sanitize_card_markdown(_clip_card_text(answer or "（空回复）", 9000), preserve_headings=True)
+        process = _sanitize_card_markdown(_clip_card_text(process, 1800), preserve_headings=True)
+        meta = dict(metadata or {})
+
+        status = _normalize_rigorous_status(meta.get("status") or meta.get("state"), finalize=finalize)
+        footer_parts: list[str] = [status]
+        for key in ("elapsed", "elapsed_text", "elapsed_ms", "duration_ms"):
+            if meta.get(key):
+                suffix = "ms" if key.endswith("_ms") else ""
+                label = "总用时" if finalize else "已用时"
+                footer_parts.append(f"{label} {meta[key]}{suffix}")
+                break
+        tool_count = meta.get("tool_count") or meta.get("tool_calls") or meta.get("tools_used")
+        if tool_count:
+            footer_parts.append(f"工具 {tool_count} 次")
+        token_count = meta.get("token_count") or meta.get("total_tokens") or meta.get("usage_total_tokens")
+        if token_count:
+            footer_parts.append(f"Token {token_count}")
+        model_label = meta.get("model") or meta.get("provider") or meta.get("model_name") or "Hermes"
+        footer_parts.append(str(model_label))
+        footer = " · ".join(str(part) for part in footer_parts if part not in (None, ""))
+
+        elements: list[dict[str, Any]] = [
+            _card_markdown_element(answer, text_size="normal"),
+        ]
+        if process:
+            elements.append(_card_collapsible_panel("过程", process))
+
+        evidence_bits = []
+        for key, label in (("source", "来源"), ("freshness", "新鲜度"), ("boundary", "边界"), ("request_id", "请求"), ("task_id", "任务")):
+            value = meta.get(key)
+            if value not in (None, ""):
+                evidence_bits.append(f"{label}: {value}")
+        if evidence_bits:
+            elements.append(_card_collapsible_panel("证据/边界", "\n".join(f"- {item}" for item in evidence_bits)))
+        elements.append(_card_markdown_element(footer, text_size="notation"))
+
+        card = {
+            "schema": "2.0",
+            "config": {"wide_screen_mode": True, "update_multi": True},
+            "header": {
+                "title": {"tag": "plain_text", "content": "Hermes"},
+                "template": _rigorous_card_status_template(status),
+            },
+            "body": {"elements": elements},
+        }
+        return json.dumps(card, ensure_ascii=False)
+
+    def _build_cardkit_stream_card(
+        self,
+        content: str,
+        metadata: Optional[Dict[str, Any]] = None,
+        *,
+        finalize: bool = False,
+    ) -> Dict[str, Any]:
+        card = json.loads(self._build_rigorous_card_payload(content, metadata=metadata, finalize=finalize))
+        card.setdefault("config", {})["streaming_mode"] = not finalize
+        card.setdefault("config", {}).setdefault("summary", {"content": _strip_markdown_to_plain_text(content)[:120] or "正在回复。"})
+        body = card.setdefault("body", {})
+        elements = body.setdefault("elements", [])
+        if elements:
+            elements[0]["element_id"] = _CARDKIT_STREAMING_ELEMENT_ID
+            elements[0]["text_size"] = "normal_v2"
+            elements[0]["margin"] = "0px 0px 0px 0px"
+        return card
+
+    def supports_draft_streaming(
+        self,
+        chat_type: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> bool:
+        return bool(self._rigorous_card_enabled and self._cardkit_streaming_enabled and self._client)
+
+    async def send_draft(
+        self,
+        chat_id: str,
+        draft_id: int,
+        content: str,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> SendResult:
+        """Create a native Feishu CardKit streaming card and send it by card_id.
+
+        The stream consumer treats a returned message_id as an editable preview;
+        subsequent frames call edit_message(), which updates the CardKit element.
+        """
+        if not self._client:
+            return SendResult(success=False, error="Not connected")
+        if not self._cardkit_streaming_enabled:
+            return SendResult(success=False, error="CardKit streaming disabled")
+        try:
+            from lark_oapi.api.cardkit.v1 import CreateCardRequest, CreateCardRequestBody
+            card = self._build_cardkit_stream_card(content, metadata=metadata, finalize=False)
+            create_body = (
+                CreateCardRequestBody.builder()
+                .type("card_json")
+                .data(json.dumps(card, ensure_ascii=False))
+                .build()
+            )
+            create_request = CreateCardRequest.builder().request_body(create_body).build()
+            create_response = await asyncio.to_thread(self._client.cardkit.v1.card.create, create_request)
+            if not self._response_succeeded(create_response):
+                return self._response_error_result(create_response, default_message="cardkit card.create failed")
+            card_id = _cardkit_extract_card_id(create_response)
+            if not card_id:
+                return SendResult(success=False, error="cardkit card.create missing card_id", raw_response=create_response)
+            response = await self._feishu_send_with_retry(
+                chat_id=chat_id,
+                msg_type="interactive",
+                payload=json.dumps({"type": "card", "data": {"card_id": card_id}}, ensure_ascii=False),
+                reply_to=None,
+                metadata=metadata,
+            )
+            result = self._finalize_send_result(response, "cardkit send failed")
+            if result.success and result.message_id:
+                self._cardkit_streams[str(result.message_id)] = {
+                    "card_id": card_id,
+                    "sequence": 1,
+                    "last_content": _card_markdown_element(content).get("content", content),
+                }
+            return result
+        except Exception as exc:
+            logger.warning("[Feishu] CardKit streaming draft failed: %s", exc, exc_info=True)
+            return SendResult(success=False, error=str(exc))
+
+    async def _update_cardkit_stream_message(
+        self,
+        message_id: str,
+        content: str,
+        metadata: Optional[Dict[str, Any]] = None,
+        *,
+        finalize: bool = False,
+    ) -> Optional[SendResult]:
+        state = self._cardkit_streams.get(str(message_id))
+        if not state:
+            return None
+        try:
+            from lark_oapi.api.cardkit.v1 import (
+                ContentCardElementRequest,
+                ContentCardElementRequestBody,
+                SettingsCardRequest,
+                SettingsCardRequestBody,
+                UpdateCardRequest,
+                UpdateCardRequestBody,
+            )
+            card_id = state["card_id"]
+            if not finalize:
+                rendered = _card_markdown_element(content).get("content", content)
+                if rendered == state.get("last_content"):
+                    return SendResult(success=True, message_id=message_id)
+                state["sequence"] = int(state.get("sequence", 1)) + 1
+                body = ContentCardElementRequestBody.builder().content(rendered).sequence(state["sequence"]).build()
+                request = ContentCardElementRequest.builder().card_id(card_id).element_id(_CARDKIT_STREAMING_ELEMENT_ID).request_body(body).build()
+                response = await asyncio.to_thread(self._client.cardkit.v1.card_element.content, request)
+                if not self._response_succeeded(response):
+                    return self._response_error_result(response, default_message="cardkit cardElement.content failed")
+                state["last_content"] = rendered
+                return SendResult(success=True, message_id=message_id, raw_response=response)
+            state["sequence"] = int(state.get("sequence", 1)) + 1
+            settings_body = (
+                SettingsCardRequestBody.builder()
+                .settings(json.dumps({"streaming_mode": False}, ensure_ascii=False))
+                .sequence(state["sequence"])
+                .build()
+            )
+            settings_request = SettingsCardRequest.builder().card_id(card_id).request_body(settings_body).build()
+            settings_response = await asyncio.to_thread(self._client.cardkit.v1.card.settings, settings_request)
+            if not self._response_succeeded(settings_response):
+                return self._response_error_result(settings_response, default_message="cardkit card.settings failed")
+            state["sequence"] += 1
+            final_card = self._build_cardkit_stream_card(content, metadata=metadata, finalize=True)
+            update_body = (
+                UpdateCardRequestBody.builder()
+                .card({"type": "card_json", "data": json.dumps(final_card, ensure_ascii=False)})
+                .sequence(state["sequence"])
+                .build()
+            )
+            update_request = UpdateCardRequest.builder().card_id(card_id).request_body(update_body).build()
+            update_response = await asyncio.to_thread(self._client.cardkit.v1.card.update, update_request)
+            if not self._response_succeeded(update_response):
+                return self._response_error_result(update_response, default_message="cardkit card.update failed")
+            self._cardkit_streams.pop(str(message_id), None)
+            return SendResult(success=True, message_id=message_id, raw_response=update_response)
+        except Exception as exc:
+            logger.warning("[Feishu] CardKit stream update failed: %s", exc, exc_info=True)
+            return SendResult(success=False, error=str(exc))
+
     async def edit_message(
         self,
         chat_id: str,
@@ -1825,6 +2273,7 @@ class FeishuAdapter(BasePlatformAdapter):
         content: str,
         *,
         finalize: bool = False,
+        metadata: Optional[Dict[str, Any]] = None,
     ) -> SendResult:
         """Edit a previously sent Feishu text/post message."""
         if not self._client:
@@ -1832,7 +2281,35 @@ class FeishuAdapter(BasePlatformAdapter):
 
         content = self.format_message(content)
         try:
+            if self._cardkit_streaming_enabled:
+                cardkit_result = await self._update_cardkit_stream_message(
+                    message_id,
+                    content,
+                    metadata=metadata,
+                    finalize=finalize,
+                )
+                if cardkit_result is not None:
+                    if cardkit_result.success:
+                        return cardkit_result
+                    logger.warning("[Feishu] Native CardKit update failed; falling back to message.update: %s", cardkit_result.error)
             msg_type, payload = self._build_outbound_payload(content)
+            if self._rigorous_card_enabled:
+                card_meta = dict(metadata or {})
+                card_meta.setdefault("status", "已完成" if finalize else "正在回复")
+                try:
+                    body = self._build_update_message_body(
+                        msg_type="interactive",
+                        content=self._build_rigorous_card_payload(content, metadata=card_meta, finalize=finalize),
+                    )
+                    request = self._build_update_message_request(message_id=message_id, request_body=body)
+                    response = await asyncio.to_thread(self._client.im.v1.message.update, request)
+                    result = self._finalize_send_result(response, "update failed")
+                    if result.success:
+                        result.message_id = message_id
+                        return result
+                    logger.warning("[Feishu] Rigorous card update did not succeed; falling back to %s", msg_type)
+                except Exception as exc:
+                    logger.warning("[Feishu] Rigorous card update failed; falling back to %s: %s", msg_type, exc)
             body = self._build_update_message_body(msg_type=msg_type, content=payload)
             request = self._build_update_message_request(message_id=message_id, request_body=body)
             response = await asyncio.to_thread(self._client.im.v1.message.update, request)
@@ -2470,6 +2947,16 @@ class FeishuAdapter(BasePlatformAdapter):
             handle_drive_comment_event(self._client, data, self_open_id=self._bot_open_id),
         )
 
+    def _on_meeting_invited_event(self, data: Any) -> None:
+        """Handle VC bot meeting invitation notification (vc.bot.meeting_invited_v1)."""
+        from gateway.platforms.feishu_meeting_invite import handle_meeting_invited_event
+
+        loop = self._loop
+        if not self._loop_accepts_callbacks(loop):
+            logger.warning("[Feishu] Dropping meeting invite event before adapter loop is ready")
+            return
+        self._submit_on_loop(loop, handle_meeting_invited_event(self, data))
+
     def _on_reaction_event(self, event_type: str, data: Any) -> None:
         """Route user reactions on bot messages as synthetic text events."""
         event = getattr(data, "event", None)
@@ -2626,7 +3113,8 @@ class FeishuAdapter(BasePlatformAdapter):
         if prompt_id is None:
             logger.debug("[Feishu] Card action missing update_prompt_id, ignoring")
             return P2CardActionTriggerResponse() if P2CardActionTriggerResponse else None
-        if prompt_id not in self._update_prompt_state:
+        state = self._update_prompt_state.get(prompt_id)
+        if not state:
             logger.debug("[Feishu] Update prompt %s already resolved or unknown", prompt_id)
             return P2CardActionTriggerResponse() if P2CardActionTriggerResponse else None
 
@@ -2637,12 +3125,33 @@ class FeishuAdapter(BasePlatformAdapter):
 
         operator = getattr(event, "operator", None)
         open_id = str(getattr(operator, "open_id", "") or "")
-        if not self._is_interactive_operator_authorized(open_id):
+        sender_id = SimpleNamespace(open_id=open_id, user_id=str(getattr(operator, "user_id", "") or ""))
+        if not self._allow_group_message(sender_id, state.get("chat_id", ""), is_bot=False):
             logger.warning("[Feishu] Unauthorized update prompt click by %s", open_id or "<unknown>")
             return P2CardActionTriggerResponse() if P2CardActionTriggerResponse else None
 
+        callback_chat_id = str(getattr(getattr(event, "context", None), "open_chat_id", "") or "")
+        expected_chat_id = str(state.get("chat_id", "") or "")
+        if callback_chat_id and expected_chat_id and callback_chat_id != expected_chat_id:
+            logger.warning(
+                "[Feishu] Update prompt callback chat mismatch for %s (expected=%s, got=%s)",
+                prompt_id,
+                expected_chat_id,
+                callback_chat_id,
+            )
+            return P2CardActionTriggerResponse() if P2CardActionTriggerResponse else None
+
         user_name = self._get_cached_sender_name(open_id) or open_id
-        if not self._submit_on_loop(loop, self._resolve_update_prompt(prompt_id, answer, user_name)):
+        if not self._submit_on_loop(
+            loop,
+            self._resolve_update_prompt(
+                prompt_id,
+                answer,
+                user_name,
+                open_id=open_id,
+                chat_id=callback_chat_id,
+            ),
+        ):
             return P2CardActionTriggerResponse() if P2CardActionTriggerResponse else None
 
         if P2CardActionTriggerResponse is None:
@@ -2693,11 +3202,37 @@ class FeishuAdapter(BasePlatformAdapter):
         except Exception as exc:
             logger.error("Failed to resolve gateway approval from Feishu button: %s", exc)
 
-    async def _resolve_update_prompt(self, prompt_id: Any, answer: str, user_name: str) -> None:
+    async def _resolve_update_prompt(
+        self,
+        prompt_id: Any,
+        answer: str,
+        user_name: str,
+        *,
+        open_id: str = "",
+        chat_id: str = "",
+    ) -> None:
         """Persist an update prompt answer for the detached update process."""
-        state = self._update_prompt_state.pop(prompt_id, None)
+        state = self._update_prompt_state.get(prompt_id)
         if not state:
             logger.debug("[Feishu] Update prompt %s already resolved or unknown", prompt_id)
+            return
+        if open_id:
+            sender_id = SimpleNamespace(open_id=open_id, user_id="")
+            if not self._allow_group_message(sender_id, state.get("chat_id", ""), is_bot=False):
+                logger.warning("[Feishu] Unauthorized update prompt click by %s for prompt %s", open_id, prompt_id)
+                return
+        expected_chat_id = str(state.get("chat_id", "") or "")
+        if expected_chat_id and chat_id and expected_chat_id != chat_id:
+            logger.warning(
+                "[Feishu] Update prompt %s chat mismatch (expected=%s, got=%s)",
+                prompt_id,
+                expected_chat_id,
+                chat_id,
+            )
+            return
+        state = self._update_prompt_state.pop(prompt_id, None)
+        if not state:
+            logger.debug("[Feishu] Update prompt %s already resolved while validating callback", prompt_id)
             return
         try:
             self._write_update_prompt_response(answer)
@@ -2835,11 +3370,28 @@ class FeishuAdapter(BasePlatformAdapter):
     # =========================================================================
 
     def _get_chat_lock(self, chat_id: str) -> asyncio.Lock:
-        """Return (creating if needed) the per-chat asyncio.Lock for serial message processing."""
+        """Return (creating if needed) the per-chat asyncio.Lock for serial message processing.
+
+        Bounded with LRU eviction so a long-running gateway that sees many
+        distinct chats does not grow ``_chat_locks`` without limit. Locks that
+        are currently held are never evicted; if every entry is locked we fall
+        back to dropping the least-recently-used one.
+        """
         lock = self._chat_locks.get(chat_id)
-        if lock is None:
-            lock = asyncio.Lock()
-            self._chat_locks[chat_id] = lock
+        if lock is not None:
+            self._chat_locks.move_to_end(chat_id)
+            return lock
+        if len(self._chat_locks) >= self.CHAT_LOCK_MAX_SIZE:
+            evicted = False
+            for key in list(self._chat_locks):
+                if not self._chat_locks[key].locked():
+                    self._chat_locks.pop(key)
+                    evicted = True
+                    break
+            if not evicted:
+                self._chat_locks.pop(next(iter(self._chat_locks)))
+        lock = asyncio.Lock()
+        self._chat_locks[chat_id] = lock
         return lock
 
     async def _handle_message_with_guards(self, event: MessageEvent) -> None:
@@ -3334,6 +3886,8 @@ class FeishuAdapter(BasePlatformAdapter):
             self._on_card_action_trigger(data)
         elif event_type == "drive.notice.comment_add_v1":
             self._on_drive_comment_event(data)
+        elif event_type == "vc.bot.meeting_invited_v1":
+            self._on_meeting_invited_event(data)
         else:
             logger.debug("[Feishu] Ignoring webhook event type: %s", event_type or "unknown")
         return web.json_response({"code": 0, "msg": "ok"})
@@ -3939,6 +4493,7 @@ class FeishuAdapter(BasePlatformAdapter):
         if not self._client or not message_id:
             return None
         if message_id in self._message_text_cache:
+            self._message_text_cache.move_to_end(message_id)
             return self._message_text_cache[message_id]
         try:
             request = self._build_get_message_request(message_id)
@@ -3960,6 +4515,8 @@ class FeishuAdapter(BasePlatformAdapter):
                 mentions=parent_mentions,
             )
             self._message_text_cache[message_id] = text
+            while len(self._message_text_cache) > _FEISHU_MESSAGE_TEXT_CACHE_SIZE:
+                self._message_text_cache.popitem(last=False)
             return text
         except Exception:
             logger.warning("[Feishu] Failed to fetch parent message %s", message_id, exc_info=True)
@@ -4395,17 +4952,20 @@ class FeishuAdapter(BasePlatformAdapter):
             )
             request = self._build_create_message_request("thread_id", body)
         else:
+            receive_id = chat_id
+            receive_id_type = "chat_id"
+            if chat_id.startswith("feishu_user_id:"):
+                receive_id = chat_id.split(":", 1)[1]
+                receive_id_type = "user_id"
+            elif chat_id.startswith("ou_"):
+                receive_id_type = "open_id"
+
             body = self._build_create_message_body(
-                receive_id=chat_id,
+                receive_id=receive_id,
                 msg_type=msg_type,
                 content=payload,
                 uuid_value=str(uuid.uuid4()),
             )
-            # Detect whether chat_id is a user open_id (DM) or a chat_id (group).
-            if chat_id.startswith("ou_"):
-                receive_id_type = "open_id"
-            else:
-                receive_id_type = "chat_id"
             request = self._build_create_message_request(receive_id_type, body)
         return await asyncio.to_thread(self._client.im.v1.message.create, request)
 

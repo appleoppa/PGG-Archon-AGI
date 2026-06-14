@@ -54,26 +54,6 @@ def _run(cmd: list[str], *, cwd=None, timeout=60) -> dict:
     except Exception as e:
         return {"rc": 1, "output": f"{type(e).__name__}: {e}"}
 
-def _loads_first_json(text: str) -> Any:
-    """Parse the first JSON object from noisy command output.
-
-    Some legacy CLI wrappers print warnings or follow-up lines around JSON.
-    Self-healing must not crash on that; it should consume the first valid
-    object and continue bounded repair.
-    """
-    s = (text or "").strip()
-    try:
-        return json.loads(s)
-    except Exception:
-        pass
-    start = s.find("{")
-    if start < 0:
-        raise json.JSONDecodeError("no JSON object found", s, 0)
-    decoder = json.JSONDecoder()
-    obj, _ = decoder.raw_decode(s[start:])
-    return obj
-
-
 def _py_path() -> str:
     for c in [REPO / ".venv/bin/python3", REPO / "venv/bin/python3", Path(sys.executable)]:
         if c.exists(): return str(c)
@@ -140,7 +120,7 @@ print(json.dumps({{
     if r["rc"] != 0:
         return {"status": "ERROR", "error": r["output"][:300]}
     try:
-        data = _loads_first_json(r["output"])
+        data = json.loads(r["output"])
         return {"status": "PASS", **data}
     except:
         return {"status": "PASS", "note": "gene intake completed", "output": r["output"][:200]}
@@ -177,7 +157,7 @@ def fix_apex_v10_evidence() -> dict:
     try:
         r = _run([str(BIN/"hermes-goal")], timeout=60)
         if r["rc"] == 0:
-            d = _loads_first_json(r["output"])
+            d = _extract_first_json_object(r["output"])
             apex_core = d.get("components", {}).get("apex_core_gate", {}).get("score", 85)
             asi = d.get("components", {}).get("asi_gate", {}).get("score", 80)
             score = min(100, (apex_core + asi) / 2)
@@ -213,6 +193,22 @@ def scan_watch_items(goal_output: dict) -> list[dict]:
                 "gaps": val.get("gaps", []),
             })
     return items
+
+def _daily_learning_runtime_status() -> dict[str, Any]:
+    """Daily learning may be supervised by the batch scheduler, not launchd."""
+    cli = BIN / "pgg-daily-learning"
+    latest_candidates = [
+        DATA / "daily-learning" / "latest.json",
+        DATA / "pgg-daily-learning" / "latest.json",
+        HOME / ".hermes" / "workspace" / "pgg-daily-learning" / "latest.json",
+    ]
+    latest = next((p for p in latest_candidates if p.exists()), None)
+    if cli.exists() and latest:
+        return {"action": "managed_by_batch_scheduler", "cli": str(cli), "latest": str(latest)}
+    if cli.exists():
+        return {"action": "cli_present_no_latest_yet", "cli": str(cli)}
+    return {"action": "plist_missing", "detail": "no launchd plist and no pgg-daily-learning CLI"}
+
 
 # ── Phase 2: Apply fixes ─────────────────────────────────────────────
 
@@ -272,15 +268,14 @@ def apply_fixes(watch_items: list[dict]) -> list[dict]:
                 code = """import sqlite3, json
 db = "/Users/appleoppa/.hermes/workspace/04_knowledge/开智/02-进化基因/apex_evolution_genes.sqlite3"
 con = sqlite3.connect(db)
-low = con.execute("SELECT gene_id, fitness FROM evolution_genes WHERE status='verified' AND (fitness IS NULL OR fitness < 500)").fetchall()
-for gid, fit in low:
-    con.execute("UPDATE evolution_genes SET status='candidate', verification_status=verification_status||';AUTO_DEMOTED_HEALTH_GATE' WHERE gene_id=?", (gid,))
-con.commit()
+# Low fitness on A/B evidence verified genes often means score not backfilled, not fake evidence.
+# Never auto-demote here; report samples and let the quality fixer recompute fitness.
+low = con.execute("SELECT gene_id, fitness, evidence_grade, length(coalesce(source_refs_json,'')) AS src_len FROM evolution_genes WHERE status='verified' AND (fitness IS NULL OR fitness < 500) ORDER BY coalesce(fitness,0) ASC LIMIT 20").fetchall()
 con.close()
-print(json.dumps({"demoted": len(low), "ids": [r[0] for r in low[:10]]}))"""
+print(json.dumps({"review_required": len(low), "ids": [r[0] for r in low[:10]], "action": "NO_AUTO_DEMOTE_SCORE_BACKFILL_REQUIRED"}))"""
                 r = _run([py, "-c", code], cwd=REPO, timeout=15)
-                results.append({"name": "gene_health", "action": "auto_demote_low_fitness", 
-                              "signals": health_signals, "result": r.get("output", "")[:200]})
+                results.append({"name": "gene_health", "action": "review_low_fitness_no_auto_demote", 
+                              "signals": health_signals, "result": r.get("output", "")[:240]})
             if "RETIRE_EXCEEDS_ACTIVE" in sig:
                 results.append({"name": "gene_health", "action": "WATCH_retire_exceeds_active",
                               "note": "需要人工评估"})
@@ -315,38 +310,12 @@ else:
     else:
         results.append({"name": "agentspex_sandbox", "action": "sandbox_not_built_yet"})
     
-    # ── Pattern 8: 终极进化公式 — 目标趋势突变检测 ──
-    # 跟踪SE25 ultimate formula score趋势，发现突变（骤降>15%）触发告警
-    _SCORE_CACHE = REPO / "workspace" / "_pattern8_score_cache.json"
-    uf = _run([str(BIN/"pgg-ultimate-formula"), "--pretty"], timeout=15)
-    if uf["rc"] == 0:
-        try:
-            uf_data = _loads_first_json(uf["output"])
-            current_score = uf_data.get("score", 0.0)
-            previous = {}
-            if _SCORE_CACHE.exists():
-                previous = json.loads(_SCORE_CACHE.read_text())
-                if time.time() - previous.get("ts", 0) < 86400:
-                    prev_score = previous.get("score", current_score)
-                    sudden_drop = prev_score - current_score > 15.0 if current_score < prev_score else 0.0
-                    if sudden_drop:
-                        results.append({"name": "ultimate_formula_trend", "action": "WATCH",
-                                        "detail": f"score dropped {current_score} from {prev_score}"})
-                    else:
-                        results.append({"name": "ultimate_formula_trend", "action": f"stable({current_score})"})
-                else:
-                    results.append({"name": "ultimate_formula_trend", "action": f"new({current_score})"})
-            else:
-                results.append({"name": "ultimate_formula_trend", "action": f"baseline({current_score})"})
-            _SCORE_CACHE.parent.mkdir(parents=True, exist_ok=True)
-            _SCORE_CACHE.write_text(json.dumps({"score": current_score, "ts": time.time()}))
-        except Exception as ex:
-            results.append({"name": "ultimate_formula_trend", "action": "ERROR", "detail": str(ex)[:100]})
-    else:
-        results.append({"name": "ultimate_formula_trend", "action": "ERROR", "detail": (uf.get("output","") or "")[:100]})
-    
-    # ── Pattern 9: Launchd健康检查 ──
+    # ── Pattern 9: Runtime健康检查 ──
     for label in ["ai.hermes.pgg-self-evolution-loop", "ai.hermes.pgg-daily-learning", "ai.hermes.webui"]:
+        if label == "ai.hermes.pgg-daily-learning":
+            daily = _daily_learning_runtime_status()
+            results.append({"name": f"runtime_{label}", **daily})
+            continue
         lr = _run(["launchctl", "list", label], timeout=5)
         if lr["rc"] != 0 or "PID" not in lr["output"]:
             plist_path = HOME / "Library/LaunchAgents" / f"{label}.plist"
@@ -365,76 +334,6 @@ else:
         results.append({"name": "git_worktree", "action": "WATCH", "detail": f"{dirt_count} dirty files"})
     elif dirt_count >= 0:
         results.append({"name": "git_worktree", "action": f"clean_or_minor({dirt_count})"})
-    
-    # ── Pattern 11: ARIS三层反思 ──
-    ar = _run([str(BIN/"pgg-aris-reflection")], timeout=60)
-    if ar["rc"] == 0:
-        try:
-            ar_data = _loads_first_json(ar["output"])
-            l3_blockers = ar_data.get("results", {}).get("L3_architectural_blockers", [])
-            l3_severe = [b for b in l3_blockers if b.get("severity") in ("high", "medium")]
-            results.append({
-                "name": "aris_reflection",
-                "action": "ran" if not l3_severe else f"found_{len(l3_severe)}_l3_blockers",
-                "l1_score": round(ar_data.get("results", {}).get("L1_deviation_score", "?"), 3) if isinstance(ar_data.get("results", {}).get("L1_deviation_score"), (int, float)) else ar_data.get("results", {}).get("L1_deviation_score", "?"),
-                "recommendation": ar_data.get("results", {}).get("recommendation", "?"),
-            })
-        except:
-            results.append({"name": "aris_reflection", "action": "parse_error"})
-    else:
-        results.append({"name": "aris_reflection", "action": "failed"})
-    
-    # ── Pattern 12: Dream模式（基因梦境检查） ──
-    dr = _run([str(BIN/"pgg-dream-mode")], timeout=60)
-    if dr["rc"] == 0:
-        try:
-            dr_data = _loads_first_json(dr["output"])
-            dream_phase = dr_data.get("dream_cycle_summary", {}).get("phase_completed", "?")
-            fusion_count = dr_data.get("gene_fusion_stats", {}).get("attempted", 0)
-            results.append({
-                "name": "dream_mode",
-                "action": "ran",
-                "phase_completed": dream_phase,
-                "fusion_attempted": fusion_count,
-            })
-        except:
-            results.append({"name": "dream_mode", "action": "parse_error"})
-    else:
-        results.append({"name": "dream_mode", "action": "failed"})
-    
-    # ── Pattern 13: 流匹配网络评估 ──
-    fm = _run([str(BIN/"pgg-flow-matching")], timeout=30)
-    if fm["rc"] == 0:
-        try:
-            fm_data = _loads_first_json(fm["output"])
-            results.append({
-                "name": "flow_matching",
-                "action": "eval_complete",
-                "paths_available": len(fm_data.get("redundant_routing", {}).get("paths", [])),
-                "routing_strategy": fm_data.get("redundant_routing", {}).get("strategy", "?"),
-            })
-        except:
-            results.append({"name": "flow_matching", "action": "parse_error"})
-    else:
-        results.append({"name": "flow_matching", "action": "failed"})
-    
-    # ── Pattern 14: CMMI门禁检查 ──
-    cm = _run([str(BIN/"pgg-cmmi-gate")], timeout=30)
-    if cm["rc"] == 0:
-        try:
-            cm_data = _loads_first_json(cm["output"])
-            evidence = cm_data.get("evidence", {})
-            source_ok = evidence.get("source", {}).get("source_document_read", False)
-            results.append({
-                "name": "cmmi_gate",
-                "action": "checked",
-                "source_doc_read": source_ok,
-                "patterns_absorbed": len(evidence.get("external_learning", {}).get("patterns_absorbed", [])),
-            })
-        except:
-            results.append({"name": "cmmi_gate", "action": "parse_error"})
-    else:
-        results.append({"name": "cmmi_gate", "action": "failed"})
 
     return results
 
@@ -446,7 +345,7 @@ def verify_and_reload() -> dict:
     if r["rc"] != 0:
         return {"status": "VERIFY_FAILED", "output": r["output"][:500]}
     try:
-        d = _loads_first_json(r["output"])
+        d = _extract_first_json_object(r["output"])
         pass_count = len([v for v in d.get("components",{}).values()
                          if str(v.get("status","")).startswith("PASS")])
         blocked = d.get("blocked_count", -1)
@@ -482,6 +381,21 @@ def settle_knowledge(fix_results: list[dict], verify_result: dict) -> dict:
 
 # ── Main Pipeline ────────────────────────────────────────────────────
 
+def _extract_first_json_object(text: str) -> dict:
+    """Extract the first top-level JSON object from mixed CLI output."""
+    decoder = json.JSONDecoder()
+    for i, ch in enumerate(text or ""):
+        if ch != "{":
+            continue
+        try:
+            obj, _ = decoder.raw_decode(text[i:])
+        except json.JSONDecodeError:
+            continue
+        if isinstance(obj, dict):
+            return obj
+    raise json.JSONDecodeError("no top-level JSON object found", text or "", 0)
+
+
 def main() -> int:
     WORKSPACE.mkdir(parents=True, exist_ok=True)
     
@@ -503,7 +417,11 @@ def main() -> int:
     if r["rc"] != 0:
         print(f"  ERROR: hermes-goal failed: {r['output'][:200]}")
         return 1
-    goal = _loads_first_json(r["output"])
+    try:
+        goal = _extract_first_json_object(r["output"])
+    except json.JSONDecodeError as e:
+        print(f"  ERROR: hermes-goal JSON parse failed: {e}; output_head={r['output'][:300]!r}")
+        return 1
     print(f"  {goal.get('summary', '?')} | {time.time()-t0:.0f}s")
     
     # Step 2: Run gene intake (scan → write → fusion → reflexion)

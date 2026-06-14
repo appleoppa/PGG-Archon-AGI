@@ -1,0 +1,13 @@
+{
+  "verdict": "PASS",
+  "risk": "low",
+  "boundary_ok": true,
+  "up_to_3_issues": [],
+  "review_timestamp": "2026-05-28T21:14:00+0800",
+  "model": "gpt-5.5",
+  "provider": "chuangagent.eu.cc",
+  "api_mode": "codex_responses",
+  "task": "PGG Archon ResearchExtractionSurface/v1 hardened self-review",
+  "tests_passed": 77,
+  "verification_details": "77个PGG Archon测试通过；SURFACE_LIMITS、URL_HASH_SALT、language_assumption已暴露；status surface signal/bottleneck/summary接入完成；无AGI声明、无外部副作用。"
+}

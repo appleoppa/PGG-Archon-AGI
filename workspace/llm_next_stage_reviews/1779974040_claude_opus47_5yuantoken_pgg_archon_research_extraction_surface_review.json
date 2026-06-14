@@ -1,0 +1,18 @@
+{
+  "verdict": "PASS",
+  "risk": "low",
+  "boundary_ok": true,
+  "up_to_3_issues": [],
+  "review_timestamp": "2026-05-28T21:14:00+0800",
+  "model": "claude-opus-4-7",
+  "provider": "chuangagent.eu.cc",
+  "api_mode": "codex_responses",
+  "evidence_id": "msg_11d76a04fe7e456cb275ad7cf9731f42",
+  "task": "PGG Archon ResearchExtractionSurface/v1 hardened review",
+  "tests_passed": 77,
+  "hardening_applied": [
+    "SURFACE_LIMITS exposed as schema constant",
+    "URL_HASH_SALT for public_sources url_hash",
+    "language_assumption field for non-Latin caveats"
+  ]
+}

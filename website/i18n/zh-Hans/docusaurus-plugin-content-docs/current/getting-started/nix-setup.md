@@ -107,10 +107,10 @@ nix build
 就这些。`nixos-rebuild switch` 会创建 `hermes` 用户、生成 `config.yaml`、连接密钥并启动 gateway——这是一个长期运行的服务，将 Agent 连接到消息平台（Telegram、Discord 等）并监听传入消息。
 
 :::warning 密钥是必需的
-上面的 `environmentFiles` 行假设你已配置 [sops-nix](https://github.com/Mic92/sops-nix) 或 [agenix](https://github.com/ryantm/agenix)。该文件至少应包含一个 LLM 提供商密钥（例如 `OPENROUTER_API_KEY=sk-or-...`）。完整设置请参阅[密钥管理](#secrets-management)。如果你还没有密钥管理器，可以先使用普通文件——只需确保它不是全局可读的：
+上面的 `environmentFiles` 行假设你已配置 [sops-nix](https://github.com/Mic92/sops-nix) 或 [agenix](https://github.com/ryantm/agenix)。该文件至少应包含一个 LLM 提供商密钥（例如 `OPENROUTER_API_KEY=<OPENROUTER_API_KEY>`）。完整设置请参阅[密钥管理](#secrets-management)。如果你还没有密钥管理器，可以先使用普通文件——只需确保它不是全局可读的：
 
 ```bash
-echo "OPENROUTER_API_KEY=sk-or-your-key" | sudo install -m 0600 -o hermes /dev/stdin /var/lib/hermes/env
+echo "OPENROUTER_API_KEY=<OPENROUTER_API_KEY>" | sudo install -m 0600 -o hermes /dev/stdin /var/lib/hermes/env
 ```
 
 ```nix
@@ -360,9 +360,9 @@ Nix 表达式中的值会进入 `/nix/store`，该目录是全局可读的。请
 ```yaml
 # secrets/hermes.yaml（使用 sops 加密）
 hermes-env: |
-    OPENROUTER_API_KEY=sk-or-...
+    OPENROUTER_API_KEY=<OPENROUTER_API_KEY>
     TELEGRAM_BOT_TOKEN=123456:ABC...
-    ANTHROPIC_API_KEY=sk-ant-...
+    ANTHROPIC_API_KEY=<OPENAI_API_KEY>
 ```
 
 ### agenix

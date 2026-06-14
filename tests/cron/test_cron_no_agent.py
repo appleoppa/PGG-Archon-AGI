@@ -12,7 +12,6 @@ Covers:
 from __future__ import annotations
 
 import json
-from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -243,7 +242,7 @@ state = pathlib.Path({str(state_path)!r})
 if state.exists():
     sys.exit(0)
 state.write_text("sent", encoding="utf-8")
-print("# APEX RuntimeOS 健康提醒")
+print("# PGG Archon AGI 健康提醒")
 print("| cron_ledger_bad_lines | warn | 1 | simulated |")
 PY
 ''',
@@ -258,7 +257,7 @@ PY
 
     assert first_success is True
     assert first_error is None
-    assert "APEX RuntimeOS 健康提醒" in first_response
+    assert "PGG Archon AGI 健康提醒" in first_response
     assert "cron_ledger_bad_lines" in first_doc
     assert second_success is True
     assert second_error is None

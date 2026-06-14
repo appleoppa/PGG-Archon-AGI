@@ -15,21 +15,14 @@ import time
 from pathlib import Path
 from typing import Any
 
-# Try native Rust PyO3 module
-try:
-    import hermes_pgg_picoapex_saturation as _native_mod  # type: ignore[import-untyped, unused-ignore]
-    _NATIVE = True
-except ImportError:
-    _NATIVE = False
-
 DEFAULT_DB = Path("/Users/appleoppa/.hermes/workspace/04_knowledge/开智/02-进化基因/apex_evolution_genes.sqlite3")
 DEFAULT_STATE_PATH = Path("/Users/appleoppa/.hermes/data/self-evolution-loop/latest.json")
 
 DIMENSION_ORDER = ["creativity", "reasoning", "planning", "coding", "analysis"]
 SATURATION_THRESHOLD = 0.30
 ELITE_FITNESS_THRESHOLD = 800.0
-ENGINE_VERSION = "pgg_picoapex_saturation_rust/v1" if _NATIVE else "pgg_picoapex_saturation/v1"
-BOUNDARY = "pgg_picoapex_saturation_rust; local GeneDB read + latest.json target write; no LLM/network" if _NATIVE else "pgg_picoapex_saturation; local GeneDB read + latest.json target write; no LLM/network"
+ENGINE_VERSION = "pgg_picoapex_saturation/v1"
+BOUNDARY = "pgg_picoapex_saturation; local GeneDB read + latest.json target write; no LLM/network"
 
 
 def _now() -> str:
@@ -48,7 +41,6 @@ def _safe_float(value: Any, default: float = 0.0) -> float:
 class PicoAPEXEngine:
     """Detect PicoAPEX active-gene saturation and rotate the target dimension.
 
-    Uses native Rust .so when available; falls back to pure Python.
     Output contract for :meth:`check_and_switch` includes:
     ``{current_dim, elite_ratio, saturated, next_dim, action}``.
     """
@@ -67,22 +59,6 @@ class PicoAPEXEngine:
 
     def check_and_switch(self) -> dict[str, Any]:
         """Check active-gene saturation and write a new goal if saturated."""
-        if _NATIVE:
-            return self._check_and_switch_native()
-        return self._check_and_switch_py()
-
-    def _check_and_switch_native(self) -> dict[str, Any]:
-        """Delegate to Rust PyO3 native module."""
-        result = _native_mod.native_check_and_switch(
-            str(self.db_path),
-            str(self.state_path),
-            self.saturation_threshold,
-            self.elite_fitness_threshold,
-        )
-        return json.loads(result)
-
-    def _check_and_switch_py(self) -> dict[str, Any]:
-        """Pure Python fallback."""
         state = self._read_state()
         current_dim = self._current_dimension(state)
         next_dim = self._next_dimension(current_dim)

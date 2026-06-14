@@ -1,0 +1,11 @@
+{
+  "provider": "claude_opus47_5yuantoken",
+  "model": "claude-opus-4-7",
+  "status": "HTTP_200",
+  "decision": "PASS",
+  "content_hash": "1d423361b87e1871f79df4730b2bbf0a2f9893883578c9747180af5cb0748af3",
+  "content_excerpt": "{\"decision\":\"PASS\",\"risk\":\"low\",\"reason\":\"Run was explicitly user-authorized; enforce mode produced promoted=0 with the sole candidate skipped as duplicate_existing_promotion, indicating dedup gating worked rather than being bypassed. Code change only adds observability (skipped reason details) for invalid_schema, promotion_not_required, and duplicate_existing_promotion paths, with 57 tests passing and no new memory/skill artifacts promoted.\"}",
+  "raw_response_stored": false,
+  "credential_stored": false,
+  "created_at": "2026-05-28T19:08:10+0800"
+}

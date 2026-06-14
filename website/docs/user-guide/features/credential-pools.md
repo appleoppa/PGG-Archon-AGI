@@ -11,6 +11,10 @@ Credential pools let you register multiple API keys or OAuth tokens for the same
 
 This is different from [fallback providers](./fallback-providers.md), which switch to a *different* provider entirely. Credential pools are same-provider rotation; fallback providers are cross-provider failover. Pools are tried first — if all pool keys are exhausted, *then* the fallback provider activates.
 
+:::tip
+Credential pools are mainly for API-key providers (OpenRouter, Anthropic). A single [Nous Portal](/integrations/nous-portal) OAuth covers 300+ models, so most users don't need a pool when on Portal.
+:::
+
 ## How It Works
 
 ```
@@ -18,8 +22,11 @@ Your request
   → Pick key from pool (round_robin / least_used / fill_first / random)
   → Send to provider
   → 429 rate limit?
-      → Retry same key once (transient blip)
-      → Second 429 → rotate to next pool key
+      → Plan/usage limit reached (e.g. ChatGPT/Codex "usage limit reached")?
+          → Rotate to next pool key immediately (no retry — the cap won't clear on retry)
+      → Generic / transient 429?
+          → Retry same key once (transient blip)
+          → Second 429 → rotate to next pool key
       → All keys exhausted → fallback_model (different provider)
   → 402 billing error?
       → Immediately rotate to next pool key (24h cooldown)
@@ -35,10 +42,10 @@ If you already have an API key set in `.env`, Hermes auto-discovers it as a 1-ke
 
 ```bash
 # Add a second OpenRouter key
-hermes auth add openrouter --api-key sk-or-v1-your-second-key
+hermes auth add openrouter --api-key <OPENROUTER_API_KEY>
 
 # Add a second Anthropic key
-hermes auth add anthropic --type api-key --api-key sk-ant-api03-your-second-key
+hermes auth add anthropic --type api-key --api-key <ANTHROPIC_API_KEY>
 
 # Add an Anthropic OAuth credential (requires Claude Max plan + extra usage credits)
 hermes auth add anthropic --type oauth
@@ -150,7 +157,7 @@ hermes auth list
 #     #1  config key    api_key config:Together.ai ←
 
 # Add a second key for the same endpoint:
-hermes auth add Together.ai --api-key sk-together-second-key
+hermes auth add Together.ai --api-key <OPENAI_API_KEY>
 ```
 
 Custom endpoint pools are stored in `auth.json` under `credential_pool` with a `custom:` prefix:
@@ -234,7 +241,7 @@ Pool state is stored in `~/.hermes/auth.json` under the `credential_pool` key:
         "auth_type": "api_key",
         "priority": 0,
         "source": "manual",
-        "access_token": "sk-ant-api03-..."
+        "access_token": "<ANTHROPIC_API_KEY>"
       }
     ]
   }

@@ -19,7 +19,7 @@ Hermes Agent 与 Telegram 集成，作为功能完整的对话机器人。连接
 5. BotFather 会回复你的 **API token**，格式如下：
 
 ```
-123456789:ABCdefGHIjklMNOpqrSTUvwxYZ
+<TELEGRAM_BOT_TOKEN_FROM_BOTFATHER>
 ```
 
 :::warning
@@ -126,7 +126,7 @@ hermes gateway setup
 将以下内容添加到 `~/.hermes/.env`：
 
 ```bash
-TELEGRAM_BOT_TOKEN=123456789:ABCdefGHIjklMNOpqrSTUvwxYZ
+TELEGRAM_BOT_TOKEN=<TELEGRAM_BOT_TOKEN_FROM_BOTFATHER>
 TELEGRAM_ALLOWED_USERS=123456789    # 多个用户用逗号分隔
 ```
 
@@ -853,9 +853,9 @@ platforms:
 
 | 值 | 行为 |
 |---|---|
-| `auto` | 在支持的聊天（目前为 Telegram 私聊）上使用原生草稿流式传输；否则使用旧版基于编辑的路径。如果草稿帧失败，会优雅回退。 |
+| `auto`（默认） | 在支持的聊天（目前为 Telegram 私聊）上使用原生草稿流式传输；否则使用旧版基于编辑的路径。如果草稿帧失败，会优雅回退。 |
 | `draft` | 强制使用原生草稿。如果聊天不支持草稿（例如群组/话题），记录降级日志并回退到编辑方式。 |
-| `edit`（默认） | 对所有聊天类型使用旧版渐进式 `editMessageText` 轮询。 |
+| `edit` | 对所有聊天类型使用旧版渐进式 `editMessageText` 轮询。 |
 | `off` | 完全禁用流式传输（仅最终回复，无渐进更新）。 |
 
 在 `~/.hermes/config.yaml` 中：
@@ -864,10 +864,10 @@ platforms:
 gateway:
   streaming:
     enabled: true
-    transport: edit    # edit | auto | draft | off
+    transport: auto    # auto | draft | edit | off
 ```
 
-**使用 `edit`（默认）时私聊中的效果** — gateway 发送一条普通预览消息，并通过 `editMessageText` 渐进更新，避免 Telegram 草稿预览折叠/回滚效果。
+**使用 `edit` 传输时私聊中的效果** — gateway 发送一条普通预览消息，并通过 `editMessageText` 渐进更新，避免 Telegram 草稿预览折叠/回滚效果。
 
 **使用 `auto` 或 `draft` 时私聊中的效果** — Telegram 显示逐 token 更新的动画草稿预览。回复完成后，它作为普通消息投递，草稿预览在客户端自然清除。草稿没有消息 ID，因此最终答案才是保留在聊天历史中的内容。
 
