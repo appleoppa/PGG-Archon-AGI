@@ -132,7 +132,7 @@ hermes plugins enable observability/langfuse
 
 ```bash
 HERMES_LANGFUSE_PUBLIC_KEY=pk-lf-...
-HERMES_LANGFUSE_SECRET_KEY=sk-lf-...
+HERMES_LANGFUSE_SECRET_KEY=<OPENAI_API_KEY>
 HERMES_LANGFUSE_BASE_URL=https://cloud.langfuse.com   # 或你的自托管 URL
 ```
 

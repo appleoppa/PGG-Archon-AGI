@@ -1,0 +1,5 @@
+{
+  "model": "claude_opus47_5yuantoken",
+  "raw_response": "{\"code\":\"API_KEY_REQUIRED\",\"message\":\"API key is required in Authorization header (Bearer scheme), x-api-key header, or x-goog-api-key header\"}",
+  "saved_at": 1779970917
+}

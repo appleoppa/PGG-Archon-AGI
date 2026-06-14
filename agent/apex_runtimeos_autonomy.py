@@ -288,6 +288,12 @@ def persist_autowrite_candidate(
         "candidate_type": record["candidate_type"],
         "promotion_required": True,
         "applied_to_core_memory_or_skill": False,
+        "recommendations": {
+            "schema": _safe_scalar(recs.get("schema")),
+            "status": _safe_scalar(recs.get("status")),
+            "count": len(safe_items),
+            "items": safe_items,
+        },
     }
 
 
@@ -610,15 +616,18 @@ def promote_autowrite_candidates(*, candidate_path: Optional[Path] = None, targe
     for candidate in candidates:
         if candidate.get("schema") != "ApexRuntimeOSAutoWriteCandidate/v1":
             skipped += 1
+            details.append({"target": target, "success": False, "reason": "invalid_candidate_schema"})
             continue
         if not candidate.get("promotion_required"):
             skipped += 1
+            details.append({"target": target, "success": False, "reason": "promotion_not_required"})
             continue
         if target == "memory":
             content = _candidate_to_memory_entry(candidate)
             content_hash = _hash_text("memory:" + content)
             if content_hash in existing_hashes:
                 skipped += 1
+                details.append({"target": "memory", "success": False, "reason": "duplicate_existing_promotion", "content_hash": content_hash})
                 continue
             store = MemoryStore(memory_char_limit=10000, user_char_limit=10000)
             store.load_from_disk()
@@ -648,6 +657,7 @@ def promote_autowrite_candidates(*, candidate_path: Optional[Path] = None, targe
             content_hash = _hash_text("skill:" + content)
             if content_hash in existing_hashes:
                 skipped += 1
+                details.append({"target": "skill", "success": False, "reason": "duplicate_existing_promotion", "content_hash": content_hash})
                 continue
             skill_dir = get_hermes_home() / "skills" / "apex-runtimeos-autogen"
             skill_path = skill_dir / "SKILL.md"
@@ -1318,6 +1328,17 @@ def summarize_autonomy_status(*, limit: int = 1000, min_occurrences: int = 2) ->
     except Exception as exc:
         report["cross_domain_core_gene_gate"] = {
             "schema": "PggArchonCrossDomainCoreGeneGate/v1",
+            "status": "ERROR",
+            "error": _safe_scalar(exc),
+            "side_effects": "read_only_report",
+        }
+    try:
+        from agent.pgg_case_workflow_gates import build_case_workflow_gate_from_runtimeos_status
+
+        report["case_workflow_gate"] = build_case_workflow_gate_from_runtimeos_status(report)
+    except Exception as exc:
+        report["case_workflow_gate"] = {
+            "schema": "PGGCaseWorkflowRuntimeGate/v1",
             "status": "ERROR",
             "error": _safe_scalar(exc),
             "side_effects": "read_only_report",

@@ -1,0 +1,11 @@
+{
+  "provider": "claude_opus47_5yuantoken",
+  "model": "claude-opus-4-7",
+  "status": "HTTP_200",
+  "decision": "PASS",
+  "content_hash": "3f899e09c3b20f49eae275436bed053ae23a023ff104e7d7d3cbe57323440f09",
+  "content_excerpt": "{\"decision\":\"PASS\",\"risk\":\"low\",\"reason\":\"Extends existing read-only no_agi_completion_claims signal to additional surfaces (autonomy_status, promotion_claim_guard, evidence_loop_surface) with a new pytest covering the bound case; 10 tests pass; boundaries preserved (no gene write, no autopromote, no AGI completion claim), consistent with anti-AGI-completion discipline.\"}",
+  "raw_response_stored": false,
+  "credential_stored": false,
+  "created_at": "2026-05-28T18:48:32+0800"
+}

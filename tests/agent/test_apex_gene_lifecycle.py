@@ -13,6 +13,7 @@ from agent.apex_gene_lifecycle import (
     load_gene_lifecycle_candidates_from_sqlite,
     normalize_gene_status,
 )
+from agent.apex_archon_absorption import build_absorption_gene_candidate, build_guarded_absorption_report
 
 
 def _create_gene_db(path):
@@ -226,5 +227,45 @@ def test_gene_lifecycle_holds_non_ready_co_scientist_candidate(tmp_path, monkeyp
     report = build_gene_lifecycle_gate_from_runtimeos_status(status)
     assert report["status"] == "PASS"
     assert report["co_scientist_gene_candidate"]["present"] is True
+    assert report["promotable_count"] == 0
+    assert report["genes"][0]["status"] == "active"
+
+
+def test_gene_lifecycle_includes_ready_archon_absorption_candidate(tmp_path, monkeypatch):
+    monkeypatch.setenv("APEX_GENE_LIFECYCLE_DB_PATH", str(tmp_path / "missing.sqlite3"))
+    absorption_report = build_guarded_absorption_report(
+        gpt_review={"status": "ok", "decision": "accept_guarded"},
+        claude_review={"status": "ok", "decision": "accept_guarded"},
+    )
+    candidate = build_absorption_gene_candidate(absorption_report)
+    status = {
+        "schema": "ApexRuntimeOSAutonomyStatus/v1",
+        "archon_absorption_gene_candidate": candidate,
+    }
+    report = build_gene_lifecycle_gate_from_runtimeos_status(status)
+    assert report["status"] == "PASS"
+    assert report["sqlite_read"]["status"] == "BLOCK"
+    assert report["archon_absorption_gene_candidate"]["present"] is True
+    assert report["archon_absorption_gene_candidate"]["eligible"] is True
+    assert report["archon_absorption_gene_candidate"]["gene_library_written"] is False
+    assert report["gene_count"] == 1
+    assert report["promotable_count"] == 1
+    assert report["genes"][0]["gene"].startswith("archon_absorption:archon_guarded_absorption_")
+
+
+def test_gene_lifecycle_holds_non_ready_archon_absorption_candidate(tmp_path, monkeypatch):
+    monkeypatch.setenv("APEX_GENE_LIFECYCLE_DB_PATH", str(tmp_path / "missing.sqlite3"))
+    absorption_report = build_guarded_absorption_report(
+        gpt_review={"status": "ok", "decision": "accept_guarded"},
+    )
+    candidate = build_absorption_gene_candidate(absorption_report)
+    status = {
+        "schema": "ApexRuntimeOSAutonomyStatus/v1",
+        "archon_absorption_gene_candidate": candidate,
+    }
+    report = build_gene_lifecycle_gate_from_runtimeos_status(status)
+    assert report["status"] == "PASS"
+    assert report["archon_absorption_gene_candidate"]["present"] is True
+    assert report["archon_absorption_gene_candidate"]["eligible"] is False
     assert report["promotable_count"] == 0
     assert report["genes"][0]["status"] == "active"

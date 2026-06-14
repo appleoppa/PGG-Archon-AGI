@@ -11,11 +11,11 @@ CURRENT_SYSTEM_NAME = "PGG Archon AGI"
 CURRENT_SYSTEM_SLUG = "pgg-archon-agi"
 LEGACY_RUNTIME_NAME = "APEX RuntimeOS"
 
-# Keep old command stable, add current-name aliases instead of breaking scripts.
-PRIMARY_DIAGNOSTIC_COMMAND = "apex-runtimeos"
-DIAGNOSTIC_COMMAND_ALIASES = ("apex", "archon", "pgg-archon")
+# Prefer the current public command while keeping old commands stable for scripts.
+PRIMARY_DIAGNOSTIC_COMMAND = "pgg-archon"
+DIAGNOSTIC_COMMAND_ALIASES = ("apex-runtimeos", "apex", "archon")
 
-USER_FACING_SYSTEM_LABEL = f"{CURRENT_SYSTEM_NAME}（原 {LEGACY_RUNTIME_NAME}）"
+USER_FACING_SYSTEM_LABEL = CURRENT_SYSTEM_NAME
 
 __all__ = [
     "CURRENT_SYSTEM_NAME",
