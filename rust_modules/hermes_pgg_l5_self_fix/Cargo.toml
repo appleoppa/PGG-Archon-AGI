@@ -1,0 +1,16 @@
+[package]
+name = "hermes_pgg_l5_self_fix"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "hermes_pgg_l5_self_fix"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+pyo3 = { version = "0.24", features = ["abi3-py311"] }
+serde_json = "1"
+regex = "1"
+sha2 = "0.10"
+blake3 = "1"
+hex = "0.4"

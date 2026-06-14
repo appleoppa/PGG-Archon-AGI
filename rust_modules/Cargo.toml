@@ -12,4 +12,5 @@ members = [
     "hermes_pgg_archon_utils",
     "hermes_pgg_ultimate_formula",
     "hermes_pgg_super_agi_formula",
+    "hermes_pgg_l5_self_fix",
 ]
