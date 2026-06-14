@@ -321,11 +321,6 @@ fn run_clear_low_candidates(db_path: &str) -> ClearResult {
 // ── Core operation: backfill ──────────────────────────────────────────
 
 fn run_backfill(db_path: &str) -> FillResult {
-    let mut total_candidates = 0u64;
-    let mut verification_status_fixed = 0u64;
-    let mut absorbed_knowledge_filled = 0u64;
-    let mut evidence_grade_set = 0u64;
-    let mut skipped_not_found = 0u64;
     let mut details: Vec<String> = Vec::new();
 
     let conn = match rusqlite::Connection::open(db_path) {
@@ -358,7 +353,7 @@ fn run_backfill(db_path: &str) -> FillResult {
             fixed
         ));
     }
-    verification_status_fixed = fixed as u64;
+    let verification_status_fixed = fixed as u64;
 
     // Step 2: Count candidates
     let count: i64 = conn
@@ -368,7 +363,7 @@ fn run_backfill(db_path: &str) -> FillResult {
             |r| r.get(0),
         )
         .unwrap_or(0);
-    total_candidates = count as u64;
+    let total_candidates = count as u64;
 
     // Step 3: Backfill absorbed_knowledge where missing
     let filled = conn
@@ -387,7 +382,7 @@ fn run_backfill(db_path: &str) -> FillResult {
             filled
         ));
     }
-    absorbed_knowledge_filled = filled as u64;
+    let absorbed_knowledge_filled = filled as u64;
 
     // Step 4: Set evidence_grade for candidates that have empty/null
     let ev_set = conn
@@ -402,7 +397,7 @@ fn run_backfill(db_path: &str) -> FillResult {
     if ev_set > 0 {
         details.push(format!("Set evidence_grade for {} candidates", ev_set));
     }
-    evidence_grade_set = ev_set as u64;
+    let evidence_grade_set = ev_set as u64;
 
     // Step 5: Ensure source_refs_json is non-empty
     let src_fixed = conn
@@ -426,7 +421,7 @@ fn run_backfill(db_path: &str) -> FillResult {
         verification_status_fixed,
         absorbed_knowledge_filled,
         evidence_grade_set,
-        skipped_not_found,
+        skipped_not_found: 0,
         details,
     }
 }
@@ -434,7 +429,6 @@ fn run_backfill(db_path: &str) -> FillResult {
 // ── Core operation: promote ───────────────────────────────────────────
 
 fn run_promote(db_path: &str) -> PromoteResult {
-    let mut eligible = 0u64;
     let mut promoted = 0u64;
     let mut skipped_fitness = 0u64;
     let mut skipped_source = 0u64;
@@ -479,7 +473,7 @@ fn run_promote(db_path: &str) -> PromoteResult {
         .filter_map(|r| r.ok())
         .collect();
 
-    eligible = rows.len() as u64;
+    let eligible = rows.len() as u64;
 
     let mut to_promote: Vec<String> = Vec::new();
 

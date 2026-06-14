@@ -258,7 +258,7 @@ fn build_plan(tasks_json: &str) -> PyResult<String> {
     while !remaining.is_empty() {
         let ready: Vec<String> = remaining
             .iter()
-            .filter(|(tid, t)| {
+            .filter(|(_tid, t)| {
                 t.dependencies
                     .iter()
                     .all(|dep| done.contains(dep) || !dep_set.contains(dep))

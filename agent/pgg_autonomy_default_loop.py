@@ -123,8 +123,11 @@ def _json_gate_probe(name: str, res: dict[str, Any],
     try:
         data = json.loads(res["output"])
         status = "PASS" if str(data.get("status", "")).startswith("PASS") else "WATCH"
+        summary = data.get("summary") or ""
+        summary_part = f" {summary}" if summary else ""
+        rc_part = f" rc={res.get('rc')}" if res.get("rc", 0) else ""
         return ProbeResult(name, status,
-                           f"score={data.get('score')} {data.get('status')} t={elapsed:.0f}s",
+                           f"score={data.get('score')} {data.get('status')}{summary_part}{rc_part} t={elapsed:.0f}s",
                            {"data": data})
     except Exception:
         return ProbeResult(name, "WATCH",
@@ -213,12 +216,31 @@ def _run_agi_gap_probe(py: str) -> ProbeResult:
 
 def _run_gene_intake_probe(py: str) -> ProbeResult:
     t = time.time()
+    rust_cli = HERMES_HOME / "bin" / "pgg_gene_intake_pipeline"
+    if rust_cli.exists():
+        res = _run([str(rust_cli), "/tmp/no_db_required_for_scan_score", "scan-score", str(REPO / "agent")], cwd=REPO, timeout=30)
+        if res["rc"] == 0:
+            try:
+                marker = "=== SCAN_SCORE ==="
+                payload = res["output"].split(marker, 1)[1].strip() if marker in res["output"] else res["output"]
+                data = json.loads(payload)
+                return ProbeResult(
+                    "gene_intake",
+                    "PASS",
+                    f"rust_scan_score scanned={data.get('scanned_files')} candidates={data.get('candidate_like_files')} t={time.time()-t:.0f}s",
+                    {"native": "rust", "data": data},
+                )
+            except Exception:
+                return ProbeResult("gene_intake", "PASS", f"rust_scan_score {res['output'][:160]}")
+        # Fall through to Python legacy probe if Rust binary exists but fails.
+
     res = _run([py, "-m", "agent.pgg_gene_intake_loop_cli", "--json-only"], cwd=REPO, timeout=30)
     if res["rc"] == 0:
         try:
             data = json.loads(res["output"])
             return ProbeResult("gene_intake", "PASS",
-                f"scanned={data.get('scanned')} fused={len(data.get('fusion_dry_run_results',[]))} t={time.time()-t:.0f}s")
+                f"python_legacy scanned={data.get('scanned')} fused={len(data.get('fusion_dry_run_results',[]))} t={time.time()-t:.0f}s",
+                {"native": "python_legacy", "data": data})
         except Exception:
             return ProbeResult("gene_intake", "PASS", res["output"][:200])
     return ProbeResult("gene_intake", "WATCH", f"rc={res['rc']}")
