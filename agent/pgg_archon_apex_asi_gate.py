@@ -6,10 +6,14 @@ PGG Archon APEX-ASI (Ψ_ASI) 证据门 — Rust PyO3 纯桥
 Rust .so 不可用时只返回 BLOCKED，不提供 Python 实现。
 """
 
+import hashlib
 import json
 import sys
+import time
 from pathlib import Path
 from typing import Any, Dict, Optional
+
+EVIDENCE_MAX_AGE_SECONDS = 24 * 60 * 60
 
 try:
     import hermes_pgg_apex_asi_gate as _native  # type: ignore[import-untyped]
@@ -31,15 +35,45 @@ class PggApexAsiGate:
         """
         path = Path.home() / ".hermes" / "workspace" / "pgg-archon-governance" / "goal-runtime-evidence" / "apex_asi_goal_config.json"
         if path.exists():
-            return json.loads(path.read_text(encoding="utf-8"))
+            raw = path.read_bytes()
+            config = json.loads(raw.decode("utf-8"))
+            config["_evidence_meta"] = {
+                "path": str(path),
+                "sha256": hashlib.sha256(raw).hexdigest(),
+                "mtime": int(path.stat().st_mtime),
+                "max_age_seconds": EVIDENCE_MAX_AGE_SECONDS,
+            }
+            return config
         return None
+
+    def _attach_evidence_meta(self, result: Dict[str, Any], config: Dict[str, Any]) -> Dict[str, Any]:
+        meta = config.get("_evidence_meta") if isinstance(config, dict) else None
+        if not isinstance(meta, dict):
+            return result
+        age_seconds = max(0, int(time.time()) - int(meta.get("mtime", 0) or 0))
+        evidence = {
+            "path": meta.get("path"),
+            "sha256": meta.get("sha256"),
+            "mtime": meta.get("mtime"),
+            "age_seconds": age_seconds,
+            "max_age_seconds": meta.get("max_age_seconds", EVIDENCE_MAX_AGE_SECONDS),
+            "stale": age_seconds > int(meta.get("max_age_seconds", EVIDENCE_MAX_AGE_SECONDS) or EVIDENCE_MAX_AGE_SECONDS),
+        }
+        result["evidence"] = evidence
+        if evidence["stale"]:
+            result["gaps"] = list(result.get("gaps", [])) + ["live_evidence_stale"]
+            result["status"] = "WATCH_ASI_EVIDENCE_STALE"
+        return result
 
     def evaluate(self, config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         if _MODULE is None:
             return {"status": "BLOCKED", "score": 0.0, "detail": "Rust native .so not available"}
         if config is None:
             config = self._load_live_config() or json.loads(_MODULE.sample_config_json())
-        return json.loads(_MODULE.evaluate_config_json(json.dumps(config, ensure_ascii=False)))
+        assert config is not None
+        native_config = {k: v for k, v in config.items() if k != "_evidence_meta"}
+        result = json.loads(_MODULE.evaluate_config_json(json.dumps(native_config, ensure_ascii=False)))
+        return self._attach_evidence_meta(result, config)
 
     def sample_config(self) -> Dict[str, Any]:
         if _MODULE is None:

@@ -143,7 +143,7 @@ def main() -> int:
     results["engineering_gate"] = summarize_gate(engineering, ["score", "status"])
 
     evm = gate_json([str(VENV_PYTHON), "-m", "agent.pgg_archon_evm_runtime_gate"], "evm_gate")
-    results["evm_gate"] = summarize_gate(evm, ["evm_gate", "status"])
+    results["evm_gate"] = summarize_gate(evm, ["evm_gate", "status", "status_basis", "evidence", "gaps"])
 
     asi_cmd = [
         str(VENV_PYTHON),
@@ -155,7 +155,7 @@ def main() -> int:
         ),
     ]
     asi = gate_json(asi_cmd, "asi_gate")
-    results["asi_gate"] = summarize_gate(asi, ["score", "status"])
+    results["asi_gate"] = summarize_gate(asi, ["score", "status", "evidence", "gaps"])
 
     apex_core = gate_json([str(VENV_PYTHON), "-m", "agent.pgg_archon_apex_core_gate"], "apex_core_gate")
     results["apex_core_gate"] = summarize_gate(apex_core, ["score", "status"])

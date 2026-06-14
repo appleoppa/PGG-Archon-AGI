@@ -1,4 +1,6 @@
+import hashlib
 import json
+import time
 
 from agent.pgg_archon_evm_runtime_gate import PggEvmRuntimeGate
 
@@ -40,3 +42,41 @@ def test_apex_asi_bridge_can_evaluate_live_goal_config_shape(tmp_path):
     assert result["status"] == "PASS_READY"
     assert result["score"] >= 80
     assert "INTERNAL BOUNDED EVIDENCE GATE" in result["boundary"]
+
+
+def test_evm_attaches_evidence_hash_and_stale_guard():
+    gate = PggEvmRuntimeGate()
+    old_mtime = int(time.time()) - 2 * 24 * 60 * 60
+    cfg = {
+        "_evidence_meta": {
+            "path": "/tmp/evm_runtime_evidence.json",
+            "sha256": hashlib.sha256(b"evm").hexdigest(),
+            "mtime": old_mtime,
+            "max_age_seconds": 60,
+        }
+    }
+    result = gate._attach_evidence_meta({"status": "PASS_BOUNDED_EVM_RUNTIME_GATE", "gaps": []}, cfg)
+    assert result["evidence"]["sha256"] == hashlib.sha256(b"evm").hexdigest()
+    assert result["evidence"]["stale"] is True
+    assert result["status"] == "WATCH_EVM_EVIDENCE_STALE"
+    assert "live_evidence_stale" in result["gaps"]
+
+
+def test_apex_asi_attaches_evidence_hash_and_stale_guard():
+    from agent.pgg_archon_apex_asi_gate import PggApexAsiGate
+
+    gate = PggApexAsiGate()
+    old_mtime = int(time.time()) - 2 * 24 * 60 * 60
+    cfg = {
+        "_evidence_meta": {
+            "path": "/tmp/apex_asi_goal_config.json",
+            "sha256": hashlib.sha256(b"asi").hexdigest(),
+            "mtime": old_mtime,
+            "max_age_seconds": 60,
+        }
+    }
+    result = gate._attach_evidence_meta({"status": "PASS_READY", "gaps": []}, cfg)
+    assert result["evidence"]["sha256"] == hashlib.sha256(b"asi").hexdigest()
+    assert result["evidence"]["stale"] is True
+    assert result["status"] == "WATCH_ASI_EVIDENCE_STALE"
+    assert "live_evidence_stale" in result["gaps"]
