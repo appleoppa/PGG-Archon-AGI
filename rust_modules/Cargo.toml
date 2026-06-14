@@ -1,0 +1,16 @@
+[workspace]
+resolver = "2"
+members = [
+    "hermes_pgg_picoapex_saturation",
+    "hermes_pgg_self_evolution_core",
+    "hermes_pgg_skill_health_checker",
+    "hermes_pgg_schema_validator",
+    "pgg_sourceref_repair_runner",
+    "hermes_pgg_security_policy_surface",
+    "hermes_pgg_codegenesis_scanner",
+    "pgg_gene_intake_pipeline",
+    "hermes_pgg_archon_utils",
+    "hermes_pgg_ultimate_formula",
+    "hermes_pgg_super_agi_formula",
+    "hermes_pgg_l5_self_fix",
+]

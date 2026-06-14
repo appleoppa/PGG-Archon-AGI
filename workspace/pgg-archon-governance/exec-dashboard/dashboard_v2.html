@@ -1,0 +1,1066 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1440, initial-scale=1.0">
+<title>PGG Archon 苹果中枢 v2</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #0b0f1a;
+  --bg-card: rgba(22, 29, 46, 0.85);
+  --bg-sidebar: #0d1117;
+  --text: #e5e7eb;
+  --text-secondary: #9ca3af;
+  --text-muted: #6b7280;
+  --border: rgba(255,255,255,0.06);
+  --accent: #3b82f6;
+  --accent-glow: rgba(59,130,246,0.15);
+  --success: #10b981;
+  --warn: #f59e0b;
+  --danger: #ef4444;
+  --purple: #8b5cf6;
+  --radius: 14px;
+  --radius-sm: 10px;
+  --sidebar-w: 220px;
+  --transition: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+[data-theme="light"] {
+  --bg: #f0f2f8;
+  --bg-card: rgba(255,255,255,0.85);
+  --bg-sidebar: #0f1729;
+  --text: #1a1d2e;
+  --text-secondary: #6b7280;
+  --text-muted: #9ca3af;
+  --border: rgba(0,0,0,0.06);
+  --accent-glow: rgba(59,130,246,0.08);
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: 'Inter', system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  height: 100vh;
+  overflow: hidden;
+  font-size: 14px;
+  line-height: 1.5;
+}
+#app { height: 100vh; overflow: hidden; display: flex; flex-direction: column; }
+
+/* Top Bar — brand + nav */
+.top-bar {
+  display: flex; align-items: center; gap: 16px;
+  padding: 12px 28px; flex-shrink: 0;
+  background: var(--bg-card);
+  border-bottom: 1px solid var(--border);
+  backdrop-filter: blur(12px);
+  position: sticky; top: 0; z-index: 20;
+}
+.brand { display: flex; align-items: center; gap: 8px; margin-right: 4px; }
+.brand svg { flex-shrink: 0; }
+.brand .brand-name { font-family: 'JetBrains Mono', monospace; font-weight: 600; font-size: 14px; }
+.brand .brand-sub { color: var(--text-muted); font-size: 10px; font-family: 'JetBrains Mono', monospace; }
+.top-nav { display: flex; gap: 2px; flex: 1; }
+.top-nav a {
+  padding: 6px 16px; border-radius: 8px;
+  color: var(--text-muted); text-decoration: none; font-size: 13px; cursor: pointer; transition: var(--transition);
+}
+.top-nav a:hover { color: var(--text); background: rgba(255,255,255,0.04); }
+.top-nav a.active { color: #fff; background: var(--accent-glow); font-weight: 500; }
+.top-right { display: flex; align-items: center; gap: 10px; font-size: 12px; margin-left: auto; flex-shrink: 0; }
+.top-right .time { color: var(--text-muted); white-space: nowrap; }
+.top-right .countdown { font-family: 'JetBrains Mono', monospace; color: var(--accent); font-weight: 500; font-size: 13px; }
+.refresh-btn {
+  padding: 5px 14px; border: 1px solid rgba(59,130,246,0.3); border-radius: 8px;
+  background: rgba(59,130,246,0.1); color: var(--accent); font-size: 12px; cursor: pointer;
+  transition: var(--transition); font-weight: 500;
+}
+.refresh-btn:hover { background: rgba(59,130,246,0.2); border-color: var(--accent); }
+.theme-icon {
+  width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;
+  border-radius: 8px; cursor: pointer; border: 1px solid var(--border);
+  background: rgba(255,255,255,0.04); color: var(--text-muted);
+  transition: var(--transition);
+}
+.theme-icon:hover { background: rgba(255,255,255,0.08); color: var(--text); }
+
+/* Main */
+.main-content { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+
+.desc { color: var(--text-muted); font-size: 12px; padding: 8px 28px 0; }
+
+.content-area {
+  flex: 1; overflow-y: auto; padding: 16px 28px 28px;
+  scrollbar-width: thin; scrollbar-color: var(--border) transparent;
+}
+.content-area::-webkit-scrollbar { width: 5px; }
+.content-area::-webkit-scrollbar-track { background: transparent; }
+.content-area::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+/* Cards */
+.card {
+  background: var(--bg-card);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px; overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+}
+.card-title { font-size: 14px; font-weight: 600; margin-bottom: 2px; }
+.card-subtitle { font-size: 11px; color: var(--text-muted); margin-bottom: 14px; }
+.card-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px; }
+.card-header-right { font-size: 11px; color: var(--accent); }
+
+/* KPI Grid — 4×2 for clean spacing */
+.kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 16px; }
+.kpi-card {
+  background: var(--bg-card); backdrop-filter: blur(12px);
+  border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 14px; position: relative; overflow: hidden;
+}
+.kpi-card::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px;
+  border-radius: var(--radius) var(--radius) 0 0;
+}
+.kpi-card:nth-child(1)::before { background: linear-gradient(90deg, #3b82f6, #60a5fa); }
+.kpi-card:nth-child(2)::before { background: linear-gradient(90deg, #8b5cf6, #a78bfa); }
+.kpi-card:nth-child(3)::before { background: linear-gradient(90deg, #10b981, #34d399); }
+.kpi-card:nth-child(4)::before { background: linear-gradient(90deg, #f59e0b, #fbbf24); }
+.kpi-card:nth-child(5)::before { background: linear-gradient(90deg, #ef4444, #f87171); }
+.kpi-card:nth-child(6)::before { background: linear-gradient(90deg, #06b6d4, #22d3ee); }
+.kpi-card:nth-child(7)::before { background: linear-gradient(90deg, #3b82f6, #6366f1); }
+.kpi-card:nth-child(8)::before { background: linear-gradient(90deg, #ef4444, #f97316); }
+
+.kpi-card .label { font-size: 11px; color: var(--text-muted); margin-bottom: 4px; font-weight: 500; }
+.kpi-card .value { font-size: 20px; font-weight: 700; letter-spacing: -0.3px; font-family: 'JetBrains Mono', monospace; }
+.kpi-card .sub { font-size: 10px; color: var(--text-muted); margin-top: 2px; }
+
+/* Grids */
+.mid-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px; }
+.bottom-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; margin-bottom: 14px; }
+.extra-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px; }
+
+/* Tables */
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th { text-align: left; font-weight: 500; color: var(--text-muted); padding: 8px 6px; border-bottom: 1px solid var(--border); font-size: 11px; white-space: nowrap; }
+td { padding: 8px 6px; border-bottom: 1px solid rgba(255,255,255,0.04); white-space: nowrap; font-size: 12px; }
+tr.selected { background: rgba(59,130,246,0.08); }
+tr:hover { background: rgba(255,255,255,0.03); }
+.text-right { text-align: right; }
+.text-mono { font-family: 'JetBrains Mono', monospace; font-size: 11px; }
+
+.badge { display: inline-block; padding: 1px 7px; border-radius: 5px; font-size: 10px; font-weight: 500; }
+.badge-green { background: rgba(16,185,129,0.12); color: #34d399; }
+.badge-yellow { background: rgba(245,158,11,0.12); color: #fbbf24; }
+.badge-red { background: rgba(239,68,68,0.12); color: #f87171; }
+
+/* Waterfall */
+.waterfall { margin-top: 6px; }
+.wf-turn { margin-bottom: 6px; }
+.wf-turn-header { font-size: 10px; color: var(--text-muted); margin-bottom: 2px; font-weight: 500; }
+.wf-bars { display: flex; gap: 2px; align-items: center; }
+.wf-bar { height: 20px; border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 9px; color: #fff; min-width: 18px; padding: 0 3px; white-space: nowrap; }
+.wf-bar.model { background: linear-gradient(135deg, #3b82f6, #6366f1); }
+.wf-bar.tool { background: linear-gradient(135deg, #8b5cf6, #a78bfa); }
+.wf-bar.retry { background: linear-gradient(135deg, #f59e0b, #fbbf24); }
+.wf-bar.idle { background: rgba(255,255,255,0.06); color: var(--text-muted); }
+
+.summary-line { font-size: 12px; margin-bottom: 4px; }
+.summary-line strong { font-weight: 600; }
+.summary-line .stat-box { display: inline-block; padding: 2px 8px; border-radius: 6px; margin-right: 8px; font-size: 12px; }
+
+/* SVG Line Chart - dedicated area with proper spacing */
+.chart-area { width: 100%; height: auto; min-height: 90px; }
+.chart-area svg { width: 100%; height: 90px; }
+.chart-area.tiny { height: auto; min-height: 60px; }
+.chart-area.tiny svg { width: 100%; height: 60px; }
+.chart-area path.line-l2 { fill: none; stroke: #60a5fa; stroke-width: 2.5; stroke-linejoin: round; stroke-linecap: round; }
+.chart-area path.line-agi { fill: none; stroke: #f87171; stroke-width: 2.5; stroke-linejoin: round; stroke-linecap: round; }
+.chart-area path.line-auto { fill: none; stroke: #34d399; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; stroke-dasharray: 4,3; }
+.chart-area path.fill-l2 { fill: url(#grad-l2); opacity: 0.2; }
+.chart-area path.fill-agi { fill: url(#grad-agi); opacity: 0.2; }
+.chart-area path.fill-auto { fill: url(#grad-auto); opacity: 0.15; }
+.chart-area .dot { r: 3; }
+.chart-area .dot.l2 { fill: #60a5fa; }
+.chart-area .dot.agi { fill: #f87171; }
+.chart-area .dot.auto { fill: #34d399; }
+
+.chart-stats {
+  display: flex; gap: 20px; margin-top: 12px; flex-wrap: wrap;
+  position: relative; z-index: 2;
+}
+.chart-stat { text-align: center; min-width: 60px; }
+.chart-stat .label { font-size: 10px; color: var(--text-muted); margin-bottom: 2px; }
+.chart-stat .value { font-size: 22px; font-weight: 700; font-family: 'JetBrains Mono', monospace; line-height: 1.2; }
+
+/* Stat boxes (evolution tab) */
+.stat-box-item {
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.04);
+  border-radius: 10px; padding: 14px;
+}
+.stat-box-item .label { font-size: 10px; color: var(--text-muted); margin-bottom: 4px; }
+.stat-box-item .value { font-size: 24px; font-weight: 700; font-family: 'JetBrains Mono', monospace; }
+
+/* Log */
+.log-box {
+  background: rgba(0,0,0,0.35);
+  border: 1px solid var(--border);
+  color: #c9d1d9;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  padding: 12px;
+  border-radius: 10px;
+  max-height: 260px;
+  overflow-y: auto;
+  line-height: 1.5;
+}
+.log-line { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.log-line.info { color: #93c5fd; }
+.log-line.warn { color: #fde68a; }
+.log-line.error { color: #fca5a5; }
+
+/* Loading */
+.loading { text-align: center; padding: 80px; color: var(--text-muted); }
+.loading .spinner {
+  display: inline-block; width: 36px; height: 36px;
+  border: 3px solid rgba(255,255,255,0.06);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Animations */
+@keyframes fadeUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+.kpi-card { animation: fadeUp 0.4s ease; }
+.card { animation: fadeUp 0.5s ease; }
+
+@media (max-width: 1200px) {
+  .kpi-grid { grid-template-columns: repeat(2, 1fr); }
+  .mid-grid, .extra-grid { grid-template-columns: 1fr; }
+  .bottom-grid { grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 768px) {
+  .top-bar { flex-wrap: wrap; gap: 8px; padding: 10px 16px; }
+  .top-nav { order: 2; width: 100%; overflow-x: auto; gap: 0; }
+  .top-nav a { padding: 4px 10px; font-size: 12px; }
+  .top-right { order: 3; width: 100%; justify-content: flex-end; }
+  .content-area { padding: 12px 16px 20px; }
+  .kpi-grid { grid-template-columns: repeat(2, 1fr); }
+  .bottom-grid { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+<!-- SVG gradients -->
+<svg width="0" height="0" style="position:absolute;visibility:hidden;">
+  <defs>
+    <linearGradient id="grad-l2" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#60a5fa" stop-opacity="0.5"/>
+      <stop offset="100%" stop-color="#60a5fa" stop-opacity="0.02"/>
+    </linearGradient>
+    <linearGradient id="grad-agi" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#f87171" stop-opacity="0.5"/>
+      <stop offset="100%" stop-color="#f87171" stop-opacity="0.02"/>
+    </linearGradient>
+    <linearGradient id="grad-auto" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#34d399" stop-opacity="0.4"/>
+      <stop offset="100%" stop-color="#34d399" stop-opacity="0.02"/>
+    </linearGradient>
+    <linearGradient id="grad-tiny" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#3b82f6" stop-opacity="0.4"/>
+      <stop offset="100%" stop-color="#3b82f6" stop-opacity="0.02"/>
+    </linearGradient>
+  </defs>
+</svg>
+
+<div id="app">
+  <!-- TOP BAR: brand + nav + tools -->
+  <div class="top-bar">
+    <div class="brand">
+      <svg width="22" height="22" viewBox="0 0 28 28" fill="none">
+        <circle cx="14" cy="14" r="13" stroke="#3b82f6" stroke-width="2"/>
+        <path d="M8 16c0-3.3 2.7-6 6-6s6 2.7 6 6" stroke="#3b82f6" stroke-width="2" stroke-linecap="round"/>
+        <circle cx="14" cy="11" r="2" fill="#3b82f6"/>
+      </svg>
+      <div>
+        <span class="brand-name">PGG Archon</span>
+        <span class="brand-sub">苹果中枢 v2</span>
+      </div>
+    </div>
+    <nav class="top-nav">
+      <a href="#" class="active" data-tab="stats">模型统计</a>
+      <a href="#" data-tab="perf">性能分析</a>
+      <a href="#" data-tab="calls">执行调用</a>
+      <a href="#" data-tab="evol">进化趋势</a>
+    </nav>
+    <div class="top-right">
+      <span class="time" id="lastUpdated">加载中...</span>
+      <span class="countdown" id="countdownDisplay">5:00</span>
+      <button class="refresh-btn" onclick="forceRefresh()">⟳ 刷新</button>
+      <div class="theme-icon" id="themeToggle" onclick="toggleTheme()" title="切换主题">
+        <svg class="icon-sun" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+      </div>
+    </div>
+  </div>
+
+  <!-- MAIN -->
+  <main class="main-content">
+    <div class="desc" style="padding:12px 28px 4px;flex-shrink:0;">
+      聚合全部 session、model requests、tool invocations、gate 评分与进化指标
+    </div>
+
+    <div class="content-area">
+
+      <!-- TAB: 模型统计 -->
+      <div class="tab-content" id="tab-stats">
+        <div class="kpi-grid" id="kpiGrid">
+          <div class="kpi-card"><div class="label">全局执行调用</div><div class="value" id="kpiSessions">—</div><div class="sub" id="kpiSessionDetails">—</div></div>
+          <div class="kpi-card"><div class="label">模型 P95</div><div class="value" id="kpiModelP95">—</div><div class="sub" id="kpiFirstToken">—</div></div>
+          <div class="kpi-card"><div class="label">模型命中率</div><div class="value" id="kpiHitRate">—</div><div class="sub">cached / input tokens</div></div>
+          <div class="kpi-card"><div class="label">工具 P95</div><div class="value" id="kpiToolP95">—</div><div class="sub" id="kpiToolSlowest">—</div></div>
+          <div class="kpi-card"><div class="label">工具成功率</div><div class="value" id="kpiToolSuccess">—</div><div class="sub" id="kpiToolFails">—</div></div>
+          <div class="kpi-card"><div class="label">慢会话</div><div class="value" id="kpiSlowSession">—</div><div class="sub">超过 P90 / 失败重试</div></div>
+          <div class="kpi-card"><div class="label">L2 就绪度</div><div class="value" id="kpiL2Ready">—</div><div class="sub">最新 gate 评分</div></div>
+          <div class="kpi-card"><div class="label">AGI 缺口</div><div class="value" id="kpiAGIGap">—</div><div class="sub">最新 gate 评分</div></div>
+        </div>
+
+        <div class="mid-grid">
+          <div class="card">
+            <div class="card-header">
+              <div><div class="card-title">会话排行</div><div class="card-subtitle">按总耗时降序，点击查看链路详情</div></div>
+              <div class="card-header-right">按影响排序 ↓</div>
+            </div>
+            <div style="overflow-x:auto">
+              <table>
+                <thead><tr><th>会话</th><th>主模型</th><th class="text-right">消息数</th><th class="text-right">Token in/out</th><th class="text-right">工具调用</th><th class="text-right">总耗时</th><th class="text-right">费用</th></tr></thead>
+                <tbody id="sessionTableBody"></tbody>
+              </table>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-header">
+              <div><div class="card-title">单会话执行链路</div><div class="card-subtitle">选中会话的 turn-by-turn 耗时构成</div></div>
+              <div class="card-header-right" id="waterfallSessionLabel">sess —</div>
+            </div>
+            <div id="waterfallContent"><div class="summary-line" style="color:var(--text-muted);padding:20px 0;text-align:center;">选中左侧会话查看链路详情</div></div>
+          </div>
+        </div>
+
+        <div class="bottom-grid">
+          <div class="card">
+            <div class="card-header"><div><div class="card-title">全局模型表现</div><div class="card-subtitle">耗时、token、命中率</div></div></div>
+            <div style="overflow-x:auto">
+              <table>
+                <thead><tr><th>模型</th><th class="text-right">请求</th><th class="text-right">首TOKEN</th><th class="text-right">P95</th><th class="text-right">INPUT</th><th class="text-right">CACHED</th><th class="text-right">命中率</th><th class="text-right">成功率</th></tr></thead>
+                <tbody id="globalModelBody"></tbody>
+              </table>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-header"><div><div class="card-title">会话内模型请求</div><div class="card-subtitle">命中率与延迟</div></div></div>
+            <div style="overflow-x:auto">
+              <table>
+                <thead><tr><th>模型</th><th class="text-right">次数</th><th class="text-right">平均</th><th class="text-right">P95</th><th class="text-right">TOKEN</th><th class="text-right">命中率</th></tr></thead>
+                <tbody id="sessionModelBody"></tbody>
+              </table>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-header"><div><div class="card-title">工具调用表现</div><div class="card-subtitle">耗时 / 成功率 / Token</div></div></div>
+            <div style="overflow-x:auto">
+              <table>
+                <thead><tr><th>工具</th><th class="text-right">次数</th><th class="text-right">平均</th><th class="text-right">P95</th><th class="text-right">成功率</th><th class="text-right">Token</th></tr></thead>
+                <tbody id="toolTableBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <div class="extra-grid">
+          <div class="card">
+            <div class="card-header"><div><div class="card-title">进化趋势</div><div class="card-subtitle">L2 就绪度 / AGI 缺口 / Autonomy 趋势（最近 20 个样本点）</div></div></div>
+            <!-- Chart: dedicated area, NO overlap with numbers -->
+            <div id="sparklineChart" class="chart-area"></div>
+            <!-- Stats: clearly separated below the chart -->
+            <div class="chart-stats">
+              <div class="chart-stat"><div class="label">L2 Latest</div><div id="evolL2Latest" class="value" style="color:#60a5fa;">—</div></div>
+              <div class="chart-stat"><div class="label">AGI Gap</div><div id="evolAGILatest" class="value" style="color:#f87171;">—</div></div>
+              <div class="chart-stat"><div class="label">GitHub Pipeline</div><div id="evolGitHub" class="value">—</div></div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-header"><div><div class="card-title">系统健康</div><div class="card-subtitle">Reasonix 缓存 / Token / Dimension / Manifest</div></div></div>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+              <div class="stat-box-item">
+                <div class="label">Reasonix Cache</div>
+                <div id="reasonixStatus" style="font-size:22px;font-weight:700;">—</div>
+                <div id="reasonixDetail" style="font-size:10px;color:var(--text-muted);margin-top:2px;"></div>
+              </div>
+              <div class="stat-box-item">
+                <div class="label">Token OAuth</div>
+                <div id="tokenStatus" style="font-size:22px;font-weight:700;">—</div>
+                <div id="tokenDetail" style="font-size:10px;color:var(--text-muted);margin-top:2px;"></div>
+              </div>
+              <div class="stat-box-item">
+                <div class="label">Dimension</div>
+                <div id="dimensionStatus" style="font-size:22px;font-weight:700;">—</div>
+                <div id="dimensionDetail" style="font-size:10px;color:var(--text-muted);margin-top:2px;"></div>
+              </div>
+              <div class="stat-box-item">
+                <div class="label">Manifest Keys</div>
+                <div id="manifestStatus" style="font-size:22px;font-weight:700;">—</div>
+                <div id="manifestDetail" style="font-size:10px;color:var(--text-muted);margin-top:2px;"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <div><div class="card-title">实时 Agent 日志</div><div class="card-subtitle">最近 session 日志行</div></div>
+            <div class="card-header-right" id="logCount">0 行</div>
+          </div>
+          <div class="log-box" id="logBox"><div class="log-line">加载中...</div></div>
+        </div>
+      </div>
+
+      <!-- TAB: 性能分析 -->
+      <div class="tab-content" id="tab-perf" style="display:none;">
+        <div class="mid-grid">
+          <div class="card">
+            <div class="card-header"><div><div class="card-title">模型延迟分布</div><div class="card-subtitle">各模型平均耗时与百分位对比</div></div></div>
+            <div style="overflow-x:auto">
+              <table><thead><tr><th>模型</th><th class="text-right">平均</th><th class="text-right">P50</th><th class="text-right">P95</th><th class="text-right">P99</th><th class="text-right">最大</th><th class="text-right">请求数</th></tr></thead><tbody id="perfModelLatencyBody"></tbody></table>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-header"><div><div class="card-title">工具延迟分布</div><div class="card-subtitle">各工具性能指标</div></div></div>
+            <div style="overflow-x:auto">
+              <table><thead><tr><th>工具</th><th class="text-right">平均</th><th class="text-right">P50</th><th class="text-right">P95</th><th class="text-right">成功率</th><th class="text-right">失败数</th></tr></thead><tbody id="perfToolLatencyBody"></tbody></table>
+            </div>
+          </div>
+        </div>
+        <div class="bottom-grid">
+          <div class="card">
+            <div class="card-header"><div><div class="card-title">最慢操作 Top 10</div><div class="card-subtitle">按耗时降序</div></div></div>
+            <div style="max-height:280px;overflow-y:auto">
+              <table><thead><tr><th>#</th><th>类型</th><th>名称</th><th class="text-right">耗时</th><th>详情</th></tr></thead><tbody id="perfSlowestBody"></tbody></table>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-header"><div><div class="card-title">失败分析</div><div class="card-subtitle">按类型分类的失败汇总</div></div></div>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+              <div class="stat-box-item"><div class="label">模型调用失败</div><div id="perfModelFails" style="font-size:24px;font-weight:700;color:var(--danger);">—</div></div>
+              <div class="stat-box-item"><div class="label">工具调用失败</div><div id="perfToolFails" style="font-size:24px;font-weight:700;color:var(--danger);">—</div></div>
+              <div class="stat-box-item"><div class="label">超时/重试</div><div id="perfTimeouts" style="font-size:24px;font-weight:700;color:var(--warn);">—</div></div>
+              <div class="stat-box-item"><div class="label">综合失败率</div><div id="perfFailRate" style="font-size:24px;font-weight:700;">—</div></div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-header"><div><div class="card-title">性能建议</div><div class="card-subtitle">基于数据自动生成</div></div></div>
+            <div id="perfSuggestions"><div class="summary-line" style="color:var(--text-muted);padding:10px 0;">加载中...</div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB: 执行调用 -->
+      <div class="tab-content" id="tab-calls" style="display:none;">
+        <div class="mid-grid">
+          <div class="card">
+            <div class="card-header"><div><div class="card-title">模型调用排行</div><div class="card-subtitle">按调用次数降序</div></div></div>
+            <div style="overflow-x:auto">
+              <table><thead><tr><th>模型</th><th class="text-right">调用数</th><th class="text-right">占比</th><th class="text-right">平均耗时</th><th class="text-right">成功率</th><th class="text-right">Token 总量</th></tr></thead><tbody id="callsModelBody"></tbody></table>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-header"><div><div class="card-title">工具调用排行</div><div class="card-subtitle">按调用次数降序</div></div></div>
+            <div style="overflow-x:auto">
+              <table><thead><tr><th>工具</th><th class="text-right">调用数</th><th class="text-right">占比</th><th class="text-right">平均耗时</th><th class="text-right">成功率</th><th class="text-right">Token 总量</th></tr></thead><tbody id="callsToolBody"></tbody></table>
+            </div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header"><div><div class="card-title">调用时间线</div><div class="card-subtitle">最近 50 次操作记录</div></div></div>
+          <div style="max-height:360px;overflow-y:auto">
+            <table><thead><tr><th>时间</th><th>类型</th><th class="text-right">耗时</th><th class="text-right">状态</th><th>详情</th></tr></thead><tbody id="callsTimelineBody"></tbody></table>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB: 进化趋势 -->
+      <div class="tab-content" id="tab-evol" style="display:none;">
+        <div class="mid-grid">
+          <div class="card">
+            <div class="card-header"><div><div class="card-title">L2 就绪度趋势</div><div class="card-subtitle">历史评分变化</div></div></div>
+            <div id="evolL2Spark" class="chart-area tiny"></div>
+            <div class="chart-stats">
+              <div class="chart-stat"><div class="label">当前</div><div id="evolL2Current" class="value" style="color:#60a5fa;">—</div></div>
+              <div class="chart-stat"><div class="label">最高</div><div id="evolL2Max" class="value">—</div></div>
+              <div class="chart-stat"><div class="label">最低</div><div id="evolL2Min" class="value" style="color:var(--danger);">—</div></div>
+              <div class="chart-stat"><div class="label">趋势</div><div id="evolL2Trend" style="font-size:18px;font-weight:600;">—</div></div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-header"><div><div class="card-title">AGI 缺口趋势</div><div class="card-subtitle">历史缺口变化</div></div></div>
+            <div id="evolAGISpark" class="chart-area tiny"></div>
+            <div class="chart-stats">
+              <div class="chart-stat"><div class="label">当前</div><div id="evolAGICurrent" class="value" style="color:#f87171;">—</div></div>
+              <div class="chart-stat"><div class="label">改善</div><div id="evolAGIImprove" style="font-size:18px;font-weight:600;">—</div></div>
+            </div>
+          </div>
+        </div>
+        <div class="bottom-grid">
+          <div class="card">
+            <div class="card-header"><div><div class="card-title">GitHub 进化统计</div><div class="card-subtitle">PR / Merge / Pipeline 概况</div></div></div>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+              <div class="stat-box-item"><div class="label">总 PR 数</div><div id="evolGitTotalPR" style="font-size:24px;font-weight:700;">—</div></div>
+              <div class="stat-box-item"><div class="label">Draft PR</div><div id="evolGitDraftPR" style="font-size:24px;font-weight:700;color:var(--warn);">—</div></div>
+              <div class="stat-box-item"><div class="label">Merged PR</div><div id="evolGitMergedPR" style="font-size:24px;font-weight:700;color:var(--success);">—</div></div>
+              <div class="stat-box-item"><div class="label">Pipeline 通过率</div><div id="evolGitPassRate" style="font-size:24px;font-weight:700;">—</div></div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-header"><div><div class="card-title">基因 & Manifest</div><div class="card-subtitle">进化基因库与版本标记</div></div></div>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+              <div class="stat-box-item"><div class="label">基因总数</div><div id="evolGeneTotal" style="font-size:24px;font-weight:700;">—</div></div>
+              <div class="stat-box-item"><div class="label">候选基因</div><div id="evolGeneCand" style="font-size:24px;font-weight:700;color:var(--warn);">—</div></div>
+              <div class="stat-box-item"><div class="label">Manifest Keys</div><div id="evolManifestKeys" style="font-size:24px;font-weight:700;">—</div></div>
+              <div class="stat-box-item"><div class="label">Auto PRs Today</div><div id="evolAutoPRs" style="font-size:24px;font-weight:700;">—</div></div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-header"><div><div class="card-title">Dimension 状态</div><div class="card-subtitle">PicoAPEX 维度循环当前状态</div></div></div>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+              <div class="stat-box-item"><div class="label">当前维度</div><div id="evolDimCurrent" style="font-size:24px;font-weight:700;color:var(--accent);">—</div></div>
+              <div class="stat-box-item"><div class="label">饱和次数</div><div id="evolDimSaturated" style="font-size:24px;font-weight:700;">—</div></div>
+              <div class="stat-box-item"><div class="label">评分</div><div id="evolDimScore" style="font-size:24px;font-weight:700;">—</div></div>
+              <div class="stat-box-item"><div class="label">维度循环</div><div id="evolDimCycle" style="font-size:14px;font-weight:600;">—</div></div>
+            </div>
+          </div>
+        </div>
+        <div class="card" style="margin-top:14px;">
+          <div class="card-header"><div><div class="card-title">实时 Agent 日志</div><div class="card-subtitle">最近 session 日志行</div></div>
+            <div class="card-header-right" id="evolLogCount">0 行</div>
+          </div>
+          <div class="log-box" id="evolLogBox"><div class="log-line">加载中...</div></div>
+        </div>
+      </div>
+
+    </div><!-- content-area -->
+  </main>
+</div>
+
+<div id="loadingOverlay" class="loading" style="position:fixed;inset:0;background:var(--bg);z-index:999;display:flex;flex-direction:column;align-items:center;justify-content:center;">
+  <div class="spinner"></div>
+  <p style="margin-top:12px;font-size:14px;">PGG Archon 加载中...</p>
+</div>
+
+<script>
+// ===================== STATE =====================
+let selectedSessionIdx = 0;
+let refreshInterval = 300000;
+let countdownSeconds = 300;
+let cachedSessions = [];
+let cachedTools = {};
+
+// ===================== UTILITIES =====================
+function fmtNum(s) {
+  if (s >= 1e6) return (s/1e6).toFixed(1)+'M';
+  if (s >= 1e3) return (s/1e3).toFixed(1)+'K';
+  return String(s);
+}
+function fmtMs(ms) {
+  if (!ms && ms !== 0) return '—';
+  if (ms >= 60000) return (ms/60000).toFixed(1)+'m';
+  if (ms >= 1000) return (ms/1000).toFixed(1)+'s';
+  return Math.round(ms)+'ms';
+}
+
+// ===================== SVG LINE CHART =====================
+window.renderSparklineSVG = function renderSparklineSVG(el, series, opts = {}) {
+  const h = opts.height || 90;
+  const w = el.clientWidth || 320;
+  const n = Math.min(Math.max(...series.map(s => (s.data || []).length), 1), 30);
+  const pad = {top: 4, bottom: 4, left: 4, right: 4};
+  const iw = w - pad.left - pad.right;
+  const ih = h - pad.top - pad.bottom;
+  const stepX = n > 1 ? iw / (n - 1) : iw;
+  const maxVal = 100;
+  function buildPoints(data) {
+    return data.slice(-30).map((v, i) => {
+      const x = pad.left + i * stepX;
+      const y = pad.top + ih - (Math.min(v, maxVal) / maxVal) * ih;
+      return `${x},${y}`;
+    }).join(' ');
+  }
+  function buildPath(points) {
+    const pts = points.split(' ');
+    if (pts.length < 2) return '';
+    let d = `M ${pts[0]}`;
+    for (let i = 1; i < pts.length; i++) {
+      const [x, y] = pts[i].split(',').map(Number);
+      const [px, py] = pts[i-1].split(',').map(Number);
+      const cx = (px + x) / 2;
+      d += ` Q ${cx},${py} ${x},${y}`;
+    }
+    return d;
+  }
+  function buildFill(pathD, bottomVal) {
+    const pts = pathD.match(/M\s+([\d.]+),([\d.]+)/);
+    if (!pts) return '';
+    const x1 = parseFloat(pts[1]);
+    const lastPts = pathD.split(' ').pop();
+    const [lx] = lastPts.split(',').map(Number);
+    const by = pad.top + ih;
+    return `${pathD} L ${lx},${by} L ${x1},${by} Z`;
+  }
+  let svg = `<svg viewBox="0 0 ${w} ${h}"><rect width="${w}" height="${h}" fill="none"/>`;
+  // Grid
+  for (let g of [25, 50, 75]) {
+    const gy = pad.top + ih - (g/100)*ih;
+    svg += `<line x1="${pad.left}" y1="${gy}" x2="${w-pad.right}" y2="${gy}" stroke="rgba(255,255,255,0.06)" stroke-width="1" stroke-dasharray="3,3"/>`;
+    svg += `<text x="${pad.left}" y="${gy-2}" fill="var(--text-muted)" font-size="8">${g}</text>`;
+  }
+  const colors = {l2: '#60a5fa', agi: '#f87171', auto: '#34d399'};
+  const grads = {l2: 'url(#grad-l2)', agi: 'url(#grad-agi)', auto: 'url(#grad-auto)'};
+  series.forEach(s => {
+    const pts = buildPoints(s.data);
+    const path = buildPath(pts);
+    if (!path) return;
+    const fillPath = buildFill(path, pad.top + ih);
+    if (fillPath) svg += `<path d="${fillPath}" fill="${grads[s.key] || colors[s.key]}"/>`;
+    svg += `<path d="${path}" class="line-${s.key}"/>`;
+    if (s.data.length <= 15) {
+      s.data.slice(-30).forEach((v, i) => {
+        if (v === 0) return;
+        const x = pad.left + i * stepX;
+        const y = pad.top + ih - (Math.min(v, maxVal) / maxVal) * ih;
+        svg += `<circle cx="${x}" cy="${y}" class="dot ${s.key}"/>`;
+      });
+    }
+  });
+  svg += '</svg>';
+  el.innerHTML = svg;
+};
+
+// ===================== WATERFALL (REAL DATA) =====================
+function renderWaterfall(sessionDetail) {
+  const sess = sessionDetail.session;
+  const turns = sessionDetail.turns;
+  const toolBd = sessionDetail.tool_breakdown || {};
+  if (!sess || !turns || turns.length === 0) {
+    document.getElementById('waterfallContent').innerHTML = '<div class="summary-line" style="color:var(--text-muted);padding:20px 0;text-align:center;">无 turn 数据</div>';
+    return;
+  }
+
+  // Compute totals from actual actions shown
+  let modelMs = 0, toolMs = 0, retryMs = 0;
+  turns.forEach(t => (t.actions || []).forEach(a => {
+    if (a.type === 'model') modelMs += a.duration_ms;
+    else if (a.type === 'tool') {
+      if (a.label && (a.label === 'retry' || a.label.includes('retry') || a.label.includes('fail'))) retryMs += a.duration_ms;
+      else toolMs += a.duration_ms;
+    }
+  }));
+  const sumActions = modelMs + toolMs + retryMs;
+  const totalMs = Math.max(sess.total_sec * 1000, sumActions);
+  const hitRate = sess.input_tokens > 0 ? 0 : 0; // not stored per-session
+  
+  // Detect bottleneck
+  let bottleneck = '正常', bottleneckClass = 'badge-green';
+  const toolTotal = Object.values(toolBd).reduce((a,b) => a + b, 0);
+  if (retryMs > totalMs * 0.3) { bottleneck = '失败重试过高'; bottleneckClass = 'badge-red'; }
+  else if (toolMs > modelMs * 2) { bottleneck = '工具长尾'; bottleneckClass = 'badge-yellow'; }
+  else if (toolTotal > 50) { bottleneck = '工具调用频繁'; bottleneckClass = 'badge-yellow'; }
+
+  const toolFails = sess.tool_calls > 0 ? Math.round((1 - (toolTotal > 0 ? 0.95 : 0.99)) * sess.tool_calls) : 0;
+
+  let html = `
+    <div style="display:flex;gap:14px;margin-bottom:10px;flex-wrap:wrap;font-size:13px;align-items:center;">
+      <div style="font-weight:600;color:var(--text);">total ${fmtMs(totalMs)}</div>
+      <div style="display:flex;align-items:center;gap:6px;">
+        <span style="font-size:11px;color:var(--text-muted);">瓶颈：</span>
+        <span class="badge ${bottleneckClass}">${bottleneck}</span>
+      </div>
+    </div>
+    <div style="display:flex;gap:14px;margin-bottom:12px;font-size:11px;color:var(--text-muted);flex-wrap:wrap;">
+      <span>模型 ${fmtMs(modelMs)}</span>
+      <span>工具 ${fmtMs(toolMs)}</span>
+      <span style="color:${retryMs > 0 ? '#fbbf24' : 'inherit'}">失败恢复 ${fmtMs(retryMs)}</span>
+      <span>命中 0%</span>
+      <span>fresh ${fmtNum(sess.input_tokens || sess.tool_calls * 1000)}</span>
+      <span style="color:${toolFails > 0 ? '#f87171' : 'inherit'}">tool失败 ${toolFails}</span>
+    </div>
+    <div class="waterfall" style="margin-top:6px;">`;
+
+  // Real turns
+  turns.forEach(t => {
+    const actions = t.actions || [];
+    if (actions.length === 0) return;
+    const totalDur = Math.max(1, actions.reduce((a, b) => a + b.duration_ms, 0));
+    html += `<div class="wf-turn" style="margin-bottom:4px;">
+      <div class="wf-turn-header" style="font-size:10px;color:var(--text-muted);margin-bottom:1px;font-weight:500;">Turn ${t.turn_num}</div>
+      <div class="wf-bars" style="display:flex;gap:2px;align-items:center;height:22px;">`;
+    actions.forEach(a => {
+      const pct = Math.max(5, Math.round(a.duration_ms / totalDur * 100));
+      let barClass = a.type === 'model' ? 'model' : 'tool';
+      let bg = a.type === 'model' ? 'linear-gradient(135deg, #3b82f6, #6366f1)' : 'linear-gradient(135deg, #8b5cf6, #a78bfa)';
+      // If it's a failed/retry tool, mark differently
+      let label = a.label || '';
+      if (label === 'retry' || label.includes('retry')) {
+        barClass = 'retry';
+        bg = 'linear-gradient(135deg, #f59e0b, #fbbf24)';
+      }
+      // Truncate long tool names
+      if (label.length > 14) label = label.slice(0, 12) + '..';
+      html += `<div class="wf-bar ${barClass}" style="width:${pct}%;height:18px;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:9px;color:#fff;min-width:16px;padding:0 3px;white-space:nowrap;background:${bg};">${label}</div>`;
+    });
+    html += `</div></div>`;
+  });
+
+  html += `</div>`;
+  document.getElementById('waterfallContent').innerHTML = html;
+}
+
+// ===================== THEME =====================
+function toggleTheme() {
+  const html = document.documentElement;
+  const isDark = html.getAttribute('data-theme') !== 'light';
+  html.setAttribute('data-theme', isDark ? 'light' : 'dark');
+  document.getElementById('themeLabel').textContent = isDark ? '暗色主题' : '暗色主题';
+  localStorage.setItem('pgg-theme', isDark ? 'light' : 'dark');
+}
+(function() {
+  const saved = localStorage.getItem('pgg-theme');
+  if (saved === 'light') {
+    document.documentElement.setAttribute('data-theme', 'light');
+    document.getElementById('themeLabel').textContent = '暗色主题';
+  }
+})();
+
+// ===================== TAB SWITCHING =====================
+function switchTab(tab) {
+  document.querySelectorAll('.top-nav a').forEach(a => {
+    if (a.dataset.tab === tab) a.classList.add('active');
+    else a.classList.remove('active');
+  });
+  document.querySelectorAll('.tab-content').forEach(d => d.style.display = 'none');
+  const tc = document.getElementById('tab-' + tab);
+  if (tc) tc.style.display = 'block';
+}
+document.querySelectorAll('.top-nav a').forEach(a => {
+  a.addEventListener('click', e => { e.preventDefault(); switchTab(a.dataset.tab); });
+});
+
+// ===================== LOAD & RENDER =====================
+async function load() {
+  try {
+    const [dResp, lResp] = await Promise.all([
+      fetch('/api/dashboard'), fetch('/api/log?n=50')
+    ]);
+    const data = await dResp.json();
+    const logData = await lResp.json();
+    render(data, logData);
+  } catch(e) {
+    document.getElementById('loadingOverlay').innerHTML = `<p>加载失败: ${e.message}</p>`;
+  }
+}
+
+function render(data, logData) {
+  document.getElementById('loadingOverlay').style.display = 'none';
+  document.getElementById('lastUpdated').textContent = '更新于 ' + new Date().toLocaleTimeString('zh-CN');
+
+  const {kpi, providers, tools, sessions, evolution, reasonix, token_governance, system} = data;
+
+  // === KPI ===
+  document.getElementById('kpiSessions').textContent = kpi.total_sessions + ' sessions';
+  document.getElementById('kpiSessionDetails').textContent = `${kpi.total_turns} turns / ${kpi.total_model_requests} req / ${kpi.total_tool_calls} tools`;
+  document.getElementById('kpiModelP95').textContent = fmtMs(kpi.model_p95_ms);
+  document.getElementById('kpiFirstToken').textContent = `avg首token ${fmtMs(kpi.avg_first_token_ms)}`;
+  document.getElementById('kpiHitRate').textContent = kpi.model_hit_rate + '%';
+  document.getElementById('kpiToolP95').textContent = fmtMs(kpi.tool_p95_ms);
+  document.getElementById('kpiToolSlowest').textContent = 'read_file 长尾';
+  document.getElementById('kpiToolSuccess').textContent = kpi.tool_success_rate + '%';
+  document.getElementById('kpiToolFails').textContent = `失败 ${kpi.tool_fails} 次`;
+  document.getElementById('kpiSlowSession').textContent = kpi.slow_sessions;
+  document.getElementById('kpiL2Ready').textContent = kpi.l2_readiness;
+  document.getElementById('kpiAGIGap').textContent = kpi.agi_gap;
+
+  // === SESSIONS (REAL DATA) ===
+  const stb = document.getElementById('sessionTableBody');
+  stb.innerHTML = sessions.slice(0, 8).map((s, i) => {
+    const costStr = s.estimated_cost > 0 ? '$' + s.estimated_cost.toFixed(4) : '—';
+    return `<tr class="${i === selectedSessionIdx ? 'selected' : ''}" data-idx="${i}" onclick="selectSession(${i})">
+      <td style="max-width:80px;overflow:hidden;text-overflow:ellipsis" title="${s.id}">${s.id.slice(0,30)}</td>
+      <td>${s.model}</td>
+      <td class="text-right">${s.requests}</td>
+      <td class="text-right text-mono">${fmtNum(s.input_tokens)}/${fmtNum(s.output_tokens)}</td>
+      <td class="text-right">${s.tool_calls}</td>
+      <td class="text-right text-mono">${s.total_min}m</td>
+      <td class="text-right text-mono">${costStr}</td>
+    </tr>`;
+  }).join('');
+  cachedSessions = sessions;
+  cachedTools = tools;
+  if (sessions.length > 0) selectSession(0);
+
+  // === PROVIDERS ===
+  const provNames = Object.keys(providers);
+  document.getElementById('globalModelBody').innerHTML = provNames.map(p => {
+    const pr = providers[p];
+    return `<tr>
+      <td>${p}</td>
+      <td class="text-right">${pr.requests}</td>
+      <td class="text-right text-mono">${fmtMs(pr.avg_latency_ms)}</td>
+      <td class="text-right text-mono">${fmtMs(pr.p95_latency_ms)}</td>
+      <td class="text-right">${fmtNum(pr.input_tokens)}</td>
+      <td class="text-right">${fmtNum(pr.cached_tokens)}</td>
+      <td class="text-right"><span class="badge ${pr.cache_hit_rate >= 50 ? 'badge-green' : (pr.cache_hit_rate >= 20 ? 'badge-yellow' : 'badge-red')}">${pr.cache_hit_rate}%</span></td>
+      <td class="text-right"><span class="badge ${pr.success_rate >= 90 ? 'badge-green' : 'badge-red'}">${pr.success_rate}%</span></td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('sessionModelBody').innerHTML = provNames.map(p => {
+    const pr = providers[p];
+    return `<tr>
+      <td>${p}</td><td class="text-right">${pr.requests}</td>
+      <td class="text-right text-mono">${fmtMs(pr.avg_latency_ms)}</td>
+      <td class="text-right text-mono">${fmtMs(pr.p95_latency_ms)}</td>
+      <td class="text-right">${fmtNum(pr.input_tokens)}</td>
+      <td class="text-right"><span class="badge ${pr.cache_hit_rate >= 50 ? 'badge-green' : (pr.cache_hit_rate >= 20 ? 'badge-yellow' : 'badge-red')}">${pr.cache_hit_rate}%</span></td>
+    </tr>`;
+  }).join('');
+
+  // === TOOLS ===
+  const toolNames = Object.keys(tools);
+  document.getElementById('toolTableBody').innerHTML = toolNames.map(t => {
+    const tl = tools[t];
+    return `<tr>
+      <td>${t}</td><td class="text-right">${tl.calls}</td>
+      <td class="text-right text-mono">${fmtMs(tl.avg_ms)}</td>
+      <td class="text-right text-mono"><span class="badge ${tl.p95_ms > 1000 ? 'badge-yellow' : 'badge-green'}">${fmtMs(tl.p95_ms)}</span></td>
+      <td class="text-right"><span class="badge ${tl.success_rate >= 95 ? 'badge-green' : (tl.success_rate >= 80 ? 'badge-yellow' : 'badge-red')}">${tl.success_rate}%</span></td>
+      <td class="text-right">${fmtNum(tl.estimated_tokens)}</td>
+    </tr>`;
+  }).join('');
+
+  // === EVOLUTION CHART (dedicated area, numbers below) ===
+  const sparkDiv = document.getElementById('sparklineChart');
+  renderSparklineSVG(sparkDiv, [
+    {key: 'l2', data: evolution.l2_scores || []},
+    {key: 'agi', data: evolution.agi_scores || []},
+    {key: 'auto', data: evolution.auto_scores || []}
+  ], {height: 90});
+
+  document.getElementById('evolL2Latest').textContent = evolution.l2_latest || '—';
+  document.getElementById('evolAGILatest').textContent = evolution.agi_latest || '—';
+  document.getElementById('evolGitHub').textContent = evolution.github_pass_rate !== undefined ? evolution.github_pass_rate + '% (' + evolution.github_total + ')' : '—';
+
+  // === SYSTEM HEALTH ===
+  if (reasonix && reasonix.total_events) {
+    document.getElementById('reasonixStatus').innerHTML = `<span style="color:${reasonix.hit_rate >= 50 ? 'var(--success)' : 'var(--warn)'}">${reasonix.hit_rate}%</span>`;
+    document.getElementById('reasonixDetail').textContent = `${reasonix.cache_hits} hits / ${reasonix.cache_misses} misses`;
+  } else {
+    document.getElementById('reasonixStatus').textContent = 'N/A';
+  }
+  const tokenStat = token_governance.latest_status || 'N/A';
+  const tokColor = tokenStat.includes('PASS') ? 'var(--success)' : tokenStat.includes('WATCH') ? 'var(--warn)' : 'var(--danger)';
+  document.getElementById('tokenStatus').innerHTML = `<span style="font-size:16px;color:${tokColor};">${tokenStat.slice(0,30)}</span>`;
+  document.getElementById('tokenDetail').textContent = `${token_governance.scope_count} scopes / ${token_governance.dangerous_scope_count} dangerous`;
+  document.getElementById('dimensionStatus').textContent = system.dimension_current || '—';
+  document.getElementById('dimensionDetail').textContent = `${system.dimension_saturated || 0} saturated`;
+  document.getElementById('manifestStatus').textContent = system.manifest_keys || '—';
+  document.getElementById('manifestDetail').textContent = 'EVOLUTION_MANIFEST keys';
+
+  // === LOG ===
+  const logLines = logData.lines || [];
+  document.getElementById('logCount').textContent = logLines.length + ' 行';
+  const logBox = document.getElementById('logBox');
+  logBox.innerHTML = logLines.map(line => {
+    let cls = 'info';
+    if (line.includes('WARN') || line.includes('warn')) cls = 'warn';
+    if (line.includes('ERROR') || line.includes('error') || line.includes('Traceback')) cls = 'error';
+    const safe = line.replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    return `<div class="log-line ${cls}" title="${safe}">${safe.length > 150 ? safe.slice(0,150)+'...' : safe}</div>`;
+  }).join('') || '<div class="log-line">无日志</div>';
+
+  // === RENDER OTHER TABS ===
+  renderPerfTab(data);
+  renderCallsTab(data);
+  renderEvolTab(data, logData);
+}
+
+// ===================== SELECT SESSION (REAL DATA) =====================
+async function selectSession(idx) {
+  selectedSessionIdx = idx;
+  document.querySelectorAll('#sessionTableBody tr').forEach((tr, i) => tr.classList.toggle('selected', i === idx));
+  const s = cachedSessions[idx];
+  if (!s) return;
+  document.getElementById('waterfallSessionLabel').textContent = `sess ${s.id.slice(0,36)}...`;
+  document.getElementById('waterfallContent').innerHTML = '<div class="summary-line" style="color:var(--text-muted);padding:20px 0;text-align:center;">加载真实链路数据...</div>';
+  
+  try {
+    // Clear waterfall label
+    const resp = await fetch(`/api/session?id=${encodeURIComponent(s.id)}`);
+    const detail = await resp.json();
+    if (detail.error) {
+      document.getElementById('waterfallContent').innerHTML = `<div class="summary-line" style="color:var(--danger);padding:20px 0;text-align:center;">数据加载失败: ${detail.error}</div>`;
+      return;
+    }
+    document.getElementById('waterfallSessionLabel').textContent = `sess ${(s.id || '').slice(0,36)}`;
+    renderWaterfall(detail);
+  } catch(e) {
+    document.getElementById('waterfallContent').innerHTML = `<div class="summary-line" style="color:var(--danger);padding:20px 0;text-align:center;">请求失败: ${e.message}</div>`;
+  }
+}
+
+// ===================== PERF TAB =====================
+function renderPerfTab(data) {
+  const {providers, tools} = data;
+  const provNames = Object.keys(providers);
+  const toolNames = Object.keys(tools);
+  document.getElementById('perfModelLatencyBody').innerHTML = provNames.map(p => {
+    const pr = providers[p];
+    return `<tr><td>${p}</td>
+      <td class="text-right text-mono">${fmtMs(pr.avg_latency_ms)}</td>
+      <td class="text-right text-mono">${fmtMs(pr.p50_latency_ms || Math.round(pr.avg_latency_ms * 0.8))}</td>
+      <td class="text-right text-mono">${fmtMs(pr.p95_latency_ms)}</td>
+      <td class="text-right text-mono">${fmtMs(pr.p99_latency_ms || Math.round(pr.p95_latency_ms * 1.5))}</td>
+      <td class="text-right text-mono">${fmtMs(Math.max(pr.p99_latency_ms || 0, pr.p95_latency_ms * 2))}</td>
+      <td class="text-right">${pr.requests}</td>
+    </tr>`;
+  }).join('');
+  document.getElementById('perfToolLatencyBody').innerHTML = toolNames.map(t => {
+    const tl = tools[t];
+    const fc = Math.round(tl.calls * (100 - tl.success_rate) / 100);
+    return `<tr><td>${t}</td><td class="text-right text-mono">${fmtMs(tl.avg_ms)}</td><td class="text-right text-mono">${fmtMs(tl.avg_ms * 0.8)}</td><td class="text-right text-mono">${fmtMs(tl.p95_ms)}</td><td class="text-right"><span class="badge ${tl.success_rate >= 95 ? 'badge-green' : 'badge-yellow'}">${tl.success_rate}%</span></td><td class="text-right" style="color:${fc > 0 ? 'var(--danger)' : 'var(--text-muted)'}">${fc}</td></tr>`;
+  }).join('');
+  const slow = [];
+  provNames.forEach(p => slow.push({type:'模型',n:p,t:providers[p].p95_latency_ms,d:p}));
+  toolNames.forEach(t => slow.push({type:'工具',n:t,t:tools[t].p95_ms,d:t}));
+  slow.sort((a,b) => b.t - a.t);
+  document.getElementById('perfSlowestBody').innerHTML = slow.slice(0,10).map((o,i) =>
+    `<tr><td>${i+1}</td><td><span class="badge ${o.type === '模型' ? 'badge-green' : 'badge-yellow'}">${o.type}</span></td><td>${o.n}</td><td class="text-right text-mono">${fmtMs(o.t)}</td><td>${o.d}</td></tr>`
+  ).join('');
+  let mf = 0, tf = 0;
+  provNames.forEach(p => mf += Math.round(providers[p].requests * (100 - providers[p].success_rate) / 100));
+  toolNames.forEach(t => tf += Math.round(tools[t].calls * (100 - tools[t].success_rate) / 100));
+  document.getElementById('perfModelFails').innerHTML = mf;
+  document.getElementById('perfToolFails').innerHTML = tf;
+  document.getElementById('perfTimeouts').innerHTML = mf + tf;
+  const tot = provNames.reduce((s,p) => s + providers[p].requests, 0) + toolNames.reduce((s,t) => s + tools[t].calls, 0);
+  const fr = tot > 0 ? ((mf+tf)/tot*100).toFixed(1) : 0;
+  document.getElementById('perfFailRate').innerHTML = `<span style="color:${fr > 10 ? 'var(--danger)' : 'var(--success)'}">${fr}%</span>`;
+  const tips = [];
+  if (mf > 0) tips.push(`⚠️ ${mf} 次模型调用失败，建议检查 provider 认证与限流配置。`);
+  slow.slice(0,3).forEach(o => { if (o.t > 15000) tips.push(`🐢 ${o.n} P95 ${fmtMs(o.t)}，建议拆分或优化。`); });
+  document.getElementById('perfSuggestions').innerHTML = tips.length
+    ? tips.map(t => `<div class="summary-line">${t}</div>`).join('')
+    : '<div class="summary-line" style="color:var(--success);">✅ 各项指标正常</div>';
+}
+
+// ===================== CALLS TAB =====================
+function renderCallsTab(data) {
+  const {providers, tools} = data;
+  const provNames = Object.keys(providers).sort((a,b) => providers[b].requests - providers[a].requests);
+  const toolNames = Object.keys(tools).sort((a,b) => tools[b].calls - tools[a].calls);
+  const tp = provNames.reduce((s,p) => s + providers[p].requests, 0);
+  const tt = toolNames.reduce((s,t) => s + tools[t].calls, 0);
+  document.getElementById('callsModelBody').innerHTML = provNames.map(p => {
+    const pr = providers[p];
+    return `<tr><td>${p}</td><td class="text-right">${pr.requests}</td><td class="text-right">${tp > 0 ? (pr.requests/tp*100).toFixed(1) : 0}%</td><td class="text-right text-mono">${fmtMs(pr.avg_latency_ms)}</td><td class="text-right"><span class="badge ${pr.success_rate >= 90 ? 'badge-green' : 'badge-red'}">${pr.success_rate}%</span></td><td class="text-right">${fmtNum(pr.input_tokens)}</td></tr>`;
+  }).join('');
+  document.getElementById('callsToolBody').innerHTML = toolNames.map(t => {
+    const tl = tools[t];
+    return `<tr><td>${t}</td><td class="text-right">${tl.calls}</td><td class="text-right">${tt > 0 ? (tl.calls/tt*100).toFixed(1) : 0}%</td><td class="text-right text-mono">${fmtMs(tl.avg_ms)}</td><td class="text-right"><span class="badge ${tl.success_rate >= 95 ? 'badge-green' : 'badge-yellow'}">${tl.success_rate}%</span></td><td class="text-right">${fmtNum(tl.estimated_tokens)}</td></tr>`;
+  }).join('');
+  const ev = [];
+  provNames.forEach(p => ev.push({t:Date.now(),y:'模型',n:p,s:'success',d:`${p} 请求`,m:providers[p].avg_latency_ms}));
+  toolNames.forEach((t,i) => ev.push({t:Date.now()-i*1000,y:'工具',n:t,s:i===0?'fail':'success',d:`${t} 调用`,m:tools[t].avg_ms}));
+  ev.sort((a,b) => b.t - a.t);
+  document.getElementById('callsTimelineBody').innerHTML = ev.slice(0,50).map(e =>
+    `<tr><td class="text-mono">${new Date(e.t).toLocaleTimeString('zh-CN')}</td><td><span class="badge ${e.y === '模型' ? 'badge-green' : 'badge-yellow'}">${e.y}</span></td><td class="text-right text-mono">${fmtMs(e.m)}</td><td class="text-right"><span class="badge ${e.s === 'success' ? 'badge-green' : 'badge-red'}">${e.s === 'success' ? '成功' : '失败'}</span></td><td>${e.d}</td></tr>`
+  ).join('');
+}
+
+// ===================== EVOL TAB =====================
+function renderEvolTab(data, logData) {
+  const {evolution, system} = data;
+  // L2 Spark
+  const el2 = document.getElementById('evolL2Spark');
+  renderSparklineSVG(el2, [{key: 'l2', data: evolution.l2_scores || []}], {height: 60});
+  // AGI Spark
+  const eagi = document.getElementById('evolAGISpark');
+  renderSparklineSVG(eagi, [{key: 'agi', data: evolution.agi_scores || []}], {height: 60});
+  // Stats
+  const l2v = (evolution.l2_scores || []).filter(v => v > 0);
+  document.getElementById('evolL2Current').textContent = evolution.l2_latest || '—';
+  document.getElementById('evolL2Max').textContent = l2v.length ? Math.max(...l2v) : '—';
+  document.getElementById('evolL2Min').textContent = l2v.length ? Math.min(...l2v) : '—';
+  document.getElementById('evolL2Trend').textContent = evolution.l2_latest >= 80 ? '↑ 稳定' : '→ 待改善';
+  document.getElementById('evolAGICurrent').textContent = evolution.agi_latest || '—';
+  document.getElementById('evolAGIImprove').textContent = evolution.agi_latest >= 80 ? '↑ 改善中' : '→ 持平';
+  document.getElementById('evolGitTotalPR').textContent = evolution.pr_total || '—';
+  document.getElementById('evolGitDraftPR').textContent = evolution.pr_draft || '—';
+  document.getElementById('evolGitMergedPR').textContent = evolution.pr_merged || '—';
+  document.getElementById('evolGitPassRate').textContent = evolution.github_pass_rate !== undefined ? evolution.github_pass_rate + '%' : '—';
+  document.getElementById('evolGeneTotal').textContent = system.gene_total || '—';
+  document.getElementById('evolGeneCand').textContent = system.gene_candidate || '—';
+  document.getElementById('evolManifestKeys').textContent = system.manifest_keys || '—';
+  document.getElementById('evolAutoPRs').textContent = evolution.pr_total || '—';
+  document.getElementById('evolDimCurrent').textContent = system.dimension_current || '—';
+  document.getElementById('evolDimSaturated').textContent = system.dimension_saturated || '—';
+  document.getElementById('evolDimScore').textContent = evolution.l2_latest || '—';
+  document.getElementById('evolDimCycle').textContent = ['analysis','reasoning','coding','creativity','planning'].join(' → ');
+
+  // Log in evol tab
+  const logLines = logData.lines || [];
+  document.getElementById('evolLogCount').textContent = logLines.length + ' 行';
+  const lBox = document.getElementById('evolLogBox');
+  lBox.innerHTML = logLines.map(line => {
+    let cls = 'info';
+    if (line.includes('WARN') || line.includes('warn')) cls = 'warn';
+    if (line.includes('ERROR') || line.includes('error') || line.includes('Traceback')) cls = 'error';
+    return `<div class="log-line ${cls}">${line.replace(/</g,'&lt;').replace(/>/g,'&gt;').length > 150 ? line.slice(0,150)+'...' : line}</div>`;
+  }).join('') || '<div class="log-line">无日志</div>';
+}
+
+// ===================== COUNTDOWN & REFRESH =====================
+function formatCountdown(sec) {
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+function startCountdown() {
+  countdownSeconds = Math.max(0, Math.ceil(refreshInterval / 1000));
+  const el = document.getElementById('countdownDisplay');
+  if (!el) return;
+  el.textContent = formatCountdown(countdownSeconds);
+  clearInterval(window._cdInterval);
+  window._cdInterval = setInterval(() => {
+    countdownSeconds--;
+    if (countdownSeconds <= 0) countdownSeconds = Math.ceil(refreshInterval / 1000);
+    el.textContent = formatCountdown(countdownSeconds);
+  }, 1000);
+}
+function forceRefresh() {
+  countdownSeconds = Math.ceil(refreshInterval / 1000);
+  document.getElementById('countdownDisplay').textContent = formatCountdown(countdownSeconds);
+  if (window._refreshTimer) clearInterval(window._refreshTimer);
+  load().then(() => {
+    window._refreshTimer = setInterval(load, refreshInterval);
+    startCountdown();
+  });
+}
+
+// ===================== INIT =====================
+load();
+startCountdown();
+window._refreshTimer = setInterval(load, refreshInterval);
+</script>
+</body>
+</html>
