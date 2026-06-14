@@ -21,7 +21,13 @@ fn stable_node_id() -> String {
         .unwrap_or_else(|_| "unknown_user".into());
     let raw = format!("pgg_archon_{}@{}", user, host);
     let hash = sha2::Sha256::digest(raw.as_bytes());
-    format!("node_{}", hash.iter().map(|b| format!("{:02x}", b)).take(8).collect::<String>())
+    format!(
+        "node_{}",
+        hash.iter()
+            .map(|b| format!("{:02x}", b))
+            .take(8)
+            .collect::<String>()
+    )
 }
 
 /// Latest git SHA in the Hermes agent directory.
@@ -42,7 +48,9 @@ fn repo_head(root: &str) -> String {
 
 /// Count pgg_archon_*.py files under agent/.
 fn pgg_file_count(root: &str) -> usize {
-    let agent_dir = std::path::Path::new(root).join("hermes-agent").join("agent");
+    let agent_dir = std::path::Path::new(root)
+        .join("hermes-agent")
+        .join("agent");
     if !agent_dir.is_dir() {
         return 0;
     }
@@ -63,7 +71,9 @@ fn pgg_file_count(root: &str) -> usize {
 
 /// Integrity check: core modules exist and are non-empty.
 fn integrity_check(root: &str) -> (bool, Vec<String>) {
-    let agent_dir = std::path::Path::new(root).join("hermes-agent").join("agent");
+    let agent_dir = std::path::Path::new(root)
+        .join("hermes-agent")
+        .join("agent");
     let core = [
         "pgg_archon_delta_gate.py",
         "pgg_archon_codegenesis_scanner.py",
@@ -75,7 +85,10 @@ fn integrity_check(root: &str) -> (bool, Vec<String>) {
         let path = agent_dir.join(name);
         if !path.is_file() {
             warnings.push(format!("missing: {}", name));
-        } else if std::fs::metadata(&path).map(|m| m.len() == 0).unwrap_or(true) {
+        } else if std::fs::metadata(&path)
+            .map(|m| m.len() == 0)
+            .unwrap_or(true)
+        {
             warnings.push(format!("empty: {}", name));
         }
     }
@@ -101,7 +114,9 @@ fn provenance(root: &str) -> PyResult<String> {
     let payload = format!("{}|{}|{}|{}", node, sha, count, integrity_ok);
     let evidence_hash = {
         let hash = sha2::Sha256::digest(payload.as_bytes());
-        hash.iter().map(|b| format!("{:02x}", b)).collect::<String>()
+        hash.iter()
+            .map(|b| format!("{:02x}", b))
+            .collect::<String>()
     };
 
     let report = serde_json::json!({
@@ -234,10 +249,8 @@ fn build_plan(tasks_json: &str) -> PyResult<String> {
     }
 
     // Topological sort
-    let mut remaining: std::collections::HashMap<String, Task> = normalized
-        .into_iter()
-        .map(|t| (t.id.clone(), t))
-        .collect();
+    let mut remaining: std::collections::HashMap<String, Task> =
+        normalized.into_iter().map(|t| (t.id.clone(), t)).collect();
     let mut done: std::collections::HashSet<String> = std::collections::HashSet::new();
     let mut slices: Vec<serde_json::Value> = Vec::new();
     let dep_set: std::collections::HashSet<String> = remaining.keys().cloned().collect();
@@ -245,7 +258,7 @@ fn build_plan(tasks_json: &str) -> PyResult<String> {
     while !remaining.is_empty() {
         let ready: Vec<String> = remaining
             .iter()
-            .filter(|(tid, t)| {
+            .filter(|(_tid, t)| {
                 t.dependencies
                     .iter()
                     .all(|dep| done.contains(dep) || !dep_set.contains(dep))
@@ -325,10 +338,10 @@ fn avg_metrics(metrics: &serde_json::Value, keys: &[&str]) -> Option<(f64, Vec<S
 /// Score memory + trace metrics. Returns JSON with status/sigma/tau/combined.
 fn score(memory_metrics_json: &str, trace_metrics_json: &str) -> PyResult<String> {
     let mut warnings: Vec<String> = Vec::new();
-    let mem: serde_json::Value = serde_json::from_str(memory_metrics_json)
-        .unwrap_or(serde_json::Value::Null);
-    let trace: serde_json::Value = serde_json::from_str(trace_metrics_json)
-        .unwrap_or(serde_json::Value::Null);
+    let mem: serde_json::Value =
+        serde_json::from_str(memory_metrics_json).unwrap_or(serde_json::Value::Null);
+    let trace: serde_json::Value =
+        serde_json::from_str(trace_metrics_json).unwrap_or(serde_json::Value::Null);
 
     if !mem.is_object() || !trace.is_object() {
         let err = serde_json::json!({
@@ -341,7 +354,14 @@ fn score(memory_metrics_json: &str, trace_metrics_json: &str) -> PyResult<String
         return Ok(serde_json::to_string(&err).unwrap_or_default());
     }
 
-    let mem_keys = &["learn", "search", "multimodal", "profile", "retention", "diversity"];
+    let mem_keys = &[
+        "learn",
+        "search",
+        "multimodal",
+        "profile",
+        "retention",
+        "diversity",
+    ];
     let trace_keys = &["decision", "reason", "result", "evidence"];
 
     let (sigma, mem_warns) = avg_metrics(&mem, mem_keys).unwrap_or_else(|| {
@@ -378,6 +398,140 @@ fn score(memory_metrics_json: &str, trace_metrics_json: &str) -> PyResult<String
     Ok(serde_json::to_string(&result).unwrap_or_default())
 }
 
+// ── Module: harmrate_gate ───────────────────────────────────────────────────
+
+const HARM_BOUNDARY: &str = "PGG_internal_HarmRate_gate; APEX_MOSS_VERIFIED=false; no_zero_risk_claim; no_external_safety_certification";
+
+fn harm_f64(task: &serde_json::Value, key: &str, default: f64) -> f64 {
+    task.get(key).and_then(|v| v.as_f64()).unwrap_or(default)
+}
+
+fn harm_bool(task: &serde_json::Value, key: &str, default: bool) -> bool {
+    task.get(key).and_then(|v| v.as_bool()).unwrap_or(default)
+}
+
+fn harm_str(task: &serde_json::Value, key: &str, default: &str) -> String {
+    task.get(key)
+        .and_then(|v| v.as_str())
+        .unwrap_or(default)
+        .to_string()
+}
+
+fn now_epoch_isoish() -> String {
+    chrono::Local::now()
+        .format("%Y-%m-%dT%H:%M:%S%z")
+        .to_string()
+}
+
+#[pyfunction]
+#[pyo3(signature = (task_json, block_threshold=0.34, watch_threshold=0.20))]
+/// Native PGG internal HarmRate gate. Input/output are JSON strings.
+fn compute_harmrate_json(
+    task_json: &str,
+    block_threshold: f64,
+    watch_threshold: f64,
+) -> PyResult<String> {
+    let task: serde_json::Value = serde_json::from_str(task_json).map_err(|e| {
+        pyo3::exceptions::PyValueError::new_err(format!("invalid task json: {}", e))
+    })?;
+
+    let risk = harm_f64(&task, "risk", 0.0);
+    let uncertainty = harm_f64(&task, "uncertainty", 0.0);
+    let source_confidence = harm_f64(&task, "source_confidence", 1.0);
+    let regression_risk = harm_f64(&task, "regression_risk", 0.0);
+    let overclaim_risk = harm_f64(&task, "overclaim_risk", 0.0);
+    let task_type = harm_str(&task, "task_type", "general");
+    let external_authority_claim = harm_bool(&task, "external_authority_claim", false);
+    let apex_moss_claim = harm_bool(&task, "apex_moss_verified_claim", false);
+
+    let missing_source_penalty = (1.0 - source_confidence).max(0.0);
+    let sensitive = matches!(
+        task_type.as_str(),
+        "legal" | "production" | "security" | "credential" | "external_public"
+    );
+    let sensitive_multiplier = if sensitive { 1.25 } else { 1.0 };
+    let raw = (0.30 * risk
+        + 0.20 * uncertainty
+        + 0.20 * missing_source_penalty
+        + 0.15 * regression_risk
+        + 0.15 * overclaim_risk)
+        * sensitive_multiplier;
+    let harmrate = raw.max(0.0).min(1.0);
+
+    let mut reasons: Vec<String> = Vec::new();
+    if external_authority_claim && source_confidence < 0.95 {
+        reasons.push("external_authority_claim_without_high_source_confidence".into());
+    }
+    if apex_moss_claim {
+        reasons.push("apex_moss_verified_claim_blocked_until_independent_source".into());
+    }
+    if source_confidence < 0.5 {
+        reasons.push("low_source_confidence".into());
+    }
+    if sensitive {
+        reasons.push("sensitive_task_stricter_threshold".into());
+    }
+
+    let decision = if apex_moss_claim || (external_authority_claim && source_confidence < 0.95) {
+        "BLOCK"
+    } else if harmrate >= block_threshold {
+        "BLOCK"
+    } else if harmrate >= watch_threshold || source_confidence < 0.75 {
+        "WATCH"
+    } else {
+        "ALLOW"
+    };
+
+    let result = serde_json::json!({
+        "schema": "PGGInternalHarmRateGate/v1",
+        "created_at": now_epoch_isoish(),
+        "decision": decision,
+        "harmrate": (harmrate * 1_000_000.0).round() / 1_000_000.0,
+        "thresholds": {"watch": watch_threshold, "block": block_threshold},
+        "reasons": reasons,
+        "inputs": {
+            "risk": risk,
+            "uncertainty": uncertainty,
+            "source_confidence": source_confidence,
+            "regression_risk": regression_risk,
+            "overclaim_risk": overclaim_risk,
+            "task_type": task_type,
+            "external_authority_claim": external_authority_claim,
+            "apex_moss_verified_claim": apex_moss_claim,
+        },
+        "boundary": HARM_BOUNDARY,
+        "APEX_MOSS_VERIFIED": false,
+        "zero_risk_claim": false,
+    });
+    Ok(serde_json::to_string(&result).unwrap_or_default())
+}
+
+#[pyfunction]
+/// Write HarmRate report JSON to output_dir; returns file path.
+fn write_harmrate_report_json(report_json: &str, output_dir: &str) -> PyResult<String> {
+    let report: serde_json::Value = serde_json::from_str(report_json).map_err(|e| {
+        pyo3::exceptions::PyValueError::new_err(format!("invalid report json: {}", e))
+    })?;
+    let out_dir = if output_dir.starts_with('~') {
+        let home = std::env::var("HOME").unwrap_or_default();
+        std::path::PathBuf::from(output_dir.replacen('~', &home, 1))
+    } else {
+        std::path::PathBuf::from(output_dir)
+    };
+    std::fs::create_dir_all(&out_dir)
+        .map_err(|e| pyo3::exceptions::PyOSError::new_err(format!("create output dir: {}", e)))?;
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    let path = out_dir.join(format!("{}_harmrate_gate.json", ts));
+    let payload = serde_json::to_string_pretty(&report)
+        .map_err(|e| pyo3::exceptions::PyValueError::new_err(format!("serialize report: {}", e)))?;
+    std::fs::write(&path, payload)
+        .map_err(|e| pyo3::exceptions::PyOSError::new_err(format!("write report: {}", e)))?;
+    Ok(path.to_string_lossy().to_string())
+}
+
 // ── PyO3 Module ─────────────────────────────────────────────────────────────
 
 #[pymodule]
@@ -394,6 +548,9 @@ fn hermes_pgg_archon_utils(_py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult
     m.add_function(wrap_pyfunction!(build_plan, m)?)?;
     // memory_trace
     m.add_function(wrap_pyfunction!(score, m)?)?;
+    // harmrate_gate
+    m.add_function(wrap_pyfunction!(compute_harmrate_json, m)?)?;
+    m.add_function(wrap_pyfunction!(write_harmrate_report_json, m)?)?;
 
     Ok(())
 }
@@ -446,7 +603,10 @@ mod tests {
         let r = classify_decision("delete the record", false).unwrap();
         let v: serde_json::Value = serde_json::from_str(&r).unwrap();
         assert!(v["gamma"].as_f64().unwrap() > 0.0);
-        assert!(v["risk_factors"].as_array().unwrap().contains(&"delete".into()));
+        assert!(v["risk_factors"]
+            .as_array()
+            .unwrap()
+            .contains(&"delete".into()));
     }
 
     #[test]
@@ -525,7 +685,10 @@ mod tests {
         let r = build_plan(input).unwrap();
         let v: serde_json::Value = serde_json::from_str(&r).unwrap();
         assert_eq!(v["total_tasks"], 1);
-        assert!(v["warnings"].as_array().map(|w| w.len() > 0).unwrap_or(false));
+        assert!(v["warnings"]
+            .as_array()
+            .map(|w| w.len() > 0)
+            .unwrap_or(false));
     }
 
     // ── memory_trace tests ──
@@ -535,7 +698,10 @@ mod tests {
         let r = score("{}", "{}").unwrap();
         let v: serde_json::Value = serde_json::from_str(&r).unwrap();
         assert_eq!(v["status"], "BLOCKED");
-        assert!(v["warnings"].as_array().map(|w| w.len() > 0).unwrap_or(false));
+        assert!(v["warnings"]
+            .as_array()
+            .map(|w| w.len() > 0)
+            .unwrap_or(false));
     }
 
     #[test]
@@ -572,5 +738,51 @@ mod tests {
         let v: serde_json::Value = serde_json::from_str(&r).unwrap();
         assert_eq!(v["status"], "BLOCKED");
         assert!(v["sigma_memory"].as_f64().unwrap() >= 0.0);
+    }
+
+    // ── harmrate_gate tests ──
+
+    #[test]
+    fn test_harmrate_low_risk_allows() {
+        let r = compute_harmrate_json(
+            r#"{"risk":0.05,"uncertainty":0.05,"source_confidence":0.95}"#,
+            0.34,
+            0.20,
+        )
+        .unwrap();
+        let v: serde_json::Value = serde_json::from_str(&r).unwrap();
+        assert_eq!(v["decision"], "ALLOW");
+        assert_eq!(v["APEX_MOSS_VERIFIED"], false);
+    }
+
+    #[test]
+    fn test_harmrate_apex_moss_claim_blocks() {
+        let r = compute_harmrate_json(
+            r#"{"risk":0.01,"source_confidence":1.0,"apex_moss_verified_claim":true}"#,
+            0.34,
+            0.20,
+        )
+        .unwrap();
+        let v: serde_json::Value = serde_json::from_str(&r).unwrap();
+        assert_eq!(v["decision"], "BLOCK");
+        assert!(v["reasons"]
+            .as_array()
+            .unwrap()
+            .contains(&"apex_moss_verified_claim_blocked_until_independent_source".into()));
+    }
+
+    #[test]
+    fn test_harmrate_sensitive_legal_reason() {
+        let r = compute_harmrate_json(
+            r#"{"risk":0.2,"uncertainty":0.2,"source_confidence":0.7,"task_type":"legal"}"#,
+            0.34,
+            0.20,
+        )
+        .unwrap();
+        let v: serde_json::Value = serde_json::from_str(&r).unwrap();
+        assert!(v["reasons"]
+            .as_array()
+            .unwrap()
+            .contains(&"sensitive_task_stricter_threshold".into()));
     }
 }
