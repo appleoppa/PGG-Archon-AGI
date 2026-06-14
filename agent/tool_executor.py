@@ -58,6 +58,39 @@ def _ra():
     return run_agent
 
 
+def _emit_agent_loop_tool_parse_error(agent, tool_call, effective_task_id: str) -> None:
+    """Record invalid tool-argument JSON without storing raw arguments."""
+    try:
+        from agent.agent_loop_event_ledger import append_agent_loop_event
+        append_agent_loop_event(
+            "tool_result",
+            session_id=getattr(agent, "session_id", "") or "",
+            task_id=effective_task_id,
+            turn_id=getattr(agent, "_current_turn_id", "") or "",
+            api_request_id=getattr(agent, "_current_api_request_id", "") or "",
+            tool_call_id=getattr(tool_call, "id", "") or "",
+            tool_name=getattr(getattr(tool_call, "function", None), "name", None),
+            status="error",
+            result_subtype="error_tool_json",
+            error_type="json_parse_error",
+            args={"raw_arguments_sha256_only": getattr(getattr(tool_call, "function", None), "arguments", None)},
+        )
+    except Exception:
+        pass
+
+
+def _parse_tool_call_arguments_for_agent_loop(agent, tool_call, effective_task_id: str) -> dict:
+    """Parse model-emitted tool arguments and ledger invalid JSON as error_tool_json."""
+    try:
+        function_args = json.loads(tool_call.function.arguments)
+    except json.JSONDecodeError:
+        _emit_agent_loop_tool_parse_error(agent, tool_call, effective_task_id)
+        return {}
+    if not isinstance(function_args, dict):
+        return {}
+    return function_args
+
+
 def _emit_terminal_post_tool_call(
     agent,
     *,
@@ -271,12 +304,7 @@ def execute_tool_calls_concurrent(agent, assistant_message, messages: list, effe
         elif function_name == "skill_manage":
             agent._iters_since_skill = 0
 
-        try:
-            function_args = json.loads(tool_call.function.arguments)
-        except json.JSONDecodeError:
-            function_args = {}
-        if not isinstance(function_args, dict):
-            function_args = {}
+        function_args = _parse_tool_call_arguments_for_agent_loop(agent, tool_call, effective_task_id)
 
         # ── Tool Search unwrap ────────────────────────────────────────
         # When the model invokes the tool_call bridge, peel it open so
@@ -790,13 +818,7 @@ def execute_tool_calls_sequential(agent, assistant_message, messages: list, effe
 
         function_name = tool_call.function.name
 
-        try:
-            function_args = json.loads(tool_call.function.arguments)
-        except json.JSONDecodeError as e:
-            logger.warning(f"Unexpected JSON error after validation: {e}")
-            function_args = {}
-        if not isinstance(function_args, dict):
-            function_args = {}
+        function_args = _parse_tool_call_arguments_for_agent_loop(agent, tool_call, effective_task_id)
 
         # Tool Search unwrap — see execute_tool_calls_concurrent for full
         # rationale, including the scope gate (the unwrap dispatches the

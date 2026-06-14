@@ -809,6 +809,53 @@ def _tool_result_observer_fields(result: Any) -> tuple[str, Optional[str], Optio
     return "ok", None, None
 
 
+def _emit_agent_loop_tool_result_event(
+    *,
+    function_name: str,
+    function_args: Dict[str, Any],
+    result: Any,
+    task_id: Optional[str] = None,
+    session_id: Optional[str] = None,
+    tool_call_id: Optional[str] = None,
+    turn_id: Optional[str] = None,
+    api_request_id: Optional[str] = None,
+    status: Optional[str] = None,
+    error_type: Optional[str] = None,
+    result_subtype: Optional[str] = None,
+) -> None:
+    """Append metadata-only tool_result events for Agent Loop observability."""
+    try:
+        from agent.agent_loop_event_ledger import append_agent_loop_event
+
+        observed_status, observed_error_type, _ = _tool_result_observer_fields(result)
+        final_status = status or observed_status
+        final_error_type = error_type or observed_error_type
+        if result_subtype is None and final_status in {"error", "blocked"}:
+            if final_error_type == "unknown_tool":
+                result_subtype = "error_tool_invalid"
+            elif final_error_type == "json_parse_error":
+                result_subtype = "error_tool_json"
+            elif final_error_type in {"edit_approval_denied", "approval_denied", "permission_denied"}:
+                result_subtype = "blocked_permission"
+            elif final_error_type in {"plugin_block", "guardrail_block", "tool_scope_block"}:
+                result_subtype = "blocked_policy"
+        append_agent_loop_event(
+            "tool_result",
+            tool_name=function_name,
+            args=function_args,
+            task_id=task_id,
+            session_id=session_id,
+            tool_call_id=tool_call_id,
+            turn_id=turn_id,
+            api_request_id=api_request_id,
+            status=final_status,
+            error_type=final_error_type,
+            result_subtype=result_subtype,
+        )
+    except Exception:
+        pass
+
+
 def _emit_post_tool_call_hook(
     *,
     function_name: str,
@@ -1049,6 +1096,19 @@ def handle_function_call(
 
             if block_message is not None:
                 result = json.dumps({"error": block_message}, ensure_ascii=False)
+                _emit_agent_loop_tool_result_event(
+                    function_name=function_name,
+                    function_args=function_args,
+                    result=result,
+                    task_id=task_id,
+                    session_id=session_id,
+                    tool_call_id=tool_call_id,
+                    turn_id=turn_id,
+                    api_request_id=api_request_id,
+                    status="blocked",
+                    error_type="plugin_block",
+                    result_subtype="blocked_policy",
+                )
                 _emit_post_tool_call_hook(
                     function_name=function_name,
                     function_args=function_args,
@@ -1073,11 +1133,38 @@ def handle_function_call(
 
             edit_block_message = maybe_require_edit_approval(function_name, function_args)
             if edit_block_message is not None:
+                _emit_agent_loop_tool_result_event(
+                    function_name=function_name,
+                    function_args=function_args,
+                    result=edit_block_message,
+                    task_id=task_id,
+                    session_id=session_id,
+                    tool_call_id=tool_call_id,
+                    turn_id=turn_id,
+                    api_request_id=api_request_id,
+                    status="blocked",
+                    error_type="edit_approval_denied",
+                    result_subtype="blocked_permission",
+                )
                 return edit_block_message
         except Exception as _edit_approval_err:
             logger.debug("ACP edit approval guard error: %s", _edit_approval_err)
             if function_name in {"write_file", "patch"}:
-                return json.dumps({"error": "Edit approval denied: approval guard failed"}, ensure_ascii=False)
+                result = json.dumps({"error": "Edit approval denied: approval guard failed"}, ensure_ascii=False)
+                _emit_agent_loop_tool_result_event(
+                    function_name=function_name,
+                    function_args=function_args,
+                    result=result,
+                    task_id=task_id,
+                    session_id=session_id,
+                    tool_call_id=tool_call_id,
+                    turn_id=turn_id,
+                    api_request_id=api_request_id,
+                    status="blocked",
+                    error_type="edit_approval_denied",
+                    result_subtype="blocked_permission",
+                )
+                return result
 
         # Notify the read-loop tracker when a non-read/search tool runs,
         # so the *consecutive* counter resets (reads after other work are fine).
@@ -1147,6 +1234,30 @@ def handle_function_call(
                     pass
         duration_ms = int((time.monotonic() - _dispatch_start) * 1000)
 
+        _result_status, _result_error_type, _ = _tool_result_observer_fields(result)
+        if _result_status == "error" and _result_error_type == "tool_error":
+            try:
+                _parsed_result = json.loads(result) if isinstance(result, str) else result
+                _err = str(_parsed_result.get("error", "")) if isinstance(_parsed_result, dict) else ""
+            except Exception:
+                _err = ""
+            if _err.startswith("Unknown tool:"):
+                _result_error_type = "unknown_tool"
+            elif "json" in _err.lower() and "parse" in _err.lower():
+                _result_error_type = "json_parse_error"
+        _emit_agent_loop_tool_result_event(
+            function_name=function_name,
+            function_args=function_args,
+            result=result,
+            task_id=task_id,
+            session_id=session_id,
+            tool_call_id=tool_call_id,
+            turn_id=turn_id,
+            api_request_id=api_request_id,
+            status=_result_status,
+            error_type=_result_error_type,
+        )
+
         _emit_post_tool_call_hook(
             function_name=function_name,
             function_args=function_args,
@@ -1199,7 +1310,20 @@ def handle_function_call(
     except Exception as e:
         error_msg = f"Error executing {function_name}: {str(e)}"
         logger.exception(error_msg)
-        return json.dumps({"error": _sanitize_tool_error(error_msg)}, ensure_ascii=False)
+        result = json.dumps({"error": _sanitize_tool_error(error_msg)}, ensure_ascii=False)
+        _emit_agent_loop_tool_result_event(
+            function_name=function_name,
+            function_args=function_args,
+            result=result,
+            task_id=task_id,
+            session_id=session_id,
+            tool_call_id=tool_call_id,
+            turn_id=turn_id,
+            api_request_id=api_request_id,
+            status="error",
+            error_type="tool_dispatch_exception",
+        )
+        return result
 
 
 # =============================================================================

@@ -79,6 +79,7 @@ def append_agent_loop_event(event_type: str, **fields: Any) -> None:
         for key in (
             "before_tokens", "after_tokens", "before_messages", "after_messages", "old_session_id", "new_session_id", "lossy",
             "result_subtype", "api_calls", "max_turns", "turn_exit_reason", "completed", "failed", "partial", "interrupted",
+            "error_type",
         ):
             if key in fields:
                 payload[key] = fields.get(key)

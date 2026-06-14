@@ -597,13 +597,13 @@ fn agent_loop_mapping_catalog() -> serde_json::Value {
             "success": "ended_at present and message_count > 0",
             "partial_provider_empty": "no messages/tools in session metadata",
             "error_interrupted": "open or incomplete session without stronger error class",
-            "error_max_turns": "reserved: map from max_iterations/iteration_budget exhaustion ledger",
-            "error_budget_exhausted": "reserved: map from cost/budget ledger",
-            "error_guardrail_halt": "reserved: map from guardrail/checkpoint denial ledger",
-            "error_tool_invalid": "reserved: map from tool schema/registry errors",
-            "error_tool_json": "reserved: map from JSON parse errors",
-            "blocked_permission": "reserved: map from approval/checkpoint permission denials",
-            "blocked_policy": "reserved: map from policy/hard-deny result"
+            "error_max_turns": "live loop_result ledger from max_iterations/iteration_budget exhaustion",
+            "error_budget_exhausted": "live loop_result ledger from iteration budget exhaustion",
+            "error_guardrail_halt": "live loop_result/tool_result ledger from conservative failed or guardrail halt",
+            "error_tool_invalid": "live tool_result ledger from registry/unknown-tool errors",
+            "error_tool_json": "live tool_result ledger from model-emitted tool argument JSON parse errors",
+            "blocked_permission": "live tool_result ledger from approval/checkpoint permission denials",
+            "blocked_policy": "live tool_result ledger from plugin/policy/guardrail hard-deny result"
         },
         "p1_turn_budget_map": {
             "turn_id": "model decision round; currently derived from user-message boundaries in state.db",
@@ -703,10 +703,20 @@ fn agent_loop_event_surface_with_ledger_json(sessions_json: &str, messages_json:
             _ => "stream_event".into(),
         };
         *counts.entry(normalized_type.clone()).or_insert(0) += 1;
-        if normalized_type == "loop_result" {
-            let sid = v_str(le, "session_id");
-            if !sid.is_empty() {
-                result_overrides.insert(sid, le.clone());
+        let sid_for_override = v_str(le, "session_id");
+        if (normalized_type == "loop_result"
+            || (normalized_type == "tool_result" && !v_str(le, "result_subtype").is_empty()))
+            && !sid_for_override.is_empty()
+        {
+            let incoming_ts = le.get("timestamp").and_then(|v| v.as_f64()).unwrap_or(0.0);
+            let should_replace = result_overrides
+                .get(&sid_for_override)
+                .and_then(|existing| existing.get("timestamp"))
+                .and_then(|v| v.as_f64())
+                .map(|existing_ts| incoming_ts >= existing_ts)
+                .unwrap_or(true);
+            if should_replace {
+                result_overrides.insert(sid_for_override, le.clone());
             }
         }
         let mut event = le.clone();
@@ -751,7 +761,10 @@ fn agent_loop_event_surface_with_ledger_json(sessions_json: &str, messages_json:
             "turn_count": v_i64(s, "message_count"),
             "tool_call_count": v_i64(s, "tool_call_count"),
             "api_calls": api_calls,
-            "turn_exit_reason": override_event.and_then(|e| e.get("turn_exit_reason").cloned()).unwrap_or(serde_json::Value::Null),
+            "turn_exit_reason": override_event
+                .and_then(|e| e.get("turn_exit_reason").cloned())
+                .or_else(|| override_event.and_then(|e| e.get("error_type").cloned()))
+                .unwrap_or(serde_json::Value::Null),
             "observed_wall_seconds": (v_f64(s, "ended_at") - v_f64(s, "started_at")).max(0.0),
             "estimated_cost_usd": v_f64(s, "estimated_cost_usd"),
             "budget": budget
@@ -1080,6 +1093,17 @@ mod tests {
         assert_eq!(v["results"][0]["api_calls"], 3);
         assert_eq!(v["results"][0]["budget"]["max_turns"], 3);
         assert_eq!(v["results"][0]["budget"]["max_tool_calls"], 9);
+    }
+
+    #[test]
+    fn test_agent_loop_event_surface_tool_error_ledger_overrides_subtype_without_loop_result() {
+        let sessions = r#"[{"id":"s1","source":"cli","started_at":1.0,"ended_at":2.0,"message_count":3,"tool_call_count":1}]"#;
+        let ledger = r#"[{"schema":"PGGAgentLoopEvent/v1","type":"tool_result","session_id":"s1","timestamp":2.2,"status":"error","result_subtype":"error_tool_invalid","error_type":"unknown_tool","tool_name":"missing_tool"}]"#;
+        let r = agent_loop_event_surface_with_ledger_json(sessions, "[]", ledger).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&r).unwrap();
+        assert_eq!(v["event_type_counts"]["tool_result"], 1);
+        assert_eq!(v["results"][0]["result_subtype"], "error_tool_invalid");
+        assert_eq!(v["results"][0]["turn_exit_reason"], "unknown_tool");
     }
 
 }
