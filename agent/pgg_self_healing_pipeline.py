@@ -295,6 +295,36 @@ else:
     else:
         results.append({"name": "agentspex_sandbox", "action": "sandbox_not_built_yet"})
     
+    # ── Pattern 8: 终极进化公式 — 目标趋势突变检测 ──
+    # 跟踪SE25 ultimate formula score趋势，发现突变（骤降>15%）触发告警
+    _SCORE_CACHE = REPO / "workspace" / "_pattern8_score_cache.json"
+    uf = _run([str(BIN/"pgg-ultimate-formula"), "--pretty"], timeout=15)
+    if uf["rc"] == 0:
+        try:
+            uf_data = json.loads(uf["output"])
+            current_score = uf_data.get("score", 0.0)
+            previous = {}
+            if _SCORE_CACHE.exists():
+                previous = json.loads(_SCORE_CACHE.read_text())
+                if time.time() - previous.get("ts", 0) < 86400:
+                    prev_score = previous.get("score", current_score)
+                    sudden_drop = prev_score - current_score > 15.0 if current_score < prev_score else 0.0
+                    if sudden_drop:
+                        results.append({"name": "ultimate_formula_trend", "action": "WATCH",
+                                        "detail": f"score dropped {current_score} from {prev_score}"})
+                    else:
+                        results.append({"name": "ultimate_formula_trend", "action": f"stable({current_score})"})
+                else:
+                    results.append({"name": "ultimate_formula_trend", "action": f"new({current_score})"})
+            else:
+                results.append({"name": "ultimate_formula_trend", "action": f"baseline({current_score})"})
+            _SCORE_CACHE.parent.mkdir(parents=True, exist_ok=True)
+            _SCORE_CACHE.write_text(json.dumps({"score": current_score, "ts": time.time()}))
+        except Exception as ex:
+            results.append({"name": "ultimate_formula_trend", "action": "ERROR", "detail": str(ex)[:100]})
+    else:
+        results.append({"name": "ultimate_formula_trend", "action": "ERROR", "detail": (uf.get("output","") or "")[:100]})
+    
     # ── Pattern 9: Launchd健康检查 ──
     for label in ["ai.hermes.pgg-self-evolution-loop", "ai.hermes.pgg-daily-learning", "ai.hermes.webui"]:
         lr = _run(["launchctl", "list", label], timeout=5)

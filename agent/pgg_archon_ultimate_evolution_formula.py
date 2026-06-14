@@ -258,6 +258,21 @@ else:
         }
 
 
+def main() -> int:
+    """CLI entry point for SE25 Ultimate Evolution Formula gate."""
+    import json, sys
+    report = build_ultimate_evolution_formula_report()
+    if "--pretty" in sys.argv:
+        print(json.dumps(report, ensure_ascii=False, indent=2))
+    else:
+        print(json.dumps(report, ensure_ascii=False))
+    return 0
+
+
+if __name__ == "__main__":
+    main()
+
+
 __all__ = [
     "build_ultimate_evolution_formula_report",
     "compute_evm_full",

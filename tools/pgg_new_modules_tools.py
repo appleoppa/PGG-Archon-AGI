@@ -1,5 +1,9 @@
 """PGG New Modules — Hermes Tool 注册
 SE19流匹配 + CMMI门禁 + 6.11模块(ARIS/Dream/Health/自愈)
++ APEX-ASI Gate (总纲8)
++ SE25 终极进化公式 Gate
++ SE26 全球顶级法律AGI Supreme Gate
++ Autopilot 自驾巡航
 
 All tools are read-only/bounded: local compute, no LLM, no provider, no config mutation.
 """
@@ -21,209 +25,144 @@ from tools.registry import registry
 
 logger = logging.getLogger(__name__)
 
-# ──────────────────────────────────────────────
-# 1. ARIS Reflection
-# ──────────────────────────────────────────────
-ARIS_REFLECTION_SCHEMA: Dict[str, Any] = {
-    "name": "pgg_aris_reflection",
-    "description": "ARIS三层反思引擎 (6.11新增模块). "
-                   "L1=deviation/context, L2=logic contradiction, L3=architecture boundary. "
-                   "Read-only: uses local GeneDB + file system, no LLM/providers.",
-    "parameters": {"type": "object", "properties": {}, "additionalProperties": False},
-}
+# ── 1. ARIS Reflection ──
+ARIS_REFLECTION_SCHEMA = {"name": "pgg_aris_reflection",
+    "description": "ARIS三层反思引擎 (6.11). L1=deviation/context, L2=logic, L3=architecture.",
+    "parameters": {"type": "object", "properties": {}}}
 
-def _handle_aris_reflection(args: Dict[str, Any], **_: Any) -> str:
+def _handle_aris(args, **_):
     try:
-        result = ArisReflector().run_reflection()
-        return json.dumps(result, ensure_ascii=False, indent=2)
+        return json.dumps(ArisReflector().run_reflection(), ensure_ascii=False, indent=2)
     except Exception as e:
-        return json.dumps({"error": str(e), "schema": "PGG_ARIS_Reflection/v1", "boundary": "local-only, no LLM"})
+        return json.dumps({"error": str(e)})
 
-def _check_aris() -> bool:
+registry.register(name="pgg_aris_reflection", toolset="pgg_archon",
+    schema=ARIS_REFLECTION_SCHEMA, handler=_handle_aris, emoji="\U0001fa9e")
+
+# ── 2. Dream Mode ──
+DREAM_MODE_SCHEMA = {"name": "pgg_dream_mode",
+    "description": "四阶段基因梦境合成 (6.11). REMINISCE->SYNTHESIZE->SIMULATE->TRANSCEND.",
+    "parameters": {"type": "object", "properties": {}}}
+
+def _handle_dream(args, **_):
     try:
-        ArisReflector
-        return True
-    except Exception:
-        return False
-
-registry.register(
-    name="pgg_aris_reflection",
-    toolset="pgg_archon",
-    schema=ARIS_REFLECTION_SCHEMA,
-    handler=_handle_aris_reflection,
-    check_fn=_check_aris,
-    emoji="🪞",
-    max_result_size_chars=30_000,
-)
-
-# ──────────────────────────────────────────────
-# 2. Dream Mode
-# ──────────────────────────────────────────────
-DREAM_MODE_SCHEMA: Dict[str, Any] = {
-    "name": "pgg_dream_mode",
-    "description": "四阶段基因梦境合成 (6.11新增模块). "
-                   "REMINISCE→SYNTHESIZE→SIMULATE→TRANSCEND. "
-                   "本地GeneDB SQLite只读操作，无LLM调用。",
-    "parameters": {"type": "object", "properties": {}, "additionalProperties": False},
-}
-
-def _handle_dream_mode(args: Dict[str, Any], **_: Any) -> str:
-    try:
-        engine = DreamEngine()
-        result = engine.run_dream_cycle()
-        return json.dumps(result, ensure_ascii=False, indent=2)
+        return json.dumps(DreamEngine().run_dream_cycle(), ensure_ascii=False, indent=2)
     except Exception as e:
-        return json.dumps({"error": str(e), "schema": "PGG_Dream_Mode/v1", "boundary": "local-only, no LLM"})
+        return json.dumps({"error": str(e)})
 
-def _check_dream() -> bool:
+registry.register(name="pgg_dream_mode", toolset="pgg_archon",
+    schema=DREAM_MODE_SCHEMA, handler=_handle_dream, emoji="\U0001f4ad")
+
+# ── 3. Health Monitor ──
+HEALTH_MONITOR_SCHEMA = {"name": "pgg_health_monitor",
+    "description": "本地系统健康监控 (6.11). CPU/RAM/磁盘/launchd/GeneDB.",
+    "parameters": {"type": "object", "properties": {}}}
+
+def _handle_health(args, **_):
     try:
-        DreamEngine
-        return True
-    except Exception:
-        return False
-
-registry.register(
-    name="pgg_dream_mode",
-    toolset="pgg_archon",
-    schema=DREAM_MODE_SCHEMA,
-    handler=_handle_dream_mode,
-    check_fn=_check_dream,
-    emoji="💭",
-    max_result_size_chars=30_000,
-)
-
-# ──────────────────────────────────────────────
-# 3. Health Monitor
-# ──────────────────────────────────────────────
-HEALTH_MONITOR_SCHEMA: Dict[str, Any] = {
-    "name": "pgg_health_monitor",
-    "description": "本地系统健康监控 (6.11新增模块). "
-                   "CPU/RAM/磁盘/launchd/GeneDB/警报. "
-                   "纯本地只读，无网络/无provider。",
-    "parameters": {"type": "object", "properties": {}, "additionalProperties": False},
-}
-
-def _handle_health_monitor(args: Dict[str, Any], **_: Any) -> str:
-    try:
-        monitor = HealthMonitor()
-        result = monitor.run_check()
-        return json.dumps(result, ensure_ascii=False, indent=2)
+        return json.dumps(HealthMonitor().run_check(), ensure_ascii=False, indent=2)
     except Exception as e:
-        return json.dumps({"error": str(e), "schema": "PGG_Health_Monitor/v1", "boundary": "local-only, no LLM"})
+        return json.dumps({"error": str(e)})
 
-def _check_health() -> bool:
+registry.register(name="pgg_health_monitor", toolset="pgg_archon",
+    schema=HEALTH_MONITOR_SCHEMA, handler=_handle_health, emoji="\U00002764\U0000fe0f")
+
+# ── 4. Flow Matching (SE19) ──
+FLOW_MATCHING_SCHEMA = {"name": "pgg_flow_matching",
+    "description": "SE19流匹配/链路整合引擎. TTB+DAG流网络, 反向信用分配.",
+    "parameters": {"type": "object", "properties": {}}}
+
+def _handle_flow(args, **_):
     try:
-        HealthMonitor
-        return True
-    except Exception:
-        return False
-
-registry.register(
-    name="pgg_health_monitor",
-    toolset="pgg_archon",
-    schema=HEALTH_MONITOR_SCHEMA,
-    handler=_handle_health_monitor,
-    check_fn=_check_health,
-    emoji="❤️",
-    max_result_size_chars=30_000,
-)
-
-# ──────────────────────────────────────────────
-# 4. Flow Matching (SE19)
-# ──────────────────────────────────────────────
-FLOW_MATCHING_SCHEMA: Dict[str, Any] = {
-    "name": "pgg_flow_matching",
-    "description": "SE19流匹配/链路整合引擎。"
-                   "TTB+DAG流网络，反向信用分配，多峰负载冗余路由。"
-                   "纯本地计算，无网络/无provider/无LLM调用。",
-    "parameters": {
-        "type": "object",
-        "properties": {
-            "action": {
-                "type": "string",
-                "enum": ["evaluate", "compute_flow", "allocate_credit", "redundant_routing"],
-                "description": "操作类型",
-                "default": "evaluate",
-            },
-        },
-        "additionalProperties": False,
-    },
-}
-
-def _handle_flow_matching(args: Dict[str, Any], **_: Any) -> str:
-    try:
-        action = str((args or {}).get("action") or "evaluate")
         fm = PGGFlowMatching()
-        if action == "evaluate":
-            fm.build_trajectory_example()
-            fm.build_graph()
-            result = fm.evaluate_network()
-        elif action == "compute_flow":
-            result = fm.compute_flow("coder")
-        elif action == "allocate_credit":
-            result = fm.allocate_credit()
-        elif action == "redundant_routing":
-            result = fm.redundant_routing()
-        else:
-            result = {"error": f"Unknown action: {action}"}
-        return json.dumps(result, ensure_ascii=False, indent=2, default=str)
+        fm.build_trajectory_example(); fm.build_graph()
+        return json.dumps(fm.evaluate_network(), ensure_ascii=False, indent=2, default=str)
     except Exception as e:
-        return json.dumps({"error": str(e), "schema": "PGGFlowMatching/v1", "boundary": "local-only, no LLM"})
+        return json.dumps({"error": str(e)})
 
-def _check_flow() -> bool:
-    try:
-        PGGFlowMatching
-        return True
-    except Exception:
-        return False
+registry.register(name="pgg_flow_matching", toolset="pgg_archon",
+    schema=FLOW_MATCHING_SCHEMA, handler=_handle_flow, emoji="\U0001f30a")
 
-registry.register(
-    name="pgg_flow_matching",
-    toolset="pgg_archon",
-    schema=FLOW_MATCHING_SCHEMA,
-    handler=_handle_flow_matching,
-    check_fn=_check_flow,
-    emoji="🌊",
-    max_result_size_chars=30_000,
-)
+# ── 5. CMMI Gate (SE18) ──
+CMMI_GATE_SCHEMA = {"name": "pgg_cmmi_gate",
+    "description": "CMMI工业化标准门禁 (SE18). 6探针.",
+    "parameters": {"type": "object", "properties": {}}}
 
-# ──────────────────────────────────────────────
-# 5. CMMI Industrial Gate (SE18)
-# ──────────────────────────────────────────────
-CMMI_GATE_SCHEMA: Dict[str, Any] = {
-    "name": "pgg_cmmi_gate",
-    "description": "CMMI工业化标准门禁 (SE18). "
-                   "6探针(module/audit/env/rust gate/probe/manifest). "
-                   "纯本地只读，无网络/无provider。",
-    "parameters": {"type": "object", "properties": {}, "additionalProperties": False},
-}
-
-def _handle_cmmi_gate(args: Dict[str, Any], **_: Any) -> str:
+def _handle_cmmi(args, **_):
     try:
         evidence = build_cmmi_evidence(rust_compile_passed=True, python_import_smoke_passed=True,
                                        pytest_passed=True, manifest_readback_present=True,
                                        skill_reference_present=True)
         probe = probe_cmmi()
-        return json.dumps({"evidence": evidence, "probe": probe,
-                           "schema": "PGG_CMMI_Gate/v1",
-                           "boundary": "local-only, no LLM/no provider"},
-                          ensure_ascii=False, indent=2)
+        return json.dumps({"evidence": evidence, "probe": probe}, ensure_ascii=False, indent=2)
     except Exception as e:
-        return json.dumps({"error": str(e), "schema": "PGG_CMMI_Gate/v1"})
+        return json.dumps({"error": str(e)})
 
-def _check_cmmi() -> bool:
+registry.register(name="pgg_cmmi_gate", toolset="pgg_archon",
+    schema=CMMI_GATE_SCHEMA, handler=_handle_cmmi, emoji="\U0001f3ed")
+
+# ── 6. APEX-ASI Gate (总纲8) ──
+def _handle_asi(args, **_):
     try:
-        build_cmmi_evidence
-        return True
-    except Exception:
-        return False
+        from agent.pgg_archon_apex_asi_gate import status
+        return json.dumps(status(), ensure_ascii=False, indent=2)
+    except Exception as e:
+        return json.dumps({"error": str(e)})
 
-registry.register(
-    name="pgg_cmmi_gate",
-    toolset="pgg_archon",
-    schema=CMMI_GATE_SCHEMA,
-    handler=_handle_cmmi_gate,
-    check_fn=_check_cmmi,
-    emoji="🏭",
-    max_result_size_chars=30_000,
-)
+registry.register(name="pgg_apex_asi_gate", toolset="pgg_archon",
+    schema={"name": "pgg_apex_asi_gate", "description": "APEX-ASI启动公式门禁 (总纲8).",
+            "parameters": {"type": "object", "properties": {}}},
+    handler=_handle_asi, emoji="\U0001f531")
+
+# ── 7. SE25 终极进化公式 Gate ──
+def _handle_ultimate(args, **_):
+    try:
+        from agent.pgg_archon_ultimate_evolution_formula import build_ultimate_evolution_formula_report
+        return json.dumps(build_ultimate_evolution_formula_report(), ensure_ascii=False, indent=2)
+    except Exception as e:
+        return json.dumps({"error": str(e)})
+
+registry.register(name="pgg_ultimate_formula_gate", toolset="pgg_archon",
+    schema={"name": "pgg_ultimate_formula_gate",
+            "description": "SE25 终极进化公式 gate. APEX_Ult = Omega_A * alpha_ack * beta_bg * EVM - SigmaDelta.",
+            "parameters": {"type": "object", "properties": {}}},
+    handler=_handle_ultimate, emoji="\U0001f9ec")
+
+# ── 8. SE26 全球顶级法律AGI Supreme Gate ──
+def _handle_legal(args, **_):
+    try:
+        from agent.pgg_legal_supreme_gate import SupremePromptGate
+        gate = SupremePromptGate()
+        mode = (args or {}).get("mode", "all")
+        if mode == "case_filing":
+            return json.dumps(gate.check_case_filing(), ensure_ascii=False, indent=2)
+        elif mode == "full_cycle":
+            return json.dumps(gate.check_full_cycle_handling(), ensure_ascii=False, indent=2)
+        elif mode == "cross_border":
+            return json.dumps(gate.check_cross_border_legal(), ensure_ascii=False, indent=2)
+        else:
+            return json.dumps(gate.check_all(), ensure_ascii=False, indent=2)
+    except Exception as e:
+        return json.dumps({"error": str(e)})
+
+registry.register(name="pgg_legal_supreme_gate", toolset="pgg_archon",
+    schema={"name": "pgg_legal_supreme_gate",
+            "description": "SE26 全球顶级法律AGI Supreme Gate. 立案/全周期/跨境法律门禁.",
+            "parameters": {"type": "object", "properties": {
+                "mode": {"type": "string", "enum": ["case_filing", "full_cycle", "cross_border", "all"],
+                         "default": "all"}}}},
+    handler=_handle_legal, emoji="\u2696\ufe0f")
+
+# ── 9. Autopilot 自驾巡航 ──
+def _handle_autopilot(args, **_):
+    try:
+        from agent.pgg_autopilot import AutopilotEngine
+        return json.dumps(AutopilotEngine().assess(), ensure_ascii=False, indent=2)
+    except Exception as e:
+        return json.dumps({"error": str(e)})
+
+registry.register(name="pgg_autopilot", toolset="pgg_archon",
+    schema={"name": "pgg_autopilot",
+            "description": "Autopilot 自驾巡航. 30分钟级自动驾驶决策, 纯本地启发式无LLM.",
+            "parameters": {"type": "object", "properties": {}}},
+    handler=_handle_autopilot, emoji="\U0001f697")
