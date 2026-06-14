@@ -8,6 +8,7 @@ Rust .so 不可用时只返回 BLOCKED，不提供 Python 实现。
 
 import json
 import sys
+from pathlib import Path
 from typing import Any, Dict, Optional
 
 try:
@@ -20,11 +21,24 @@ except ImportError:
 class PggApexAsiGate:
     """Ψ_ASI 证据门评估器 — 纯 Rust 桥，无 Python 实现。"""
 
+    def _load_live_config(self) -> Optional[Dict[str, Any]]:
+        """Load bounded /goal runtime evidence config when present.
+
+        The native sample is a conservative formula demonstration.  The /goal
+        surface already writes a live bounded evidence config under workspace;
+        use it for status readback instead of reporting the weak sample as the
+        current system state.
+        """
+        path = Path.home() / ".hermes" / "workspace" / "pgg-archon-governance" / "goal-runtime-evidence" / "apex_asi_goal_config.json"
+        if path.exists():
+            return json.loads(path.read_text(encoding="utf-8"))
+        return None
+
     def evaluate(self, config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         if _MODULE is None:
             return {"status": "BLOCKED", "score": 0.0, "detail": "Rust native .so not available"}
         if config is None:
-            config = json.loads(_MODULE.sample_config_json())
+            config = self._load_live_config() or json.loads(_MODULE.sample_config_json())
         return json.loads(_MODULE.evaluate_config_json(json.dumps(config, ensure_ascii=False)))
 
     def sample_config(self) -> Dict[str, Any]:
