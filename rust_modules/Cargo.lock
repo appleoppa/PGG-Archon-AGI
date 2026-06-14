@@ -458,6 +458,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "pgg_genedb_unified_audit"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sha2",
+]
+
+[[package]]
 name = "pgg_sourceref_repair_runner"
 version = "0.1.0"
 dependencies = [

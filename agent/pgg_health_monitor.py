@@ -234,13 +234,14 @@ class HealthMonitor:
             return None
         pid = None if pid_raw == "-" else int(_safe_float(pid_raw, 0))
         exit_code = int(_safe_float(status_raw, 0))
-        running = pid is not None and exit_code == 0
+        running = pid is not None
+        healthy = running or exit_code == 0
         return {
             "label": label.strip(),
             "pid": pid,
             "exit_code": exit_code,
             "running": running,
-            "healthy": exit_code == 0,
+            "healthy": healthy,
             "raw": line,
         }
 
@@ -313,7 +314,7 @@ class HealthMonitor:
 
         for service in launchd.get("services", []) or []:
             exit_code = int(_safe_float(service.get("exit_code"), 0))
-            if exit_code != 0:
+            if exit_code != 0 and not bool(service.get("healthy")):
                 alerts.append({
                     "level": "red",
                     "type": "launchd_exit_nonzero",
