@@ -315,6 +315,76 @@ else:
         results.append({"name": "git_worktree", "action": "WATCH", "detail": f"{dirt_count} dirty files"})
     elif dirt_count >= 0:
         results.append({"name": "git_worktree", "action": f"clean_or_minor({dirt_count})"})
+    
+    # ── Pattern 11: ARIS三层反思 ──
+    ar = _run([str(BIN/"pgg-aris-reflection")], timeout=60)
+    if ar["rc"] == 0:
+        try:
+            ar_data = json.loads(ar["output"])
+            l3_blockers = ar_data.get("results", {}).get("L3_architectural_blockers", [])
+            l3_severe = [b for b in l3_blockers if b.get("severity") in ("high", "medium")]
+            results.append({
+                "name": "aris_reflection",
+                "action": "ran" if not l3_severe else f"found_{len(l3_severe)}_l3_blockers",
+                "l1_score": round(ar_data.get("results", {}).get("L1_deviation_score", "?"), 3) if isinstance(ar_data.get("results", {}).get("L1_deviation_score"), (int, float)) else ar_data.get("results", {}).get("L1_deviation_score", "?"),
+                "recommendation": ar_data.get("results", {}).get("recommendation", "?"),
+            })
+        except:
+            results.append({"name": "aris_reflection", "action": "parse_error"})
+    else:
+        results.append({"name": "aris_reflection", "action": "failed"})
+    
+    # ── Pattern 12: Dream模式（基因梦境检查） ──
+    dr = _run([str(BIN/"pgg-dream-mode")], timeout=60)
+    if dr["rc"] == 0:
+        try:
+            dr_data = json.loads(dr["output"])
+            dream_phase = dr_data.get("dream_cycle_summary", {}).get("phase_completed", "?")
+            fusion_count = dr_data.get("gene_fusion_stats", {}).get("attempted", 0)
+            results.append({
+                "name": "dream_mode",
+                "action": "ran",
+                "phase_completed": dream_phase,
+                "fusion_attempted": fusion_count,
+            })
+        except:
+            results.append({"name": "dream_mode", "action": "parse_error"})
+    else:
+        results.append({"name": "dream_mode", "action": "failed"})
+    
+    # ── Pattern 13: 流匹配网络评估 ──
+    fm = _run([str(BIN/"pgg-flow-matching")], timeout=30)
+    if fm["rc"] == 0:
+        try:
+            fm_data = json.loads(fm["output"])
+            results.append({
+                "name": "flow_matching",
+                "action": "eval_complete",
+                "paths_available": len(fm_data.get("redundant_routing", {}).get("paths", [])),
+                "routing_strategy": fm_data.get("redundant_routing", {}).get("strategy", "?"),
+            })
+        except:
+            results.append({"name": "flow_matching", "action": "parse_error"})
+    else:
+        results.append({"name": "flow_matching", "action": "failed"})
+    
+    # ── Pattern 14: CMMI门禁检查 ──
+    cm = _run([str(BIN/"pgg-cmmi-gate")], timeout=30)
+    if cm["rc"] == 0:
+        try:
+            cm_data = json.loads(cm["output"])
+            evidence = cm_data.get("evidence", {})
+            source_ok = evidence.get("source", {}).get("source_document_read", False)
+            results.append({
+                "name": "cmmi_gate",
+                "action": "checked",
+                "source_doc_read": source_ok,
+                "patterns_absorbed": len(evidence.get("external_learning", {}).get("patterns_absorbed", [])),
+            })
+        except:
+            results.append({"name": "cmmi_gate", "action": "parse_error"})
+    else:
+        results.append({"name": "cmmi_gate", "action": "failed"})
 
     return results
 
