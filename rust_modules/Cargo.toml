@@ -14,4 +14,5 @@ members = [
     "hermes_pgg_ultimate_formula",
     "hermes_pgg_super_agi_formula",
     "hermes_pgg_l5_self_fix",
+    "hermes_pgg_cmmi_industrial_gate",
 ]

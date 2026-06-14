@@ -359,7 +359,7 @@ fn version() -> PyResult<String> {
 }
 
 #[pymodule]
-fn hermes_pgg_cmmi_industrial_gate(_py: Python<'_>, m: &PyModule) -> PyResult<()> {
+fn hermes_pgg_cmmi_industrial_gate(_py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(evaluate_evidence_json, m)?)?;
     m.add_function(wrap_pyfunction!(sample_input_json, m)?)?;
     m.add_function(wrap_pyfunction!(version, m)?)?;
