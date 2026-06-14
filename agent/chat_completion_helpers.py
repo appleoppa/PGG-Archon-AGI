@@ -657,6 +657,10 @@ def build_api_kwargs(agent, api_messages: list) -> dict:
             replay_encrypted_reasoning=bool(
                 getattr(agent, "_codex_reasoning_replay_enabled", True)
             ),
+            preserve_cache_control=bool(
+                getattr(agent, "_use_prompt_caching", False)
+                and not getattr(agent, "_use_native_cache_layout", False)
+            ),
         )
 
     # ── chat_completions (default) ─────────────────────────────────────
