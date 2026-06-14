@@ -54,6 +54,26 @@ def _run(cmd: list[str], *, cwd=None, timeout=60) -> dict:
     except Exception as e:
         return {"rc": 1, "output": f"{type(e).__name__}: {e}"}
 
+def _loads_first_json(text: str) -> Any:
+    """Parse the first JSON object from noisy command output.
+
+    Some legacy CLI wrappers print warnings or follow-up lines around JSON.
+    Self-healing must not crash on that; it should consume the first valid
+    object and continue bounded repair.
+    """
+    s = (text or "").strip()
+    try:
+        return json.loads(s)
+    except Exception:
+        pass
+    start = s.find("{")
+    if start < 0:
+        raise json.JSONDecodeError("no JSON object found", s, 0)
+    decoder = json.JSONDecoder()
+    obj, _ = decoder.raw_decode(s[start:])
+    return obj
+
+
 def _py_path() -> str:
     for c in [REPO / ".venv/bin/python3", REPO / "venv/bin/python3", Path(sys.executable)]:
         if c.exists(): return str(c)
@@ -120,7 +140,7 @@ print(json.dumps({{
     if r["rc"] != 0:
         return {"status": "ERROR", "error": r["output"][:300]}
     try:
-        data = json.loads(r["output"])
+        data = _loads_first_json(r["output"])
         return {"status": "PASS", **data}
     except:
         return {"status": "PASS", "note": "gene intake completed", "output": r["output"][:200]}
@@ -157,7 +177,7 @@ def fix_apex_v10_evidence() -> dict:
     try:
         r = _run([str(BIN/"hermes-goal")], timeout=60)
         if r["rc"] == 0:
-            d = json.loads(r["output"])
+            d = _loads_first_json(r["output"])
             apex_core = d.get("components", {}).get("apex_core_gate", {}).get("score", 85)
             asi = d.get("components", {}).get("asi_gate", {}).get("score", 80)
             score = min(100, (apex_core + asi) / 2)
@@ -301,7 +321,7 @@ else:
     uf = _run([str(BIN/"pgg-ultimate-formula"), "--pretty"], timeout=15)
     if uf["rc"] == 0:
         try:
-            uf_data = json.loads(uf["output"])
+            uf_data = _loads_first_json(uf["output"])
             current_score = uf_data.get("score", 0.0)
             previous = {}
             if _SCORE_CACHE.exists():
@@ -350,7 +370,7 @@ else:
     ar = _run([str(BIN/"pgg-aris-reflection")], timeout=60)
     if ar["rc"] == 0:
         try:
-            ar_data = json.loads(ar["output"])
+            ar_data = _loads_first_json(ar["output"])
             l3_blockers = ar_data.get("results", {}).get("L3_architectural_blockers", [])
             l3_severe = [b for b in l3_blockers if b.get("severity") in ("high", "medium")]
             results.append({
@@ -368,7 +388,7 @@ else:
     dr = _run([str(BIN/"pgg-dream-mode")], timeout=60)
     if dr["rc"] == 0:
         try:
-            dr_data = json.loads(dr["output"])
+            dr_data = _loads_first_json(dr["output"])
             dream_phase = dr_data.get("dream_cycle_summary", {}).get("phase_completed", "?")
             fusion_count = dr_data.get("gene_fusion_stats", {}).get("attempted", 0)
             results.append({
@@ -386,7 +406,7 @@ else:
     fm = _run([str(BIN/"pgg-flow-matching")], timeout=30)
     if fm["rc"] == 0:
         try:
-            fm_data = json.loads(fm["output"])
+            fm_data = _loads_first_json(fm["output"])
             results.append({
                 "name": "flow_matching",
                 "action": "eval_complete",
@@ -402,7 +422,7 @@ else:
     cm = _run([str(BIN/"pgg-cmmi-gate")], timeout=30)
     if cm["rc"] == 0:
         try:
-            cm_data = json.loads(cm["output"])
+            cm_data = _loads_first_json(cm["output"])
             evidence = cm_data.get("evidence", {})
             source_ok = evidence.get("source", {}).get("source_document_read", False)
             results.append({
@@ -426,7 +446,7 @@ def verify_and_reload() -> dict:
     if r["rc"] != 0:
         return {"status": "VERIFY_FAILED", "output": r["output"][:500]}
     try:
-        d = json.loads(r["output"])
+        d = _loads_first_json(r["output"])
         pass_count = len([v for v in d.get("components",{}).values()
                          if str(v.get("status","")).startswith("PASS")])
         blocked = d.get("blocked_count", -1)
@@ -483,7 +503,7 @@ def main() -> int:
     if r["rc"] != 0:
         print(f"  ERROR: hermes-goal failed: {r['output'][:200]}")
         return 1
-    goal = json.loads(r["output"])
+    goal = _loads_first_json(r["output"])
     print(f"  {goal.get('summary', '?')} | {time.time()-t0:.0f}s")
     
     # Step 2: Run gene intake (scan → write → fusion → reflexion)
