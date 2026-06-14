@@ -532,6 +532,196 @@ fn write_harmrate_report_json(report_json: &str, output_dir: &str) -> PyResult<S
     Ok(path.to_string_lossy().to_string())
 }
 
+
+
+// ── Module: agent_loop_event_surface ────────────────────────────────────────
+
+fn v_str(v: &serde_json::Value, key: &str) -> String {
+    v.get(key).and_then(|x| x.as_str()).unwrap_or("").to_string()
+}
+
+fn v_i64(v: &serde_json::Value, key: &str) -> i64 {
+    v.get(key).and_then(|x| x.as_i64()).unwrap_or(0)
+}
+
+fn v_f64(v: &serde_json::Value, key: &str) -> f64 {
+    v.get(key).and_then(|x| x.as_f64()).unwrap_or(0.0)
+}
+
+fn map_role_to_event_type(role: &str, preview: &str, tool_name: &str) -> String {
+    let r = role.to_lowercase();
+    let p = preview.to_lowercase();
+    if p.contains("compact_boundary") || p.contains("context compact") || p.contains("/compress") {
+        return "compact_boundary".into();
+    }
+    match r.as_str() {
+        "system" => "system".into(),
+        "assistant" | "model" => "assistant".into(),
+        "tool" => {
+            if tool_name.is_empty() { "stream_event".into() } else { "tool_result".into() }
+        }
+        "user" => "user".into(),
+        _ => "stream_event".into(),
+    }
+}
+
+fn map_loop_result_subtype(session: &serde_json::Value) -> String {
+    let ended_at = v_f64(session, "ended_at");
+    let message_count = v_i64(session, "message_count");
+    let tool_count = v_i64(session, "tool_call_count");
+    let source = v_str(session, "source").to_lowercase();
+    if ended_at > 0.0 && message_count > 0 {
+        "success".into()
+    } else if source.contains("blocked") {
+        "blocked_policy".into()
+    } else if message_count == 0 && tool_count == 0 {
+        "partial_provider_empty".into()
+    } else {
+        "error_interrupted".into()
+    }
+}
+
+fn agent_loop_mapping_catalog() -> serde_json::Value {
+    serde_json::json!({
+        "schema": "PGGAgentLoopMappingCatalog/v1",
+        "p0_event_type_map": {
+            "system_role": "system",
+            "assistant_or_model_role": "assistant",
+            "tool_role_with_tool_name": "tool_result",
+            "tool_request": "not directly present in state.db; reserved for live tool ledger/SSE",
+            "user_role": "user",
+            "compact_boundary": "detected from compact/compress markers; native event type reserved",
+            "result": "synthesized per session from session metadata"
+        },
+        "p1_result_subtype_map": {
+            "success": "ended_at present and message_count > 0",
+            "partial_provider_empty": "no messages/tools in session metadata",
+            "error_interrupted": "open or incomplete session without stronger error class",
+            "error_max_turns": "reserved: map from max_iterations/iteration_budget exhaustion ledger",
+            "error_budget_exhausted": "reserved: map from cost/budget ledger",
+            "error_guardrail_halt": "reserved: map from guardrail/checkpoint denial ledger",
+            "error_tool_invalid": "reserved: map from tool schema/registry errors",
+            "error_tool_json": "reserved: map from JSON parse errors",
+            "blocked_permission": "reserved: map from approval/checkpoint permission denials",
+            "blocked_policy": "reserved: map from policy/hard-deny result"
+        },
+        "p1_turn_budget_map": {
+            "turn_id": "model decision round; currently derived from user-message boundaries in state.db",
+            "step_id": "deterministic/local step; currently message_id for stable ordering",
+            "phase_id": "PGG governance phase; reserved, null until phase ledger is joined",
+            "max_turns": "reserved from agent.max_iterations/config",
+            "max_wall_seconds": "reserved from loop budget contract",
+            "max_budget_usd": "reserved from OmniRoute/cost ledger",
+            "max_tool_calls": "reserved from tool budget contract",
+            "max_write_ops": "reserved from checkpoint/write-op ledger"
+        },
+        "p2_future_map": {
+            "compact_boundary": "join compression ledger or message marker; include before_tokens/summary_hash/lossy when available",
+            "continue_latest_task": "map to latest session_id/task_id lineage",
+            "resume_task": "map to existing session_id/task_id from state.db/session_search",
+            "fork_task": "map parent_task_id + variant_label; not inferred silently"
+        },
+        "boundary": "read-only mapping surface; no provider/config/scheduler/security mutation; state.db derived events are approximate where live ledgers are absent"
+    })
+}
+
+#[pyfunction]
+/// Build PGGAgentLoopEvent/v1 surface from session/message JSON arrays. Pure mapping; no IO/network.
+fn agent_loop_event_surface_json(sessions_json: &str, messages_json: &str) -> PyResult<String> {
+    let sessions: Vec<serde_json::Value> = serde_json::from_str(sessions_json).map_err(|e| {
+        pyo3::exceptions::PyValueError::new_err(format!("invalid sessions json: {}", e))
+    })?;
+    let mut messages: Vec<serde_json::Value> = serde_json::from_str(messages_json).map_err(|e| {
+        pyo3::exceptions::PyValueError::new_err(format!("invalid messages json: {}", e))
+    })?;
+
+    messages.sort_by(|a, b| {
+        let sa = v_str(a, "session_id");
+        let sb = v_str(b, "session_id");
+        sa.cmp(&sb).then(v_i64(a, "id").cmp(&v_i64(b, "id")))
+    });
+
+    let mut events: Vec<serde_json::Value> = Vec::new();
+    let mut current_session = String::new();
+    let mut turn_id: i64 = 0;
+    let mut counts: std::collections::BTreeMap<String, i64> = std::collections::BTreeMap::new();
+
+    for m in messages.iter() {
+        let sid = v_str(m, "session_id");
+        if sid != current_session {
+            current_session = sid.clone();
+            turn_id = 0;
+        }
+        let role = v_str(m, "role");
+        if role == "user" {
+            turn_id += 1;
+        }
+        let tool_name = v_str(m, "tool_name");
+        let preview = v_str(m, "content_preview");
+        let typ = map_role_to_event_type(&role, &preview, &tool_name);
+        *counts.entry(typ.clone()).or_insert(0) += 1;
+        let status = if typ == "tool_result" || typ == "assistant" || typ == "user" || typ == "system" {
+            "completed"
+        } else {
+            "observed"
+        };
+        let event = serde_json::json!({
+            "schema": "PGGAgentLoopEvent/v1",
+            "session_id": sid,
+            "task_id": m.get("task_id").cloned().unwrap_or(serde_json::Value::Null),
+            "turn_id": if turn_id > 0 { serde_json::json!(turn_id) } else { serde_json::Value::Null },
+            "step_id": v_i64(m, "id"),
+            "phase_id": serde_json::Value::Null,
+            "type": typ,
+            "timestamp": m.get("timestamp").cloned().unwrap_or(serde_json::Value::Null),
+            "model": m.get("model").cloned().unwrap_or(serde_json::Value::Null),
+            "provider": m.get("provider").cloned().unwrap_or(serde_json::Value::Null),
+            "tool_name": if tool_name.is_empty() { serde_json::Value::Null } else { serde_json::json!(tool_name) },
+            "status": status,
+            "usage": {"token_count": v_i64(m, "token_count")},
+            "cost_usd": serde_json::Value::Null,
+            "boundary": "state.db/read-only derived event; live tool_request unavailable unless joined from tool ledger"
+        });
+        events.push(event);
+    }
+
+    let mut results: Vec<serde_json::Value> = Vec::new();
+    for s in sessions.iter() {
+        let subtype = map_loop_result_subtype(s);
+        results.push(serde_json::json!({
+            "schema": "PGGAgentLoopResult/v1",
+            "session_id": v_str(s, "id"),
+            "result_subtype": subtype,
+            "turn_count": v_i64(s, "message_count"),
+            "tool_call_count": v_i64(s, "tool_call_count"),
+            "observed_wall_seconds": (v_f64(s, "ended_at") - v_f64(s, "started_at")).max(0.0),
+            "estimated_cost_usd": v_f64(s, "estimated_cost_usd"),
+            "budget": {
+                "max_turns": serde_json::Value::Null,
+                "max_wall_seconds": serde_json::Value::Null,
+                "max_budget_usd": serde_json::Value::Null,
+                "max_tool_calls": serde_json::Value::Null,
+                "max_write_ops": serde_json::Value::Null
+            }
+        }));
+    }
+
+    let status = if events.is_empty() && results.is_empty() { "WATCH" } else { "PASS" };
+    let output = serde_json::json!({
+        "schema": "PGGAgentLoopEventSurface/v1",
+        "status": status,
+        "event_count": events.len(),
+        "result_count": results.len(),
+        "event_type_counts": counts,
+        "events": events,
+        "results": results,
+        "mapping_catalog": agent_loop_mapping_catalog(),
+        "native": true,
+        "boundary": "read-only Exec Dashboard aggregation surface; no mutation; no AGI/external benchmark claim"
+    });
+    Ok(serde_json::to_string(&output).unwrap_or_default())
+}
+
 // ── PyO3 Module ─────────────────────────────────────────────────────────────
 
 #[pymodule]
@@ -551,6 +741,8 @@ fn hermes_pgg_archon_utils(_py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult
     // harmrate_gate
     m.add_function(wrap_pyfunction!(compute_harmrate_json, m)?)?;
     m.add_function(wrap_pyfunction!(write_harmrate_report_json, m)?)?;
+    // agent_loop_event_surface
+    m.add_function(wrap_pyfunction!(agent_loop_event_surface_json, m)?)?;
 
     Ok(())
 }
@@ -785,4 +977,33 @@ mod tests {
             .unwrap()
             .contains(&"sensitive_task_stricter_threshold".into()));
     }
+
+    // ── agent_loop_event_surface tests ──
+
+    #[test]
+    fn test_agent_loop_event_surface_basic_mapping() {
+        let sessions = r#"[{"id":"s1","source":"cli","model":"m","started_at":1.0,"ended_at":3.0,"message_count":3,"tool_call_count":1,"estimated_cost_usd":0.01}]"#;
+        let messages = r#"[
+            {"id":1,"session_id":"s1","role":"user","timestamp":1.0,"content_preview":"hi","token_count":2,"model":"m"},
+            {"id":2,"session_id":"s1","role":"assistant","timestamp":2.0,"content_preview":"thinking","token_count":3,"model":"m"},
+            {"id":3,"session_id":"s1","role":"tool","tool_name":"read_file","timestamp":2.5,"content_preview":"ok","token_count":4,"model":"m"}
+        ]"#;
+        let r = agent_loop_event_surface_json(sessions, messages).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&r).unwrap();
+        assert_eq!(v["status"], "PASS");
+        assert_eq!(v["event_count"], 3);
+        assert_eq!(v["event_type_counts"]["tool_result"], 1);
+        assert_eq!(v["results"][0]["result_subtype"], "success");
+        assert_eq!(v["events"][2]["turn_id"], 1);
+    }
+
+    #[test]
+    fn test_agent_loop_event_surface_catalog_has_p1_p2_maps() {
+        let r = agent_loop_event_surface_json("[]", "[]").unwrap();
+        let v: serde_json::Value = serde_json::from_str(&r).unwrap();
+        assert_eq!(v["status"], "WATCH");
+        assert!(v["mapping_catalog"]["p1_result_subtype_map"].is_object());
+        assert!(v["mapping_catalog"]["p2_future_map"].is_object());
+    }
+
 }
