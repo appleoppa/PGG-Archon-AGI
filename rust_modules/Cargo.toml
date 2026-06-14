@@ -5,4 +5,5 @@ members = [
     "hermes_pgg_self_evolution_core",
     "hermes_pgg_skill_health_checker",
     "hermes_pgg_schema_validator",
+    "pgg_sourceref_repair_runner",
 ]
