@@ -6,4 +6,5 @@ members = [
     "hermes_pgg_skill_health_checker",
     "hermes_pgg_schema_validator",
     "pgg_sourceref_repair_runner",
+    "hermes_pgg_security_policy_surface",
 ]
