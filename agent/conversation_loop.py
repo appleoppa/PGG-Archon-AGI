@@ -4408,6 +4408,55 @@ def run_conversation(
     else:
         logger.info(_diag_msg, *_diag_args)
 
+    # PGGAgentLoopEvent/v1 live result ledger (P1): fail-open, metadata only.
+    # This records the real turn budget/result contract so Exec Dashboard can
+    # distinguish success vs max-turn/budget/interrupted endings without
+    # guessing from state.db status fields.
+    try:
+        from agent.agent_loop_event_ledger import append_agent_loop_event
+        if interrupted:
+            _result_subtype = "error_interrupted"
+        elif _turn_exit_reason == "budget_exhausted":
+            _result_subtype = "error_budget_exhausted"
+        elif api_call_count >= agent.max_iterations and not completed:
+            _result_subtype = "error_max_turns"
+        elif failed:
+            _result_subtype = "error_guardrail_halt"
+        elif completed:
+            _result_subtype = "success"
+        else:
+            _result_subtype = "error_interrupted"
+        append_agent_loop_event(
+            "loop_result",
+            session_id=agent.session_id or "",
+            task_id=effective_task_id,
+            turn_id=turn_id,
+            model=agent.model,
+            provider=getattr(agent, "provider", None),
+            status="completed" if completed else "stopped",
+            result_subtype=_result_subtype,
+            api_calls=api_call_count,
+            max_turns=agent.max_iterations,
+            turn_exit_reason=_turn_exit_reason,
+            completed=completed,
+            failed=failed,
+            partial=False,
+            interrupted=interrupted,
+            usage={
+                "session_total_tokens": getattr(agent, "session_total_tokens", 0),
+                "session_input_tokens": getattr(agent, "session_input_tokens", 0),
+                "session_output_tokens": getattr(agent, "session_output_tokens", 0),
+            },
+            cost_usd=getattr(agent, "session_estimated_cost_usd", None),
+            budget={
+                "max_turns": agent.max_iterations,
+                "budget_used": _budget_used,
+                "budget_max": _budget_max,
+            },
+        )
+    except Exception:
+        pass
+
     # File-mutation verifier footer.
     # If one or more ``write_file`` / ``patch`` calls failed during this
     # turn and were never superseded by a successful write to the same

@@ -694,13 +694,21 @@ fn agent_loop_event_surface_with_ledger_json(sessions_json: &str, messages_json:
         events.push(event);
     }
 
+    let mut result_overrides: std::collections::BTreeMap<String, serde_json::Value> = std::collections::BTreeMap::new();
+
     for le in ledger_events.iter() {
         let typ = v_str(le, "type");
         let normalized_type = match typ.as_str() {
-            "tool_request" | "tool_result" | "compact_boundary" | "stream_event" => typ,
+            "tool_request" | "tool_result" | "compact_boundary" | "loop_result" | "stream_event" => typ,
             _ => "stream_event".into(),
         };
         *counts.entry(normalized_type.clone()).or_insert(0) += 1;
+        if normalized_type == "loop_result" {
+            let sid = v_str(le, "session_id");
+            if !sid.is_empty() {
+                result_overrides.insert(sid, le.clone());
+            }
+        }
         let mut event = le.clone();
         if let Some(obj) = event.as_object_mut() {
             obj.insert("schema".into(), serde_json::json!("PGGAgentLoopEvent/v1"));
@@ -717,22 +725,36 @@ fn agent_loop_event_surface_with_ledger_json(sessions_json: &str, messages_json:
 
     let mut results: Vec<serde_json::Value> = Vec::new();
     for s in sessions.iter() {
-        let subtype = map_loop_result_subtype(s);
+        let sid = v_str(s, "id");
+        let override_event = result_overrides.get(&sid);
+        let subtype = override_event
+            .map(|e| v_str(e, "result_subtype"))
+            .filter(|x| !x.is_empty())
+            .unwrap_or_else(|| map_loop_result_subtype(s));
+        let default_budget = serde_json::json!({
+            "max_turns": serde_json::Value::Null,
+            "max_wall_seconds": serde_json::Value::Null,
+            "max_budget_usd": serde_json::Value::Null,
+            "max_tool_calls": serde_json::Value::Null,
+            "max_write_ops": serde_json::Value::Null
+        });
+        let budget = override_event
+            .and_then(|e| e.get("budget").cloned())
+            .unwrap_or(default_budget);
+        let api_calls = override_event
+            .and_then(|e| e.get("api_calls").cloned())
+            .unwrap_or(serde_json::Value::Null);
         results.push(serde_json::json!({
             "schema": "PGGAgentLoopResult/v1",
-            "session_id": v_str(s, "id"),
+            "session_id": sid,
             "result_subtype": subtype,
             "turn_count": v_i64(s, "message_count"),
             "tool_call_count": v_i64(s, "tool_call_count"),
+            "api_calls": api_calls,
+            "turn_exit_reason": override_event.and_then(|e| e.get("turn_exit_reason").cloned()).unwrap_or(serde_json::Value::Null),
             "observed_wall_seconds": (v_f64(s, "ended_at") - v_f64(s, "started_at")).max(0.0),
             "estimated_cost_usd": v_f64(s, "estimated_cost_usd"),
-            "budget": {
-                "max_turns": serde_json::Value::Null,
-                "max_wall_seconds": serde_json::Value::Null,
-                "max_budget_usd": serde_json::Value::Null,
-                "max_tool_calls": serde_json::Value::Null,
-                "max_write_ops": serde_json::Value::Null
-            }
+            "budget": budget
         }));
     }
 
@@ -1045,6 +1067,19 @@ mod tests {
         assert_eq!(v["status"], "PASS");
         assert_eq!(v["event_type_counts"]["tool_request"], 1);
         assert_eq!(v["event_type_counts"]["compact_boundary"], 1);
+    }
+
+    #[test]
+    fn test_agent_loop_event_surface_loop_result_ledger_overrides_subtype_and_budget() {
+        let sessions = r#"[{"id":"s1","source":"cli","started_at":1.0,"ended_at":2.0,"message_count":3,"tool_call_count":1}]"#;
+        let ledger = r#"[{"schema":"PGGAgentLoopEvent/v1","type":"loop_result","session_id":"s1","timestamp":2.5,"status":"completed","result_subtype":"error_max_turns","api_calls":3,"max_turns":3,"budget":{"max_turns":3,"max_tool_calls":9}}]"#;
+        let r = agent_loop_event_surface_with_ledger_json(sessions, "[]", ledger).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&r).unwrap();
+        assert_eq!(v["event_type_counts"]["loop_result"], 1);
+        assert_eq!(v["results"][0]["result_subtype"], "error_max_turns");
+        assert_eq!(v["results"][0]["api_calls"], 3);
+        assert_eq!(v["results"][0]["budget"]["max_turns"], 3);
+        assert_eq!(v["results"][0]["budget"]["max_tool_calls"], 9);
     }
 
 }

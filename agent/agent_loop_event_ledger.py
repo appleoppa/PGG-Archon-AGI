@@ -13,7 +13,7 @@ import time
 from pathlib import Path
 from typing import Any, Mapping
 
-_ALLOWED_TYPES = {"tool_request", "tool_result", "compact_boundary", "stream_event"}
+_ALLOWED_TYPES = {"tool_request", "tool_result", "compact_boundary", "loop_result", "stream_event"}
 _LEDGER_NAME = "pgg_agent_loop_event_ledger.jsonl"
 _MAX_LINES_BYTES = 8192
 
@@ -76,9 +76,15 @@ def append_agent_loop_event(event_type: str, **fields: Any) -> None:
             payload["args_shape"] = _arg_shape(fields.get("args"))
         if "summary_material" in fields:
             payload["summary_hash"] = _stable_hash(fields.get("summary_material"))
-        for key in ("before_tokens", "after_tokens", "before_messages", "after_messages", "old_session_id", "new_session_id", "lossy"):
+        for key in (
+            "before_tokens", "after_tokens", "before_messages", "after_messages", "old_session_id", "new_session_id", "lossy",
+            "result_subtype", "api_calls", "max_turns", "turn_exit_reason", "completed", "failed", "partial", "interrupted",
+        ):
             if key in fields:
                 payload[key] = fields.get(key)
+        if "budget" in fields and isinstance(fields.get("budget"), Mapping):
+            allowed_budget = {"max_turns", "max_wall_seconds", "max_budget_usd", "max_tool_calls", "max_write_ops", "budget_used", "budget_max"}
+            payload["budget"] = {str(k): v for k, v in fields.get("budget", {}).items() if str(k) in allowed_budget}
         line = json.dumps(payload, ensure_ascii=False, sort_keys=True, default=str)
         if len(line.encode("utf-8", "replace")) > _MAX_LINES_BYTES:
             payload.pop("args_shape", None)
