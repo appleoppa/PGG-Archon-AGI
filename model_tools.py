@@ -982,6 +982,21 @@ def handle_function_call(
             )
 
     _tool_original_args = dict(function_args)
+    try:
+        from agent.agent_loop_event_ledger import append_agent_loop_event
+        append_agent_loop_event(
+            "tool_request",
+            tool_name=function_name,
+            args=function_args,
+            task_id=task_id,
+            session_id=session_id,
+            tool_call_id=tool_call_id,
+            turn_id=turn_id,
+            api_request_id=api_request_id,
+            status="started",
+        )
+    except Exception:
+        pass
     if not skip_tool_request_middleware:
         try:
             from hermes_cli.middleware import apply_tool_request_middleware

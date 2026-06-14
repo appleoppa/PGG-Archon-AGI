@@ -622,6 +622,26 @@ def compress_context(
         agent.session_id or "none", _pre_msg_count, len(compressed),
         f"{_compressed_est:,}",
     )
+    try:
+        from agent.agent_loop_event_ledger import append_agent_loop_event
+        append_agent_loop_event(
+            "compact_boundary",
+            session_id=agent.session_id or "",
+            old_session_id=locals().get("old_session_id"),
+            new_session_id=agent.session_id or "",
+            task_id=task_id,
+            model=getattr(agent, "model", None),
+            status="completed",
+            before_tokens=approx_tokens,
+            after_tokens=_compressed_est,
+            before_messages=_pre_msg_count,
+            after_messages=len(compressed),
+            lossy=True,
+            summary_material=compressed,
+            boundary="context compression completed; summary_hash only, no raw summary in ledger",
+        )
+    except Exception:
+        pass
     # Release the lock on the OLD session_id only AFTER rotation completed
     # and all post-rotation bookkeeping (memory manager, context engine,
     # file dedup) ran. A concurrent path that wakes up the moment we

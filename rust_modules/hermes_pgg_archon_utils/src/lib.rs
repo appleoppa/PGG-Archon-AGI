@@ -628,11 +628,20 @@ fn agent_loop_mapping_catalog() -> serde_json::Value {
 #[pyfunction]
 /// Build PGGAgentLoopEvent/v1 surface from session/message JSON arrays. Pure mapping; no IO/network.
 fn agent_loop_event_surface_json(sessions_json: &str, messages_json: &str) -> PyResult<String> {
+    agent_loop_event_surface_with_ledger_json(sessions_json, messages_json, "[]")
+}
+
+#[pyfunction]
+/// Build PGGAgentLoopEvent/v1 surface and join a pre-read external ledger JSON array.
+fn agent_loop_event_surface_with_ledger_json(sessions_json: &str, messages_json: &str, ledger_json: &str) -> PyResult<String> {
     let sessions: Vec<serde_json::Value> = serde_json::from_str(sessions_json).map_err(|e| {
         pyo3::exceptions::PyValueError::new_err(format!("invalid sessions json: {}", e))
     })?;
     let mut messages: Vec<serde_json::Value> = serde_json::from_str(messages_json).map_err(|e| {
         pyo3::exceptions::PyValueError::new_err(format!("invalid messages json: {}", e))
+    })?;
+    let ledger_events: Vec<serde_json::Value> = serde_json::from_str(ledger_json).map_err(|e| {
+        pyo3::exceptions::PyValueError::new_err(format!("invalid ledger json: {}", e))
     })?;
 
     messages.sort_by(|a, b| {
@@ -684,6 +693,27 @@ fn agent_loop_event_surface_json(sessions_json: &str, messages_json: &str) -> Py
         });
         events.push(event);
     }
+
+    for le in ledger_events.iter() {
+        let typ = v_str(le, "type");
+        let normalized_type = match typ.as_str() {
+            "tool_request" | "tool_result" | "compact_boundary" | "stream_event" => typ,
+            _ => "stream_event".into(),
+        };
+        *counts.entry(normalized_type.clone()).or_insert(0) += 1;
+        let mut event = le.clone();
+        if let Some(obj) = event.as_object_mut() {
+            obj.insert("schema".into(), serde_json::json!("PGGAgentLoopEvent/v1"));
+            obj.insert("type".into(), serde_json::json!(normalized_type));
+            obj.entry("boundary").or_insert(serde_json::json!("external ledger joined by Rust mapper"));
+        }
+        events.push(event);
+    }
+    events.sort_by(|a, b| {
+        let ta = a.get("timestamp").and_then(|v| v.as_f64()).unwrap_or(0.0);
+        let tb = b.get("timestamp").and_then(|v| v.as_f64()).unwrap_or(0.0);
+        ta.partial_cmp(&tb).unwrap_or(std::cmp::Ordering::Equal)
+    });
 
     let mut results: Vec<serde_json::Value> = Vec::new();
     for s in sessions.iter() {
@@ -743,6 +773,7 @@ fn hermes_pgg_archon_utils(_py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult
     m.add_function(wrap_pyfunction!(write_harmrate_report_json, m)?)?;
     // agent_loop_event_surface
     m.add_function(wrap_pyfunction!(agent_loop_event_surface_json, m)?)?;
+    m.add_function(wrap_pyfunction!(agent_loop_event_surface_with_ledger_json, m)?)?;
 
     Ok(())
 }
@@ -1004,6 +1035,16 @@ mod tests {
         assert_eq!(v["status"], "WATCH");
         assert!(v["mapping_catalog"]["p1_result_subtype_map"].is_object());
         assert!(v["mapping_catalog"]["p2_future_map"].is_object());
+    }
+
+    #[test]
+    fn test_agent_loop_event_surface_joins_tool_request_ledger() {
+        let ledger = r#"[{"schema":"PGGAgentLoopEvent/v1","type":"tool_request","session_id":"s1","timestamp":1.5,"tool_name":"read_file","status":"started"},{"type":"compact_boundary","session_id":"s1","timestamp":2.5,"status":"completed","lossy":true}]"#;
+        let r = agent_loop_event_surface_with_ledger_json("[]", "[]", ledger).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&r).unwrap();
+        assert_eq!(v["status"], "PASS");
+        assert_eq!(v["event_type_counts"]["tool_request"], 1);
+        assert_eq!(v["event_type_counts"]["compact_boundary"], 1);
     }
 
 }
