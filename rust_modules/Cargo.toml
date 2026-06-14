@@ -10,6 +10,7 @@ members = [
     "hermes_pgg_gene_scoring",
     "hermes_pgg_mini_benchmark",
     "pgg_batch_proof_metabolism_runner",
+    "pgg_sourceref_repair_runner",
     "pgg_daily_learning_runner",
     "pgg_gene_intake_runner",
     "pgg_python_module_runner",
