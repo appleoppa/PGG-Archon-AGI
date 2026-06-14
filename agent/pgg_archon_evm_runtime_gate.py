@@ -5,8 +5,12 @@ EVM_Gate = 1 - weighted_residual_defect_rate
 
 Backed by hermes_pgg_evm_runtime_gate native .so
 """
+import hashlib
 import json, sys
+import time
 from pathlib import Path
+
+EVIDENCE_MAX_AGE_SECONDS = 24 * 60 * 60
 
 try:
     import hermes_pgg_evm_runtime_gate as _native
@@ -46,7 +50,8 @@ class PggEvmRuntimeGate:
         """
         evidence_path = Path.home() / ".hermes" / "data" / "evm_runtime_evidence.json"
         if evidence_path.exists():
-            config = json.loads(evidence_path.read_text())
+            raw = evidence_path.read_bytes()
+            config = json.loads(raw.decode("utf-8"))
             config["e"] = config.get("eval_e", config.get("e", 0.8))
             config["v"] = config.get("eval_v", config.get("v", 0.7))
             config["m"] = config.get("eval_m", config.get("m", 0.6))
@@ -54,6 +59,12 @@ class PggEvmRuntimeGate:
             config["base"] = config.get("eval_base", config.get("base", 0.9))
             config["ancient"] = config.get("eval_ancient", config.get("ancient", 0.5))
             config["runtime_evidence"] = config.get("runtime_evidence", {})
+            config["_evidence_meta"] = {
+                "path": str(evidence_path),
+                "sha256": hashlib.sha256(raw).hexdigest(),
+                "mtime": int(evidence_path.stat().st_mtime),
+                "max_age_seconds": EVIDENCE_MAX_AGE_SECONDS,
+            }
             return config
         return self.sample_config()
 
@@ -75,6 +86,27 @@ class PggEvmRuntimeGate:
             result["status_basis"] = "residual_defect_gate>=0.80_and_no_hard_gaps"
         return result
 
+    def _attach_evidence_meta(self, result: dict, cfg: dict) -> dict:
+        meta = cfg.get("_evidence_meta") if isinstance(cfg, dict) else None
+        if not isinstance(meta, dict):
+            return result
+        age_seconds = max(0, int(time.time()) - int(meta.get("mtime", 0) or 0))
+        evidence = {
+            "path": meta.get("path"),
+            "sha256": meta.get("sha256"),
+            "mtime": meta.get("mtime"),
+            "age_seconds": age_seconds,
+            "max_age_seconds": meta.get("max_age_seconds", EVIDENCE_MAX_AGE_SECONDS),
+            "stale": age_seconds > int(meta.get("max_age_seconds", EVIDENCE_MAX_AGE_SECONDS) or EVIDENCE_MAX_AGE_SECONDS),
+        }
+        result["evidence"] = evidence
+        if evidence["stale"]:
+            gaps = list(result.get("gaps", []))
+            gaps.append("live_evidence_stale")
+            result["gaps"] = gaps
+            result["status"] = "WATCH_EVM_EVIDENCE_STALE"
+        return result
+
     def evaluate(self, config: dict = None) -> dict:
         if config is None:
             try:
@@ -82,9 +114,10 @@ class PggEvmRuntimeGate:
             except Exception:
                 config = self.sample_config()
         if _NATIVE and _native is not None:
-            result = json.loads(_native.evaluate_evidence_json(json.dumps(config)))
-            return self._normalize_status(result)
-        return self._normalize_status(self._evaluate_py(config))
+            native_config = {k: v for k, v in config.items() if k != "_evidence_meta"}
+            result = json.loads(_native.evaluate_evidence_json(json.dumps(native_config)))
+            return self._attach_evidence_meta(self._normalize_status(result), config)
+        return self._attach_evidence_meta(self._normalize_status(self._evaluate_py(config)), config)
 
     def _evaluate_py(self, cfg: dict) -> dict:
         e, v, m, a, base, ancient = cfg["e"], cfg["v"], cfg["m"], cfg["a"], cfg["base"], cfg["ancient"]
