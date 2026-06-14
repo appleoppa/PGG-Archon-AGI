@@ -7,5 +7,7 @@ members = [
     "hermes_pgg_schema_validator",
     "pgg_sourceref_repair_runner",
     "hermes_pgg_security_policy_surface",
-"hermes_pgg_codegenesis_scanner",
+    "hermes_pgg_codegenesis_scanner",
+    "pgg_gene_intake_pipeline",
+    "hermes_pgg_archon_utils",
 ]
