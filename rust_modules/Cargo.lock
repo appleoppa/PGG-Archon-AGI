@@ -133,6 +133,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2304e00983f87ffb38b55b444b5e3b60a884b5d30c0fca7d82fe33449bbe55ea"
 
 [[package]]
+name = "hermes_pgg_codegenesis_scanner"
+version = "0.1.0"
+dependencies = [
+ "pyo3",
+ "serde",
+ "serde_json",
+ "walkdir",
+]
+
+[[package]]
 name = "hermes_pgg_picoapex_saturation"
 version = "0.1.0"
 dependencies = [
