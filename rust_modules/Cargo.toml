@@ -2,4 +2,5 @@
 resolver = "2"
 members = [
     "hermes_pgg_self_evolution_core",
+    "pgg_sourceref_repair_runner",
 ]
