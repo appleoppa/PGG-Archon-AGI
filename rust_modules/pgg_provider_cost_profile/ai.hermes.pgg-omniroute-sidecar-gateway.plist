@@ -1,0 +1,29 @@
+<!-- 总纲8吸收：OmniRoute 侧录网关 — 定期刷新成本画像+复杂度门禁 -->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>ai.hermes.pgg-omniroute-sidecar-gateway</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/appleoppa/.hermes/bin/pgg-omniroute-sidecar</string>
+    </array>
+    <key>StartInterval</key>
+    <integer>7200</integer>
+    <key>RunAtLoad</key>
+    <false/>
+    <key>StandardOutPath</key>
+    <string>/Users/appleoppa/.hermes/data/omniroute-sidecar-gateway.stdout.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/appleoppa/.hermes/data/omniroute-sidecar-gateway.stderr.log</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:~/hermes/bin</string>
+    </dict>
+    <key>KeepAlive</key>
+    <false/>
+    <key>ThrottleInterval</key>
+    <integer>300</integer>
+</dict>
+</plist>

@@ -15,4 +15,9 @@ members = [
     "hermes_pgg_super_agi_formula",
     "hermes_pgg_l5_self_fix",
     "hermes_pgg_cmmi_industrial_gate",
+    "pgg_provider_health_check",
+    "pgg_curve_collector",
+    "pgg_skillflow_watchdog",
+    "pgg_query_complexity_gate",
+    "pgg_provider_cost_profile",
 ]

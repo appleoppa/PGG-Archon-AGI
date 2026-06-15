@@ -15,7 +15,7 @@ import time
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
-DEFAULT_DB = Path('/Users/appleoppa/.hermes/workspace/04_knowledge/开智/02-进化基因/apex_evolution_genes.sqlite3')
+DEFAULT_DB = Path('/Users/appleoppa/.hermes/data/pgg_archon.db')
 BOUNDARY = 'standard_gene_fusion_engine; local only; reviewed transaction; no AGI/T5/ASI claim'
 REQUIRED_TEMPLATE_FIELDS = ('type','id','category','signals_match','preconditions','strategy','constraints','validation')
 

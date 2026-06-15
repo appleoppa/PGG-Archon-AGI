@@ -1372,7 +1372,7 @@ def create_openai_client(agent, client_kwargs: dict, *, reason: str, shared: boo
                 keys_to_del = [k for k in result if k.lower().startswith("x-stainless-")]
                 for k in keys_to_del:
                     del result[k]
-                result["user-agent"] = "python-requests/2.32.3"
+                result["user-agent"] = "Hermes-Agent/1.0"
                 result["accept"] = "*/*"
                 return result
             _patched_headers._patched_for_header_block = True
