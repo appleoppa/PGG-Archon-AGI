@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import Any, Iterable, Mapping
 
 DEFAULT_GENE_DB_PATH = Path(
-    "/Users/appleoppa/.hermes/workspace/开智/02-进化基因/apex_evolution_genes.sqlite3"
+    "/Users/appleoppa/.hermes/workspace/04_knowledge/开智/02-进化基因/apex_evolution_genes.sqlite3"
 )
 DEFAULT_AUDIT_DIR = Path(
     "/Users/appleoppa/.hermes/workspace/pgg-archon-governance/activation-path-gene-intake"
