@@ -40,6 +40,7 @@ def status_class(status: Any) -> str:
 def run(cmd: list[str], timeout: int = 10) -> tuple[str, int]:
     try:
         env = os.environ.copy()
+        env["PGG_APEX_GATE_RECURSION_GUARD"] = "1"
         env["PATH"] = f"{HERMES_BIN}:{Path.home() / '.local/bin'}:{Path.home() / '.cargo/bin'}:{env.get('PATH', '')}"
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, env=env)
         return r.stdout.strip() or r.stderr.strip(), r.returncode
@@ -48,10 +49,24 @@ def run(cmd: list[str], timeout: int = 10) -> tuple[str, int]:
 
 
 def load_json_or_error(out: str, name: str) -> dict[str, Any]:
+    # Some wrappers (pgg-python-module-runner-rs) append a trailing
+    # status line after the JSON. Try strict parse first; if that
+    # fails, find the first JSON object (leading '{' … trailing '}')
+    # and parse only that segment.
     try:
         return json.loads(out)
+    except json.JSONDecodeError:
+        # Find the first JSON object boundary
+        start = out.find("{")
+        end = out.rfind("}")
+        if start != -1 and end >= start:
+            try:
+                return json.loads(out[start : end + 1])
+            except Exception:
+                pass
     except Exception:
-        return {"status": "ERROR", "detail": out[:300], "component": name}
+        pass
+    return {"status": "ERROR", "detail": out[:300], "component": name}
 
 
 def gate_json(cmd: list[str], name: str, timeout: int = 10) -> dict[str, Any]:
@@ -142,10 +157,18 @@ def main() -> int:
             "timeout_seconds": 60,
         }
 
-    # 6. MCP endpoint smoke
-    for s in mcp_servers:
-        tout, trc = run(["hermes", "mcp", "test", s], 15)
-        results["mcp_test_" + s] = {"status": "PASS" if "Connected" in tout else "ERROR"}
+    # 6. MCP endpoint smoke — test in parallel to avoid cumulative npx latency
+    import concurrent.futures
+    def _test_mcp(server: str) -> tuple[str, str, int]:
+        mcp_timeout = 25 if server == "github" else 15
+        tout, trc = run(["hermes", "mcp", "test", server], mcp_timeout)
+        return server, tout, trc
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
+        futures = {executor.submit(_test_mcp, s): s for s in mcp_servers}
+        for future in concurrent.futures.as_completed(futures, timeout=30):
+            server, tout, trc = future.result()
+            results["mcp_test_" + server] = {"status": "PASS" if "Connected" in tout else "ERROR"}
 
     # 7-13. Bounded gate CLIs/bridges
     apexagi = gate_json([str(VENV_PYTHON), "-m", "agent.pgg_archon_apexagi_runtime_gate"], "apexagi_gate")
@@ -169,11 +192,16 @@ def main() -> int:
     asi = gate_json(asi_cmd, "asi_gate")
     results["asi_gate"] = summarize_gate(asi, ["score", "status", "evidence", "gaps"])
 
-    apex_core = gate_json([str(VENV_PYTHON), "-m", "agent.pgg_archon_apex_core_gate"], "apex_core_gate")
-    results["apex_core_gate"] = summarize_gate(apex_core, ["score", "status"])
-
-    apex_v10 = gate_json([str(VENV_PYTHON), "-m", "agent.pgg_archon_apex_v10_gate"], "apex_v10_gate")
-    results["apex_v10_gate"] = summarize_gate(apex_v10, ["score", "status"])
+    # 7-13. Bounded gate CLIs/bridges — 直 import 避免子进程递归和参数解析问题
+    try:
+        from agent.pgg_archon_apex_core_gate import evaluate_core, evaluate_v10
+        apex_core = evaluate_core()
+        results["apex_core_gate"] = summarize_gate(apex_core, ["score", "status"])
+        apex_v10 = evaluate_v10()
+        results["apex_v10_gate"] = summarize_gate(apex_v10, ["score", "status"])
+    except Exception as e:
+        results["apex_core_gate"] = {"status": "ERROR", "detail": str(e)[:200]}
+        results["apex_v10_gate"] = {"status": "ERROR", "detail": str(e)[:200]}
 
     sigma = gate_json([str(HERMES_BIN / "pgg_defect_reduction")], "sigma_delta_all")
     results["sigma_delta_all"] = summarize_gate(sigma, ["sigma_delta", "status"])

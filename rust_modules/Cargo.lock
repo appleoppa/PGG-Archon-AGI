@@ -400,6 +400,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "hermes_pgg_apex_dynamic_score"
+version = "0.1.0"
+dependencies = [
+ "pyo3",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "hermes_pgg_archon_utils"
 version = "0.1.0"
 dependencies = [
@@ -720,6 +729,14 @@ name = "percent-encoding"
 version = "2.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9b4f627cb1b25917193a259e49bdad08f671f8d9708acfd5fe0a8c1455d87220"
+
+[[package]]
+name = "pgg_case_free_evolution_runner"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
 
 [[package]]
 name = "pgg_cms_case_guard"
