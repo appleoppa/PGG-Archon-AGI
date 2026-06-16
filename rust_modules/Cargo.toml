@@ -20,4 +20,6 @@ members = [
     "pgg_skillflow_watchdog",
     "pgg_query_complexity_gate",
     "pgg_provider_cost_profile",
+    "pgg_cms_case_guard",
+    "pgg_eval_gate",
 ]
