@@ -19,7 +19,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-DEFAULT_DB = Path("/Users/appleoppa/.hermes/workspace/04_knowledge/开智/02-进化基因/apex_evolution_genes.sqlite3")
+DEFAULT_DB = Path("/Users/appleoppa/.hermes/data/pgg_archon.db")
 DEFAULT_REPORT_PATH = Path("/Users/appleoppa/.hermes/data/health-monitor/latest.json")
 SERVICE_PREFIX = "ai.hermes.pgg"
 ENGINE_VERSION = "pgg_health_monitor/v1"
@@ -252,7 +252,7 @@ class HealthMonitor:
     # ─── GeneDB ───────────────────────────────────────────────────────────
 
     def _collect_gene_db_health(self) -> dict[str, Any]:
-        statuses = ["candidate", "verified", "active", "retired", "rejected"]
+        statuses = ["candidate", "promoted", "active", "retired", "rejected"]
         counts = {status: 0 for status in statuses}
 
         if not self.db_path.exists():
@@ -268,10 +268,10 @@ class HealthMonitor:
             with sqlite3.connect(str(self.db_path)) as con:
                 rows = con.execute(
                     """
-                    SELECT status, COUNT(*) AS n
+                    SELECT state, COUNT(*) AS n
                     FROM evolution_genes
-                    WHERE status IN ('candidate', 'verified', 'active', 'retired', 'rejected')
-                    GROUP BY status
+                    WHERE state IN ('candidate', 'verified', 'active', 'retired', 'rejected', 'promoted')
+                    GROUP BY state
                     """
                 ).fetchall()
             for status, n in rows:
@@ -447,7 +447,7 @@ class HealthMonitor:
         counts = gene_db.get("counts", {}) or {}
         alert_text = "\n".join(f"- {a.get('message')}" for a in alerts) if alerts else "- No active alerts"
         service_summary = f"{launchd.get('count', 0)} ai.hermes.pgg* services found"
-        gene_summary = ", ".join(f"{k}:{counts.get(k, 0)}" for k in ["candidate", "verified", "active", "retired", "rejected"])
+        gene_summary = ", ".join(f"{k}:{counts.get(k, 0)}" for k in ["candidate", "promoted", "active", "retired", "rejected"])
 
         # This is a Feishu interactive-card compatible structure with explicit
         # three-color CSS-like tokens for downstream renderers/bridges.
