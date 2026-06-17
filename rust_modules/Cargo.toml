@@ -24,4 +24,5 @@ members = [
     "pgg_eval_gate",
     "pgg_case_free_evolution_runner",
     "hermes_pgg_apex_dynamic_score",
+    "pgg_retrospective_injector",
 ]
