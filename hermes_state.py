@@ -33,7 +33,7 @@ T = TypeVar("T")
 
 DEFAULT_DB_PATH = get_hermes_home() / "state.db"
 
-SCHEMA_VERSION = 15
+SCHEMA_VERSION = 16
 
 # ---------------------------------------------------------------------------
 # WAL-compatibility fallback
@@ -323,7 +323,8 @@ CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(
     content
 );
 
-CREATE TRIGGER IF NOT EXISTS messages_fts_insert AFTER INSERT ON messages BEGIN
+CREATE TRIGGER IF NOT EXISTS messages_fts_insert AFTER INSERT ON messages
+WHEN new.role != 'tool' BEGIN
     INSERT INTO messages_fts(rowid, content) VALUES (
         new.id,
         COALESCE(new.content, '') || ' ' || COALESCE(new.tool_name, '') || ' ' || COALESCE(new.tool_calls, '')
@@ -336,10 +337,11 @@ END;
 
 CREATE TRIGGER IF NOT EXISTS messages_fts_update AFTER UPDATE ON messages BEGIN
     DELETE FROM messages_fts WHERE rowid = old.id;
-    INSERT INTO messages_fts(rowid, content) VALUES (
+    INSERT INTO messages_fts(rowid, content)
+    SELECT
         new.id,
         COALESCE(new.content, '') || ' ' || COALESCE(new.tool_name, '') || ' ' || COALESCE(new.tool_calls, '')
-    );
+    WHERE new.role != 'tool';
 END;
 """
 
@@ -353,7 +355,8 @@ CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts_trigram USING fts5(
     tokenize='trigram'
 );
 
-CREATE TRIGGER IF NOT EXISTS messages_fts_trigram_insert AFTER INSERT ON messages BEGIN
+CREATE TRIGGER IF NOT EXISTS messages_fts_trigram_insert AFTER INSERT ON messages
+WHEN new.role != 'tool' BEGIN
     INSERT INTO messages_fts_trigram(rowid, content) VALUES (
         new.id,
         COALESCE(new.content, '') || ' ' || COALESCE(new.tool_name, '') || ' ' || COALESCE(new.tool_calls, '')
@@ -366,10 +369,11 @@ END;
 
 CREATE TRIGGER IF NOT EXISTS messages_fts_trigram_update AFTER UPDATE ON messages BEGIN
     DELETE FROM messages_fts_trigram WHERE rowid = old.id;
-    INSERT INTO messages_fts_trigram(rowid, content) VALUES (
+    INSERT INTO messages_fts_trigram(rowid, content)
+    SELECT
         new.id,
         COALESCE(new.content, '') || ' ' || COALESCE(new.tool_name, '') || ' ' || COALESCE(new.tool_calls, '')
-    );
+    WHERE new.role != 'tool';
 END;
 """
 
@@ -519,7 +523,7 @@ class SessionDB:
             "COALESCE(content, '') || ' ' || "
             "COALESCE(tool_name, '') || ' ' || "
             "COALESCE(tool_calls, '') "
-            "FROM messages"
+            "FROM messages WHERE role != 'tool'"
         )
         cursor.execute(
             "INSERT INTO messages_fts_trigram(rowid, content) "
@@ -527,7 +531,7 @@ class SessionDB:
             "COALESCE(content, '') || ' ' || "
             "COALESCE(tool_name, '') || ' ' || "
             "COALESCE(tool_calls, '') "
-            "FROM messages"
+            "FROM messages WHERE role != 'tool'"
         )
 
     def _fts_table_probe(self, cursor: sqlite3.Cursor, table_name: str) -> Optional[bool]:
@@ -830,7 +834,8 @@ class SessionDB:
                         ):
                             cursor.execute(
                                 "INSERT INTO messages_fts_trigram(rowid, content) "
-                                "SELECT id, content FROM messages WHERE content IS NOT NULL"
+                                "SELECT id, content FROM messages "
+                                "WHERE content IS NOT NULL AND role != 'tool'"
                             )
                         else:
                             fts_migrations_complete = False
@@ -874,7 +879,7 @@ class SessionDB:
                                 "COALESCE(content, '') || ' ' || "
                                 "COALESCE(tool_name, '') || ' ' || "
                                 "COALESCE(tool_calls, '') "
-                                "FROM messages"
+                                "FROM messages WHERE role != 'tool'"
                             )
                             cursor.execute(
                                 "INSERT INTO messages_fts_trigram(rowid, content) "
@@ -882,7 +887,7 @@ class SessionDB:
                                 "COALESCE(content, '') || ' ' || "
                                 "COALESCE(tool_name, '') || ' ' || "
                                 "COALESCE(tool_calls, '') "
-                                "FROM messages"
+                                "FROM messages WHERE role != 'tool'"
                             )
                         else:
                             fts_migrations_complete = False
@@ -900,6 +905,25 @@ class SessionDB:
                     )
                 except sqlite3.OperationalError:
                     pass
+            if current_version < 16:
+                # v16: keep tool-result payloads out of FTS. Tool messages can
+                # be large and low-signal for user-facing recall; indexing them
+                # causes write amplification and FTS bloat. Recreate both FTS
+                # trigger families with role filters and rebuild indexes from
+                # non-tool rows only.
+                if fts5_available:
+                    self._drop_fts_triggers(cursor)
+                    if (
+                        self._ensure_fts_schema(cursor, "messages_fts", FTS_SQL)
+                        and self._ensure_fts_schema(
+                            cursor, "messages_fts_trigram", FTS_TRIGRAM_SQL
+                        )
+                    ):
+                        self._rebuild_fts_indexes(cursor)
+                    else:
+                        fts_migrations_complete = False
+                else:
+                    fts_migrations_complete = False
             if current_version < SCHEMA_VERSION and fts_migrations_complete:
                 cursor.execute(
                     "UPDATE schema_version SET version = ?",
