@@ -69,8 +69,8 @@ def test_hermes_goal_schema_fast_regression(monkeypatch, capsys):
 
     monkeypatch.setattr(goal, "run", fake_run)
     monkeypatch.setattr(goal, "gate_json", fake_gate_json)
-    monkeypatch.setattr(core_gate, "evaluate_core", lambda: {"status": "PASS_READY", "score": 88.0})
-    monkeypatch.setattr(core_gate, "evaluate_v10", lambda: {"status": "PASS_READY", "score": 88.0})
+    monkeypatch.setattr(core_gate, "evaluate_core", lambda config=None: {"status": "PASS_READY", "score": 88.0})
+    monkeypatch.setattr(core_gate, "evaluate_v10", lambda config=None: {"status": "PASS_READY", "score": 88.0})
 
     assert goal.main() == 0
     data = json.loads(capsys.readouterr().out)
@@ -113,8 +113,8 @@ def test_hermes_goal_watch_when_any_component_watch(monkeypatch, capsys):
 
     monkeypatch.setattr(goal, "run", fake_run)
     monkeypatch.setattr(goal, "gate_json", fake_gate_json)
-    monkeypatch.setattr(core_gate, "evaluate_core", lambda: {"status": "PASS_READY", "score": 88.0})
-    monkeypatch.setattr(core_gate, "evaluate_v10", lambda: {"status": "PASS_READY", "score": 88.0})
+    monkeypatch.setattr(core_gate, "evaluate_core", lambda config=None: {"status": "PASS_READY", "score": 88.0})
+    monkeypatch.setattr(core_gate, "evaluate_v10", lambda config=None: {"status": "PASS_READY", "score": 88.0})
     assert goal.main() == 0
     data = json.loads(capsys.readouterr().out)
     assert data["overall_status"] == "WATCH"
@@ -150,8 +150,8 @@ def test_hermes_goal_github_auth_missing_is_watch_not_error(monkeypatch, capsys)
 
     monkeypatch.setattr(goal, "run", fake_run)
     monkeypatch.setattr(goal, "gate_json", fake_gate_json)
-    monkeypatch.setattr(core_gate, "evaluate_core", lambda: {"status": "PASS_READY", "score": 88.0})
-    monkeypatch.setattr(core_gate, "evaluate_v10", lambda: {"status": "PASS_READY", "score": 88.0})
+    monkeypatch.setattr(core_gate, "evaluate_core", lambda config=None: {"status": "PASS_READY", "score": 88.0})
+    monkeypatch.setattr(core_gate, "evaluate_v10", lambda config=None: {"status": "PASS_READY", "score": 88.0})
     assert goal.main() == 0
     data = json.loads(capsys.readouterr().out)
     assert data["overall_status"] == "WATCH"

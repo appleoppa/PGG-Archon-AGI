@@ -193,19 +193,56 @@ def main() -> int:
     asi = gate_json(asi_cmd, "asi_gate")
     results["asi_gate"] = summarize_gate(asi, ["score", "status", "evidence", "gaps"])
 
-    # 7-13. Bounded gate CLIs/bridges — 直 import 避免子进程递归和参数解析问题
+    sigma = gate_json([str(HERMES_BIN / "pgg_defect_reduction")], "sigma_delta_all")
+    results["sigma_delta_all"] = summarize_gate(sigma, ["sigma_delta", "status"])
+
+    # 7-13. Bounded gate CLIs/bridges — feed an explicit already-collected
+    # component snapshot to avoid recursive hermes-goal self-penalty under
+    # PGG_APEX_GATE_RECURSION_GUARD=1.
     try:
-        from agent.pgg_archon_apex_core_gate import evaluate_core, evaluate_v10
-        apex_core = evaluate_core()
+        from agent.pgg_archon_apex_core_gate import evaluate_core, evaluate_v10, _measure_lambda_effective
+
+        comparable = {k: v for k, v in results.items() if k not in {"apex_core_gate", "apex_v10_gate"}}
+        total = len(comparable)
+        passed = sum(1 for c in comparable.values() if status_class(c.get("status")) == "PASS")
+        delta_g_base = round(passed / max(total, 1), 4)
+        mcp_tests = {k: v for k, v in results.items() if k.startswith("mcp_test_")}
+        psi_cross = round(
+            sum(1 for c in mcp_tests.values() if status_class(c.get("status")) == "PASS") / max(len(mcp_tests), 1),
+            4,
+        )
+        gate_scores = []
+        for gate_name in ["apexagi_gate", "engineering_gate", "evm_gate", "asi_gate", "sigma_delta_all"]:
+            c = results.get(gate_name, {})
+            score = c.get("score")
+            if score is None and gate_name == "evm_gate" and c.get("evm_gate") is not None:
+                score = float(c.get("evm_gate")) * 100.0
+            if score is None and gate_name == "sigma_delta_all" and c.get("sigma_delta") is not None:
+                score = c.get("sigma_delta")
+            if score is not None:
+                gate_scores.append(float(score))
+        omega_self = round(min(1.0, (sum(gate_scores) / len(gate_scores)) / 100.0), 4) if gate_scores else 0.70
+        interim_blocked_count = sum(1 for c in comparable.values() if status_class(c.get("status")) == "BLOCKED")
+        phi_anti_illusion = 0.90 if interim_blocked_count == 0 else 0.86
+        core_config = {
+            "delta_g_base": delta_g_base,
+            "lambda_effective": _measure_lambda_effective(),
+            "psi_cross": psi_cross,
+            "omega_self": omega_self,
+            "phi_anti_illusion": phi_anti_illusion,
+        }
+        apex_core = evaluate_core(core_config)
         results["apex_core_gate"] = summarize_gate(apex_core, ["score", "status"])
-        apex_v10 = evaluate_v10()
+        v10_config = {
+            "h_err_rate": delta_g_base,
+            "p_asm_rate": psi_cross,
+            "d_pro_rate": omega_self,
+        }
+        apex_v10 = evaluate_v10(v10_config)
         results["apex_v10_gate"] = summarize_gate(apex_v10, ["score", "status"])
     except Exception as e:
         results["apex_core_gate"] = {"status": "ERROR", "detail": str(e)[:200]}
         results["apex_v10_gate"] = {"status": "ERROR", "detail": str(e)[:200]}
-
-    sigma = gate_json([str(HERMES_BIN / "pgg_defect_reduction")], "sigma_delta_all")
-    results["sigma_delta_all"] = summarize_gate(sigma, ["sigma_delta", "status"])
 
     pass_count = sum(1 for v in results.values() if isinstance(v, dict) and status_class(v.get("status")) == "PASS")
     total = len(results)
