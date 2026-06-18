@@ -98,6 +98,21 @@ def build_status(run_provider_canary: bool = False, provider: str = "deepseek") 
     evidence["provider_probe_gate"] = {"returncode": probe["returncode"], "json": probe_json}
     _add(checks, "provider_probe_31_of_31_pass", probe["returncode"] == 0 and probe_json.get("status") == "PASS_OMNIROUTE_PROVIDER_PROBE_GATE_V109" and probe_json.get("passed") == probe_json.get("total") == 31, {"status": probe_json.get("status"), "passed": probe_json.get("passed"), "total": probe_json.get("total")})
 
+    # 总纲8吸收 Phase 2: 成本画像检查
+    cost = _run([str(HERMES_BIN / "pgg_provider_cost_profile")], 30)
+    cost_json = _json_from_stdout(cost)
+    evidence["provider_cost_profile"] = {"returncode": cost["returncode"], "json": cost_json}
+    if cost_json and "profiles" in cost_json:
+        n_providers = len(cost_json["profiles"])
+        has_cost_order = bool(cost_json.get("global_cost_order"))
+        _add(checks, f"cost_profile_{n_providers}_providers_with_cost_order", n_providers == 6 and has_cost_order, {"providers": n_providers, "cost_order": cost_json.get("global_cost_order")})
+    else:
+        _add(checks, "cost_profile_6_providers_with_cost_order", False, {"error": "profiles missing", "stderr": cost.get("stderr", "")[:300]})
+
+    # 总纲8吸收 Phase 1A: Query复杂度门禁存在性检查
+    complexity_exists = (HERMES_BIN / "pgg_query_complexity_gate").exists()
+    _add(checks, "query_complexity_gate_binary_exists", complexity_exists, str(HERMES_BIN / "pgg_query_complexity_gate"))
+
     guarded_cmd = [str(PY), "-m", "agent.pgg_guarded_production_enable_gate", "--json"]
     if run_provider_canary:
         guarded_cmd += ["--provider-canary", "--provider", provider]

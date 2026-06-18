@@ -239,6 +239,19 @@ def _get_active_profile_path() -> Path:
     return _get_default_hermes_home() / "active_profile"
 
 
+def _resolve_profile_path(path: Path) -> Path:
+    """Resolve a profile-scoped path and ensure it stays under the profile roots."""
+    candidate = path.expanduser().resolve(strict=False)
+    roots = [_get_default_hermes_home().expanduser().resolve(strict=False), _get_profiles_root().expanduser().resolve(strict=False)]
+    for root in roots:
+        try:
+            candidate.relative_to(root)
+            return candidate
+        except ValueError:
+            continue
+    raise ValueError(f"profile path outside allowed roots: {candidate}")
+
+
 def _get_wrapper_dir() -> Path:
     """Return the directory for wrapper scripts."""
     return Path.home() / ".local" / "bin"
@@ -300,8 +313,8 @@ def get_profile_dir(name: str) -> Path:
     """Resolve a profile name to its HERMES_HOME directory."""
     canon = normalize_profile_name(name)
     if canon == "default":
-        return _get_default_hermes_home()
-    return _get_profiles_root() / canon
+        return _resolve_profile_path(_get_default_hermes_home())
+    return _resolve_profile_path(_get_profiles_root() / canon)
 
 
 def profile_exists(name: str) -> bool:

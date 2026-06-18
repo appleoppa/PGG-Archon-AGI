@@ -136,6 +136,13 @@ class ResponsesApiTransport(ProviderTransport):
         # request is issued (openai==2.24.0).  Reported for the
         # ``openai-codex`` / ``gpt-5.5`` combo on chatgpt.com/backend-api/codex
         # (#32892) when the agent runs without external tools registered.
+        # Keep Anthropic-style cache_control markers when a Responses relay
+        # supports prompt caching (ChuangAgent/5yuantoken Claude).  The generic
+        # converter intentionally strips unknown part keys for strict OpenAI
+        # compatibility, but these relays need the marker to avoid re-billing
+        # the full prompt prefix on every turn.
+        preserve_cache_control = bool(params.get("preserve_cache_control", False))
+
         kwargs = {
             "model": model,
             "instructions": instructions,
@@ -144,6 +151,7 @@ class ResponsesApiTransport(ProviderTransport):
                 is_xai_responses=is_xai_responses,
                 replay_encrypted_reasoning=replay_encrypted_reasoning,
                 current_issuer_kind=issuer_kind,
+                preserve_cache_control=preserve_cache_control,
             ),
             "store": False,
         }

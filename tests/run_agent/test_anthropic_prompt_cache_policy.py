@@ -75,6 +75,37 @@ class TestOpenRouter:
         assert agent._anthropic_prompt_cache_policy() == (False, False)
 
 
+class TestChuangAgentClaudeProxy:
+    """5yuantoken / ChuangAgent Claude is OpenAI-wire but cache_control-aware."""
+
+    def test_claude_responses_on_5yuantoken_caches_with_envelope_layout(self):
+        agent = _make_agent(
+            provider="custom",
+            base_url="https://5yuantoken.org/v1",
+            api_mode="codex_responses",
+            model="claude-sonnet-4-6",
+        )
+        assert agent._anthropic_prompt_cache_policy() == (True, False)
+
+    def test_claude_chat_completions_on_chuangagent_caches_with_envelope_layout(self):
+        agent = _make_agent(
+            provider="custom",
+            base_url="https://chuangagent.eu.cc/v1",
+            api_mode="chat_completions",
+            model="claude-sonnet-4-6",
+        )
+        assert agent._anthropic_prompt_cache_policy() == (True, False)
+
+    def test_gpt_on_5yuantoken_keeps_existing_responses_cache_key_path(self):
+        agent = _make_agent(
+            provider="custom",
+            base_url="https://5yuantoken.org/v1",
+            api_mode="codex_responses",
+            model="gpt-5.5",
+        )
+        assert agent._anthropic_prompt_cache_policy() == (False, False)
+
+
 class TestThirdPartyAnthropicGateway:
     """Third-party gateways speaking the Anthropic protocol (MiniMax, Zhipu GLM, LiteLLM)."""
 

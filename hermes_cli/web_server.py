@@ -812,23 +812,43 @@ _MEDIA_MAX_BYTES = 25 * 1024 * 1024
 
 
 def _media_serve_roots() -> list[Path]:
-    """Directories ``GET /api/media`` is allowed to read from.
-
-    Confined to where the agent and attach pipeline actually write media on the
-    gateway host — its images dir and cache subtree. This stops an authenticated
-    client from reading image-extension files anywhere on disk (e.g. a renamed
-    key or a screenshot outside the cache) merely because the suffix passes the
-    allowlist.
-    """
+    """Resolved directories that /api/media is allowed to serve from."""
     home = get_hermes_home()
     roots = [home / "images", home / "screenshots", home / "cache"]
     out: list[Path] = []
     for root in roots:
         try:
-            out.append(root.resolve())
+            out.append(root.resolve(strict=False))
         except (OSError, RuntimeError):
             continue
     return out
+
+
+def _safe_path_under_roots(raw_path: str | Path, roots: list[Path]) -> Path:
+    """Resolve a user-supplied path and require it to stay under allowed roots."""
+    try:
+        target = Path(raw_path).expanduser().resolve(strict=False)
+    except (OSError, RuntimeError):
+        raise HTTPException(status_code=400, detail="Invalid path")
+    resolved_roots: list[Path] = []
+    for root in roots:
+        try:
+            resolved_roots.append(root.resolve(strict=False))
+        except (OSError, RuntimeError):
+            continue
+    if not any(target == root or target.is_relative_to(root) for root in resolved_roots):
+        raise HTTPException(status_code=403, detail="Path outside allowed roots")
+    return target
+
+
+def _safe_web_dist_path(*parts: str) -> Path:
+    return _safe_path_under_roots(WEB_DIST.joinpath(*parts), [WEB_DIST])
+
+
+def _safe_import_archive_path(raw_path: str) -> Path:
+    """Resolve an import archive path under user-owned Hermes/project roots."""
+    roots = [get_hermes_home(), Path.home(), PROJECT_ROOT]
+    return _safe_path_under_roots(raw_path, roots)
 
 
 @app.get("/api/media")
@@ -843,17 +863,10 @@ async def get_media(path: str):
     an image-extension allowlist, a size cap, AND the gateway's own media roots
     (resolved, symlink-safe) so it can't be used to read arbitrary files.
     """
-    try:
-        target = Path(path).expanduser().resolve()
-    except (OSError, RuntimeError):
-        raise HTTPException(status_code=400, detail="Invalid path")
+    target = _safe_path_under_roots(path, _media_serve_roots())
 
     if target.suffix.lower() not in _MEDIA_CONTENT_TYPES:
         raise HTTPException(status_code=415, detail="Unsupported media type")
-
-    roots = _media_serve_roots()
-    if not any(target == root or root in target.parents for root in roots):
-        raise HTTPException(status_code=403, detail="Path outside media roots")
 
     if not target.is_file():
         raise HTTPException(status_code=404, detail="File not found")
@@ -1846,7 +1859,8 @@ async def get_profiles_sessions(
     errors: List[Dict[str, str]] = []
     now = time.time()
     for name, home in targets:
-        db_path = Path(home) / "state.db"
+        home_root = Path(home).resolve(strict=False)
+        db_path = _safe_path_under_roots(home_root / "state.db", [home_root])
         if not db_path.exists():
             continue
         try:
@@ -5072,7 +5086,7 @@ def _codex_full_login_worker(session_id: str) -> None:
             sess["status"] = "approved"
         _log.info("oauth/device: openai-codex login completed (session=%s)", session_id)
     except Exception as e:
-        _log.warning("codex device-code worker failed (session=%s): %s", session_id, e)
+        _log.warning("codex device-code worker failed (session=%s, error_type=%s)", session_id, type(e).__name__)
         with _oauth_sessions_lock:
             s = _oauth_sessions.get(session_id)
             if s:
@@ -6693,10 +6707,11 @@ async def run_import(body: ImportRequest):
     archive = (body.archive or "").strip()
     if not archive:
         raise HTTPException(status_code=400, detail="archive path is required")
-    if not os.path.isfile(archive):
+    archive_path = _safe_import_archive_path(archive)
+    if not archive_path.is_file():
         raise HTTPException(status_code=404, detail=f"Archive not found: {archive}")
     try:
-        proc = _spawn_hermes_action(["import", archive], "import")
+        proc = _spawn_hermes_action(["import", str(archive_path)], "import")
     except Exception as exc:
         _log.exception("Failed to spawn import")
         raise HTTPException(status_code=500, detail=f"Failed to run import: {exc}")
@@ -8970,10 +8985,8 @@ def mount_spa(application: FastAPI):
     # when a prefix is in play.
     @application.get("/assets/{filename}.css")
     async def serve_css(filename: str, request: Request):
-        css_path = WEB_DIST / "assets" / f"{filename}.css"
-        if not css_path.is_file() or not css_path.resolve().is_relative_to(
-            WEB_DIST.resolve()
-        ):
+        css_path = _safe_web_dist_path("assets", f"{filename}.css")
+        if not css_path.is_file():
             return JSONResponse({"error": "not found"}, status_code=404)
         prefix = _normalise_prefix(request.headers.get("x-forwarded-prefix"))
         css = css_path.read_text()
@@ -9000,14 +9013,12 @@ def mount_spa(application: FastAPI):
                 {"detail": f"No such API endpoint: /{full_path}"},
                 status_code=404,
             )
-        file_path = WEB_DIST / full_path
+        try:
+            file_path = _safe_web_dist_path(full_path)
+        except HTTPException:
+            return _serve_index(prefix)
         # Prevent path traversal via url-encoded sequences (%2e%2e/)
-        if (
-            full_path
-            and file_path.resolve().is_relative_to(WEB_DIST.resolve())
-            and file_path.exists()
-            and file_path.is_file()
-        ):
+        if full_path and file_path.exists() and file_path.is_file():
             return FileResponse(file_path)
         return _serve_index(prefix)
 
@@ -9825,11 +9836,9 @@ async def serve_plugin_asset(plugin_name: str, file_path: str):
     if not plugin:
         raise HTTPException(status_code=404, detail="Plugin not found")
 
-    base = Path(plugin["_dir"])
-    target = (base / file_path).resolve()
+    base = Path(plugin["_dir"]).resolve(strict=False)
+    target = _safe_path_under_roots(base / file_path, [base])
 
-    if not target.is_relative_to(base.resolve()):
-        raise HTTPException(status_code=403, detail="Path traversal blocked")
     if not target.exists() or not target.is_file():
         raise HTTPException(status_code=404, detail="File not found")
 

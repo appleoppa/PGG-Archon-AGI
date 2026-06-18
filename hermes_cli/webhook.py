@@ -200,7 +200,8 @@ def _cmd_subscribe(args):
 
     print(f"\n  {status} webhook subscription: {name}")
     print(f"  URL:    {base_url}/webhooks/{name}")
-    print(f"  Secret: {secret}")
+    from agent.redact import mask_secret
+    print(f"  Secret: {mask_secret(secret)}")
     if events:
         print(f"  Events: {', '.join(events)}")
     else:

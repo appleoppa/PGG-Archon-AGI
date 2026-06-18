@@ -19,7 +19,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-DEFAULT_DB = Path("/Users/appleoppa/.hermes/workspace/04_knowledge/开智/02-进化基因/apex_evolution_genes.sqlite3")
+DEFAULT_DB = Path("/Users/appleoppa/.hermes/data/pgg_archon.db")
 DEFAULT_REPORT_PATH = Path("/Users/appleoppa/.hermes/data/health-monitor/latest.json")
 SERVICE_PREFIX = "ai.hermes.pgg"
 ENGINE_VERSION = "pgg_health_monitor/v1"
@@ -72,7 +72,9 @@ class HealthMonitor:
         resources = self._collect_resources()
         launchd = self._collect_launchd_services()
         gene_db = self._collect_gene_db_health()
-        alerts = self._evaluate_alerts(resources, launchd)
+        symlinks = self._collect_bin_symlinks()
+        akashic_stats = self._collect_akashic_stats()
+        alerts = self._evaluate_alerts(resources, launchd, symlinks)
         level = self._severity_level(alerts)
 
         report = {
@@ -83,6 +85,8 @@ class HealthMonitor:
             "resources": resources,
             "launchd": launchd,
             "gene_db": gene_db,
+            "bin_symlinks": symlinks,
+            "akashic_stats": akashic_stats,
             "alerts": alerts,
             "feishu_card": self._build_feishu_card(level, resources, launchd, gene_db, alerts),
             "report_path": str(self.report_path),
@@ -248,7 +252,7 @@ class HealthMonitor:
     # ─── GeneDB ───────────────────────────────────────────────────────────
 
     def _collect_gene_db_health(self) -> dict[str, Any]:
-        statuses = ["candidate", "verified", "active", "retired", "rejected"]
+        statuses = ["candidate", "promoted", "active", "retired", "rejected"]
         counts = {status: 0 for status in statuses}
 
         if not self.db_path.exists():
@@ -264,10 +268,10 @@ class HealthMonitor:
             with sqlite3.connect(str(self.db_path)) as con:
                 rows = con.execute(
                     """
-                    SELECT status, COUNT(*) AS n
+                    SELECT state, COUNT(*) AS n
                     FROM evolution_genes
-                    WHERE status IN ('candidate', 'verified', 'active', 'retired', 'rejected')
-                    GROUP BY status
+                    WHERE state IN ('candidate', 'verified', 'active', 'retired', 'rejected', 'promoted')
+                    GROUP BY state
                     """
                 ).fetchall()
             for status, n in rows:
@@ -287,9 +291,86 @@ class HealthMonitor:
                 "error": f"{type(exc).__name__}: {exc}",
             }
 
+    # ─── Symlink and readable local data checks ────────────────────────────
+
+    def _collect_bin_symlinks(self) -> dict[str, Any]:
+        """Check every symlink in ~/.hermes/bin and report broken targets."""
+        bin_dir = Path.home() / ".hermes" / "bin"
+        symlinks: list[dict[str, Any]] = []
+        broken: list[dict[str, Any]] = []
+        if not bin_dir.exists():
+            return {
+                "bin_dir": str(bin_dir),
+                "exists": False,
+                "total_symlinks": 0,
+                "broken_count": 0,
+                "broken": [],
+                "status": "WATCH_BIN_DIR_MISSING",
+            }
+        for entry in sorted(bin_dir.iterdir(), key=lambda p: p.name):
+            if not entry.is_symlink():
+                continue
+            try:
+                target = entry.readlink()
+                resolved = entry.resolve(strict=False)
+                valid = entry.exists()
+                item = {
+                    "name": entry.name,
+                    "path": str(entry),
+                    "target": str(target),
+                    "resolved": str(resolved),
+                    "valid": bool(valid),
+                }
+            except OSError as exc:
+                item = {
+                    "name": entry.name,
+                    "path": str(entry),
+                    "target": None,
+                    "resolved": None,
+                    "valid": False,
+                    "error": f"{type(exc).__name__}: {exc}",
+                }
+            symlinks.append(item)
+            if not item.get("valid"):
+                broken.append(item)
+        return {
+            "bin_dir": str(bin_dir),
+            "exists": True,
+            "total_symlinks": len(symlinks),
+            "broken_count": len(broken),
+            "broken": broken,
+            "status": "PASS" if not broken else "WARN_BROKEN_SYMLINKS",
+        }
+
+    def _collect_akashic_stats(self) -> dict[str, Any]:
+        """Read the standalone Akashic stats JSON consumed by health monitor."""
+        path = Path.home() / ".hermes" / "data" / "akashic_stats.json"
+        if not path.exists():
+            return {"path": str(path), "exists": False, "status": "WATCH_MISSING"}
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            if not isinstance(data, dict):
+                return {"path": str(path), "exists": True, "status": "ERROR_NON_OBJECT"}
+            return {
+                "path": str(path),
+                "exists": True,
+                "status": data.get("status", "UNKNOWN"),
+                "schema": data.get("schema"),
+                "total_entries": data.get("total_entries"),
+                "vector_dim": data.get("vector_dim"),
+                "last_updated": data.get("last_updated"),
+            }
+        except Exception as exc:
+            return {
+                "path": str(path),
+                "exists": True,
+                "status": "ERROR",
+                "error": f"{type(exc).__name__}: {exc}",
+            }
+
     # ─── Alerts and Feishu card ───────────────────────────────────────────
 
-    def _evaluate_alerts(self, resources: dict[str, Any], launchd: dict[str, Any]) -> list[dict[str, Any]]:
+    def _evaluate_alerts(self, resources: dict[str, Any], launchd: dict[str, Any], symlinks: dict[str, Any]) -> list[dict[str, Any]]:
         alerts: list[dict[str, Any]] = []
         cpu_percent = _safe_float(resources.get("cpu_percent"))
         disk_percent = _safe_float(resources.get("disk_percent"))
@@ -330,6 +411,15 @@ class HealthMonitor:
                 "message": str(launchd.get("error")),
             })
 
+        for item in symlinks.get("broken", []) or []:
+            alerts.append({
+                "level": "red",
+                "type": "broken_symlink",
+                "message": f"Broken symlink {item.get('name')} -> {item.get('target')}",
+                "path": item.get("path"),
+                "target": item.get("target"),
+            })
+
         return alerts
 
     def _severity_level(self, alerts: list[dict[str, Any]]) -> str:
@@ -357,7 +447,7 @@ class HealthMonitor:
         counts = gene_db.get("counts", {}) or {}
         alert_text = "\n".join(f"- {a.get('message')}" for a in alerts) if alerts else "- No active alerts"
         service_summary = f"{launchd.get('count', 0)} ai.hermes.pgg* services found"
-        gene_summary = ", ".join(f"{k}:{counts.get(k, 0)}" for k in ["candidate", "verified", "active", "retired", "rejected"])
+        gene_summary = ", ".join(f"{k}:{counts.get(k, 0)}" for k in ["candidate", "promoted", "active", "retired", "rejected"])
 
         # This is a Feishu interactive-card compatible structure with explicit
         # three-color CSS-like tokens for downstream renderers/bridges.

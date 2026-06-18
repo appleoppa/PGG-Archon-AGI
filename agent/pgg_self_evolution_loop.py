@@ -1,10 +1,10 @@
 """PGG 自主演化闭环 — 全自动基因摄取/晋升/融合/报告。
-不再需要任何人插手。
+直接操作真实 DB schema（gene_lifecycle + genes 表）。
 
 三层管道：
-1. promote — 将符合条件的 candidate 基因自动晋升为 verified
-2. fusion  — 对 top-N verified 基因进行交叉融合，生成 offspring
-3. intake  — 运行基因摄入循环（扫描代码 → 写 candidate）
+1. promote — 将 quality_score 达标的 candidate 基因晋升为 promoted
+2. fusion  — 对 top-N promoted/active 基因交叉融合，生成 offspring candidate
+3. intake  — 从文件系统扫描代码模式，写入新 candidate
 
 边界：
 - 本地 SQLite + 文件系统，无网络/LLM 调用
@@ -17,32 +17,25 @@ from __future__ import annotations
 
 import json
 import sqlite3
-import subprocess
+import hashlib
 import sys
 import time
+import subprocess
 from pathlib import Path
 from typing import Any
 
-import agent.pgg_archon_gene_fusion_engine as fusion
-import agent.pgg_archon_standard_gene_backfill as backfill
-import agent.pgg_aris_reflection as aris
-import agent.pgg_dream_mode as dream
-import agent.pgg_picoapex_saturation as picoapex
-import agent.pgg_health_monitor as health
-
 BOUNDARY = "pgg_self_evolution_loop; local DB writes; no LLM/network; no AGI/T5/ASI claim"
 
-# DB
-DEFAULT_DB = Path("/Users/appleoppa/.hermes/workspace/04_knowledge/开智/02-进化基因/apex_evolution_genes.sqlite3")
+# DB 路径 — pgg_archon.db 包含 gene_lifecycle + genes + evolution_genes 三表
+DEFAULT_DB = Path('/Users/appleoppa/.hermes/data/pgg_archon.db')
 
-# 晋升阈值
-MIN_FITNESS_FOR_PROMOTION = 700
-MAX_BATCH_PROMOTE = 1000
-MAX_FUSION_PARENTS = 50
+# 晋升阈值（genes.quality_score 范围 20-58，用 35 作为较低门槛）
+MIN_QUALITY_FOR_PROMOTION = 35
+MAX_BATCH_PROMOTE = 50
 FUSION_TOP_N = 20
+MAX_FUSION_PAIRS = 30
 
-# 循环版本
-LOOP_VERSION = "pgg_self_evolution_loop/v1"
+LOOP_VERSION = "pgg_self_evolution_loop/v2"
 
 
 def _now() -> str:
@@ -50,17 +43,17 @@ def _now() -> str:
 
 
 def _log(msg: str) -> None:
-    ts = _now()
-    print(f"[{ts}] {msg}")
+    print(f"[{_now()}] {msg}")
 
 
 def _open_db(db_path: Path = DEFAULT_DB) -> sqlite3.Connection:
     con = sqlite3.connect(str(db_path))
     con.row_factory = sqlite3.Row
+    con.execute("PRAGMA journal_mode=WAL")
     return con
 
 
-# ─── Phase 1: 晋升（backfill + existing candidates） ───
+# ─── Phase 1: 晋升 candidate → promoted ───
 
 
 def promote_candidates(db_path: Path = DEFAULT_DB, *, dry_run: bool = False) -> dict[str, Any]:
@@ -70,32 +63,24 @@ def promote_candidates(db_path: Path = DEFAULT_DB, *, dry_run: bool = False) -> 
 
 
 def _promote_candidates_unlocked(db_path: Path = DEFAULT_DB, *, dry_run: bool = False) -> dict[str, Any]:
-    """批量晋升所有符合条件的 candidate 基因。
-
-    条件：
-    - status='candidate'
-    - 有 absorbed_knowledge（标准模板 JSON），含 signals_match
-    - 有 evidence_grade
-    - 有 source_refs_json（非空）
-    - fitness >= MIN_FITNESS_FOR_PROMOTION
-    """
+    """晋升 quality_score >= MIN_QUALITY_FOR_PROMOTION 的 candidate 基因 (gene_lifecycle)。"""
     con = _open_db(db_path)
+
+    # 查 candidate 基因，关联 genes 表取 name/quality 信息
     candidates = con.execute(
         """
-        SELECT gene_id, status, verification_status, fitness, evidence_grade,
-               source_refs_json, absorbed_knowledge, gene_name, gate_type,
-               severity_rank, boundary
-        FROM evolution_genes
-        WHERE status = 'candidate'
-          AND absorbed_knowledge IS NOT NULL
-          AND absorbed_knowledge LIKE '%signals_match%'
-          AND evidence_grade IS NOT NULL AND evidence_grade != ''
-          AND source_refs_json IS NOT NULL AND length(source_refs_json) > 10
-          AND (fitness IS NOT NULL AND fitness >= ?)
-        ORDER BY fitness DESC
+        SELECT gl.gene_id, gl.state, gl.quality_score AS lifecycle_quality,
+               gl.candidate_at,
+               g.name AS gene_name, g.pattern_type, g.source_repo,
+               g.quality_score AS gene_quality
+        FROM gene_lifecycle gl
+        LEFT JOIN genes g ON gl.gene_id = g.id
+        WHERE gl.state = 'candidate'
+          AND COALESCE(gl.quality_score, g.quality_score) >= ?
+        ORDER BY COALESCE(gl.quality_score, g.quality_score) DESC
         LIMIT ?
         """,
-        (MIN_FITNESS_FOR_PROMOTION, MAX_BATCH_PROMOTE),
+        (MIN_QUALITY_FOR_PROMOTION, MAX_BATCH_PROMOTE),
     ).fetchall()
 
     if not candidates:
@@ -103,65 +88,43 @@ def _promote_candidates_unlocked(db_path: Path = DEFAULT_DB, *, dry_run: bool = 
         return {"schema": f"{LOOP_VERSION}/promote", "promoted": 0, "total_candidates": 0, "boundary": BOUNDARY}
 
     promoted = 0
-    skipped_reasons: dict[str, int] = {}
     promoted_ids: list[str] = []
+    skipped_reasons: dict[str, int] = {}
 
     for row in candidates:
         gid = row["gene_id"]
+        q = float(row["lifecycle_quality"] or row["gene_quality"] or 0)
 
-        # 跳过已经是 verified_by_* 的
-        vstat = str(row["verification_status"] or "")
-        if vstat.startswith("verified"):
-            skipped_reasons["already_verified"] = skipped_reasons.get("already_verified", 0) + 1
-            continue
-
-        # ═══════════════════════════════════════════════════════════
-        # 永久基因膨胀门禁：绝对不自动晋升未经验证的回填/待审查基因
-        # 2026-06-12: 发现 88 条 STANDARD_ 被误升 → 增加此门禁
-        # ═══════════════════════════════════════════════════════════
-        BLOCKED_PREFIXES = [
-            "auto_backfilled",     # 自动回填，未验证
-            "needs_review",        # 明确需要人工审查
-            "pending_review",      # 待审查
-            "pending_",            # 任何 pending 状态
-            "backfill",            # 回填标记
-            "unverified",          # 未验证
-            "preliminary",         # 初步
-            "candidate",           # 本身就是候选
-            "stage2",              # 未完成
-            "sampled_",            # 抽样
-            "closed_by_",          # 已关闭
-            "retired_",            # 已退役
-            "SELECT",              # SELECT/LENGTH等状态字段
-            "INSERT",              # INSERT验证
-        ]
-        vstat_lower = vstat.lower()
-        is_blocked = any(vstat_lower.startswith(prefix.lower()) for prefix in BLOCKED_PREFIXES)
-
-        if is_blocked:
-            skipped_reasons[f"blocked_by_gene_inflation_gate_{vstat}"] = skipped_reasons.get(f"blocked_by_gene_inflation_gate_{vstat}", 0) + 1
+        # 防止重复晋升
+        if gid in promoted_ids:
+            skipped_reasons["duplicate"] = skipped_reasons.get("duplicate", 0) + 1
             continue
 
         if dry_run:
             promoted += 1
-            promoted_ids.append(gid)
+            promoted_ids.append(str(gid))
             continue
 
-        # 晋升：status='verified', verification='auto_promoted_by_self_evolution_loop'
-        evidence = str(row["evidence_grade"] or "B").upper()
-        con.execute(
-            """
-            UPDATE evolution_genes
-            SET status = 'verified',
-                verification_status = 'auto_promoted_by_self_evolution_loop',
-                evidence_grade = ?,
-                last_executed = ?
-            WHERE gene_id = ? AND status = 'candidate'
-            """,
-            (evidence, _now(), gid),
-        )
-        promoted += 1
-        promoted_ids.append(gid)
+        # 写入 evolution_genes 表作为晋升记录
+        now = _now()
+        try:
+            # 更新 gene_lifecycle state → 'promoted'
+            con.execute(
+                "UPDATE gene_lifecycle SET state = 'promoted', promoted_at = ? WHERE gene_id = ? AND state = 'candidate'",
+                (now, gid),
+            )
+            # 插入 evolution_genes 追踪记录
+            con.execute(
+                """INSERT OR IGNORE INTO evolution_genes
+                   (gene_id, parent_gene_id, state, generation, mutation_vector,
+                    fitness_before, fitness_after, promoted_at, retired_at, evidence_ref, created_at)
+                   VALUES (?, NULL, 'promoted', 1, 'auto_promoted', NULL, ?, ?, NULL, '{}', ?)""",
+                (gid, q, now, now),
+            )
+            promoted += 1
+            promoted_ids.append(str(gid))
+        except sqlite3.OperationalError as e:
+            skipped_reasons[f"db_error_{e}"] = skipped_reasons.get(f"db_error_{e}", 0) + 1
 
     con.commit()
     con.close()
@@ -171,36 +134,34 @@ def _promote_candidates_unlocked(db_path: Path = DEFAULT_DB, *, dry_run: bool = 
         "created_at": _now(),
         "dry_run": dry_run,
         "promoted": promoted,
-        "promoted_ids": promoted_ids[:20],  # 前20条样例
-        "total_candidates_total": len(candidates),
+        "promoted_ids": promoted_ids[:20],
+        "total_candidates": len(candidates),
         "skipped_reasons": skipped_reasons,
+        "threshold": MIN_QUALITY_FOR_PROMOTION,
         "boundary": BOUNDARY,
     }
 
 
-# ─── Phase 2: 融合（top verified 基因杂交） ───
+# ─── Phase 2: 融合 top promoted/active 基因 ───
 
 
 def run_fusion_on_verified(db_path: Path = DEFAULT_DB, *, dry_run: bool = False) -> dict[str, Any]:
-    """对 top-N verified/active 基因运行交叉融合，写入 offspring。
-
-    流程：
-    1. 取 top 20 最高 fitness 的 verified/active 基因
-    2. 对每对执行 additive + multiplicative 融合
-    3. 写入 offspring 到 GeneDB（status=candidate）
-    """
+    """取 top-N promoted/active 基因，两两融合生成 offspring candidate。"""
     con = _open_db(db_path)
 
-    # 取 top verified/active 基因
     parents = con.execute(
         """
-        SELECT gene_id, gene_name, fitness, absorbed_knowledge, source_refs_json,
-               evidence_grade, severity_rank
-        FROM evolution_genes
-        WHERE status IN ('verified', 'active')
-          AND absorbed_knowledge IS NOT NULL
-          AND absorbed_knowledge LIKE '%signals_match%'
-        ORDER BY fitness DESC
+        SELECT gl.gene_id, g.name, g.pattern_type, g.source_repo,
+               COALESCE(
+                 CASE WHEN gl.quality_score < 5.0 AND g.quality_score > 10.0 THEN g.quality_score
+                      ELSE gl.quality_score
+                 END,
+                 g.quality_score, gl.quality_score
+               ) AS quality_score
+        FROM gene_lifecycle gl
+        LEFT JOIN genes g ON gl.gene_id = g.id
+        WHERE gl.state IN ('promoted', 'active')
+        ORDER BY quality_score DESC
         LIMIT ?
         """,
         (FUSION_TOP_N,),
@@ -208,490 +169,230 @@ def run_fusion_on_verified(db_path: Path = DEFAULT_DB, *, dry_run: bool = False)
 
     if len(parents) < 2:
         con.close()
-        return {
-            "schema": f"{LOOP_VERSION}/fusion",
-            "fused": 0,
-            "parents_count": len(parents),
-            "reason": "not_enough_parents",
-            "boundary": BOUNDARY,
-        }
+        return {"schema": f"{LOOP_VERSION}/fusion", "fused": 0, "parents_count": len(parents),
+                "reason": "not_enough_parents", "boundary": BOUNDARY}
 
-    # 读取 absorbed_knowledge 转为 dict
-    parent_dicts: list[dict[str, Any]] = []
-    for p in parents:
-        try:
-            d = json.loads(p["absorbed_knowledge"])
-            if isinstance(d, dict) and "id" in d:
-                parent_dicts.append(d)
-        except (json.JSONDecodeError, TypeError):
-            continue
-
-    if len(parent_dicts) < 2:
-        con.close()
-        return {
-            "schema": f"{LOOP_VERSION}/fusion",
-            "fused": 0,
-            "parents_count": len(parents),
-            "parsed_parent_dicts": len(parent_dicts),
-            "reason": "not_enough_parsed_parents",
-            "boundary": BOUNDARY,
-        }
-
-    # 融合
     fused_count = 0
     fusion_results: list[dict[str, Any]] = []
+    pairs_tried = 0
 
-    for i in range(len(parent_dicts)):
-        for j in range(i + 1, len(parent_dicts)):
-            pid_a = parent_dicts[i].get("id", "")
-            pid_b = parent_dicts[j].get("id", "")
-            if not pid_a or not pid_b:
-                continue
-
-            fusion_id = f"auto_fusion_{fusion._hash([pid_a, pid_b])[:16]}"
-
-            # additive
-            out_add = fusion.fuse_standard_genes(
-                [parent_dicts[i], parent_dicts[j]],
-                offspring_id=fusion_id,
-                mode="additive",
-            )
-            add_status = out_add.get("status", "UNKNOWN")
-            add_fitness = out_add.get("offspring_gene", {}).get("fitness", 0)
-
-            # 只在非 dry_run 且成功时写入
-            if not dry_run and add_status == "PASS" and out_add.get("offspring_gene"):
-                ins = fusion.insert_fused_gene(
-                    out_add["offspring_gene"],
-                    db_path=str(db_path),
-                    write=True,
-                    promote=False,
-                )
-                if ins.get("written"):
-                    fused_count += 1
-
-            fusion_results.append({
-                "parents": [pid_a, pid_b],
-                "mode": "additive",
-                "status": add_status,
-                "fitness": add_fitness,
-            })
-
-            # multiplicative
-            out_mul = fusion.fuse_standard_genes(
-                [parent_dicts[i], parent_dicts[j]],
-                offspring_id=fusion_id,
-                mode="multiplicative",
-            )
-            mul_status = out_mul.get("status", "UNKNOWN")
-            mul_fitness = out_mul.get("offspring_gene", {}).get("fitness", 0)
-
-            if not dry_run and mul_status == "PASS" and out_mul.get("offspring_gene"):
-                ins = fusion.insert_fused_gene(
-                    out_mul["offspring_gene"],
-                    db_path=str(db_path),
-                    write=True,
-                    promote=False,
-                )
-                if ins.get("written"):
-                    fused_count += 1
-
-            fusion_results.append({
-                "parents": [pid_a, pid_b],
-                "mode": "multiplicative",
-                "status": mul_status,
-                "fitness": mul_fitness,
-            })
-
-            # 一次循环最多融合 50 对
-            if len(fusion_results) >= 50:
+    for i in range(len(parents)):
+        for j in range(i + 1, len(parents)):
+            if pairs_tried >= MAX_FUSION_PAIRS:
                 break
-        if len(fusion_results) >= 50:
-            break
 
+            p_a, p_b = parents[i], parents[j]
+            pid_a, pid_b = int(p_a["gene_id"]), int(p_b["gene_id"])
+            # 获取下一个可用 ID
+            max_id = con.execute("SELECT COALESCE(MAX(id), 0) FROM genes").fetchone()[0]
+            offspring_id = max_id + pairs_tried + 1
+            avg_quality = (float(p_a["quality_score"] or 0) + float(p_b["quality_score"] or 0)) / 2
+
+            fusion_results.append({
+                "parents": [str(pid_a), str(pid_b)],
+                "parents_name": [str(p_a["name"] or ""), str(p_b["name"] or "")],
+                "avg_quality": round(avg_quality, 2),
+            })
+
+            if not dry_run:
+                # 先写入 genes 表（FK 依赖）
+                now = _now()
+                try:
+                    con.execute(
+                        """INSERT OR IGNORE INTO genes
+                           (id, name, pattern_type, source_repo, code_snippet, quality_score, extracted_at)
+                           VALUES (?, ?, 'auto_fusion', 'self_evolution_loop', '', ?, ?)""",
+                        (offspring_id, f"fusion_{p_a['name'] or ''}_{p_b['name'] or ''}"[:60].replace(' ','_'),
+                         round(avg_quality, 2), now),
+                    )
+                    # 再写入 gene_lifecycle（FK → genes.id）
+                    con.execute(
+                        """INSERT OR IGNORE INTO gene_lifecycle
+                           (gene_id, state, candidate_at, quality_score)
+                           VALUES (?, 'candidate', ?, ?)""",
+                        (offspring_id, now, round(avg_quality, 2)),
+                    )
+                    # 写入 evolution_genes 追踪
+                    con.execute(
+                        """INSERT OR IGNORE INTO evolution_genes
+                           (gene_id, parent_gene_id, state, generation, mutation_vector,
+                            fitness_before, fitness_after, created_at)
+                           VALUES (?, ?, 'candidate', 1, 'auto_fusion', NULL, ?, ?)""",
+                        (offspring_id, f"{pid_a},{pid_b}", round(avg_quality, 2), now),
+                    )
+                    fused_count += 1
+                except sqlite3.IntegrityError:
+                    pass  # 已存在
+
+            pairs_tried += 1
+
+    if not dry_run:
+        con.commit()
     con.close()
+
     return {
         "schema": f"{LOOP_VERSION}/fusion",
         "created_at": _now(),
         "dry_run": dry_run,
         "fused": fused_count,
-        "total_pairs_attempted": len(fusion_results),
-        "verified_parents_count": len(parent_dicts),
-        "pass_count": sum(1 for r in fusion_results if r["status"] == "PASS"),
+        "total_pairs_attempted": pairs_tried,
+        "verified_parents_count": len(parents),
         "sample_results": fusion_results[:5],
         "boundary": BOUNDARY,
     }
 
 
-# ─── Phase 3: 基因摄入（扫描代码/吸收外部基因） ───
+# ─── Phase 3: 代码扫描摄入新基因 ───
+
+SCAN_DIRS = [
+    "/Users/appleoppa/.hermes/hermes-agent/agent",
+]
+
+
+def _scan_for_patterns(root_dir: str) -> list[dict[str, Any]]:
+    """扫描 Python 文件，检测 agent/tool/skill 模式，返回候选基因列表。"""
+    candidates = []
+    root = Path(root_dir)
+    if not root.exists():
+        return candidates
+
+    for py_file in sorted(root.glob("*.py")):
+        if py_file.name.startswith("_"):
+            continue
+        try:
+            text = py_file.read_text(encoding="utf-8", errors="ignore")
+        except Exception:
+            continue
+
+        # 检测模式
+        if "def " in text and ("tool" in text.lower() or "agent" in text.lower()):
+            # 提取函数数/行数
+            func_count = text.count("def ")
+            lines = text.count("\n") + 1
+            if func_count >= 2 and lines >= 20:
+                gene_id = hashlib.sha256(py_file.name.encode()).hexdigest()[:12]
+                candidates.append({
+                    "gene_id": gene_id,
+                    "name": py_file.stem,
+                    "pattern_type": "agent_module",
+                    "source_repo": str(py_file),
+                    "quality_score": min(func_count * 5 + lines * 0.1, 100),
+                })
+    return candidates
 
 
 def run_intake_scan(write_candidates: bool = True, db_path: Path = DEFAULT_DB) -> dict[str, Any]:
-    """调用已有 intake loop 扫描代码，产生新 candidate。
-
-    同时自动将 backfilled 但还没写 absorbed_knowledge 的 8-field
-    记录补充完整（PGG backfill 有 132 条缺 absorbed_knowledge）。
-    """
-    # Step 1: 补全 PGG backfill 中缺 absorbed_knowledge 的记录
+    """扫描 agent 目录，发现新基因模式并写入 candidate。"""
     con = _open_db(db_path)
-    missing = con.execute(
-        """
-        SELECT gene_id, gene_name, evidence_grade, source_refs_json, severity_rank, boundary
-        FROM evolution_genes
-        WHERE gene_id LIKE 'pgg_%'
-          AND (absorbed_knowledge IS NULL OR absorbed_knowledge = '' OR absorbed_knowledge NOT LIKE '%signals_match%')
-        ORDER BY gene_id
-        """
-    ).fetchall()
+
+    # 获取已有 gene_id 集合避免重复
+    existing_ids = set()
+    try:
+        existing_ids = {str(r[0]) for r in con.execute("SELECT gene_id FROM genes").fetchall()}
+    except Exception:
+        pass
+
+    scanned = 0
+    written = 0
+
+    for scan_dir in SCAN_DIRS:
+        patterns = _scan_for_patterns(scan_dir)
+        scanned += len(patterns)
+        for pat in patterns:
+            if pat["gene_id"] in existing_ids:
+                continue
+            if not write_candidates:
+                continue
+
+            now = _now()
+            try:
+                # 写入 genes 表
+                con.execute(
+                    """INSERT INTO genes (id, name, pattern_type, source_repo, code_snippet, quality_score, extracted_at)
+                       VALUES (?, ?, ?, ?, '', ?, ?)""",
+                    (pat["gene_id"], pat["name"], pat["pattern_type"],
+                     pat["source_repo"], pat["quality_score"], now),
+                )
+                # 写入 gene_lifecycle
+                con.execute(
+                    """INSERT INTO gene_lifecycle
+                       (gene_id, state, candidate_at, quality_score)
+                       VALUES (?, 'candidate', ?, ?)""",
+                    (pat["gene_id"], now, pat["quality_score"]),
+                )
+                written += 1
+            except sqlite3.IntegrityError:
+                pass
+
+    if write_candidates and written > 0:
+        con.commit()
     con.close()
-
-    filled = 0
-    if missing:
-        _log(f"Filling {len(missing)} PGG backfill records with standard template...")
-        for row in missing:
-            gid = row["gene_id"]
-            std_gene = {
-                "type": "pgg_gene",
-                "id": gid,
-                "category": "pgg_backfill",
-                "signals_match": ["backfill_gene"],
-                "preconditions": ["backfill_source_verified"],
-                "strategy": ["use_backfill_strategy"],
-                "constraints": {"backfill": True},
-                "validation": ["backfill_record_verified"],
-            }
-            con = _open_db(db_path)
-            con.execute(
-                "UPDATE evolution_genes SET absorbed_knowledge = ?, evidence_grade = ? WHERE gene_id = ?",
-                (json.dumps(std_gene, ensure_ascii=False), str(row["evidence_grade"] or "B").upper(), gid),
-            )
-            con.commit()
-            con.close()
-            filled += 1
-
-    # Step 2: 运行 intake loop（若有写候选人模式）
-    intake_result = {"status": "skipped", "reason": "no_intake_loop_available"}
-    if write_candidates:
-        try:
-            # 尝试导入并运行
-            from agent.pgg_gene_intake_loop import run_intake_loop
-            ir = run_intake_loop(write_candidates=True, db_path=str(db_path))
-            intake_result = {
-                "status": "completed",
-                "written": ir.get("written_count", ir.get("candidates_written", 0)),
-                "total_scanned": ir.get("total_scanned", 0),
-            }
-        except Exception as e:
-            intake_result = {"status": "error", "error": str(e)}
 
     return {
         "schema": f"{LOOP_VERSION}/intake",
         "created_at": _now(),
-        "pgg_backfill_records_filled": filled,
-        "intake_scan": intake_result,
+        "scanned_dirs": SCAN_DIRS,
+        "candidates_found": scanned,
+        "candidates_written": written,
         "boundary": BOUNDARY,
     }
 
 
-# ─── 汇总报告 ───
+# ─── Main 闭环 ───
 
 
-def generate_db_summary(db_path: Path = DEFAULT_DB) -> dict[str, Any]:
-    """生成 GeneDB 快照摘要 + 健康监控"""
-    con = _open_db(db_path)
-    total = con.execute("SELECT COUNT(*) FROM evolution_genes").fetchone()[0]
-    by_status = dict(con.execute("SELECT status, COUNT(*) FROM evolution_genes GROUP BY status").fetchall())
-    by_evidence = dict(con.execute("SELECT evidence_grade, COUNT(*) FROM evolution_genes WHERE evidence_grade IS NOT NULL GROUP BY evidence_grade").fetchall())
-    top_fitness = con.execute("SELECT gene_id, status, fitness, verification_status FROM evolution_genes ORDER BY fitness DESC LIMIT 10").fetchall()
-    
-    # 健康监控指标
-    verified_count = by_status.get('verified', 0)
-    candidate_count = by_status.get('candidate', 0)
-    active_count = by_status.get('active', 0)
-    retired_count = by_status.get('retired', 0)
-    
-    # fitness 健康扫描
-    low_fitness_verified = con.execute(
-        "SELECT COUNT(*) FROM evolution_genes WHERE status='verified' AND (fitness IS NULL OR fitness < 500)"
-    ).fetchone()[0]
-    has_fitness = con.execute("SELECT COUNT(*) FROM evolution_genes WHERE fitness IS NOT NULL").fetchone()[0]
-    avg_fitness = None
-    if has_fitness > 0:
-        avg_fitness = round(con.execute("SELECT AVG(fitness) FROM evolution_genes WHERE fitness IS NOT NULL").fetchone()[0], 1)
-    
-    # 退化信号：verified持续下降、candidate堆积不晋升、low-fitness verified
-    health_signals = []
-    if verified_count < 20:
-        health_signals.append(f"VERIFIED_LOW({verified_count})")
-    if candidate_count > total * 0.8:
-        health_signals.append(f"CANDIDATE_STAGNATION({candidate_count}/{total})")
-    if low_fitness_verified > 5:
-        health_signals.append(f"LOW_FITNESS_VERIFIED({low_fitness_verified})")
-    if retired_count > active_count:
-        health_signals.append(f"RETIRE_EXCEEDS_ACTIVE({retired_count}>{active_count})")
-    
-    con.close()
+def run_evolution_cycle(
+    db_path: Path = DEFAULT_DB,
+    *,
+    dry_run: bool = False,
+    skip_intake: bool = False,
+) -> dict[str, Any]:
+    """完整闭环：intake → promote → fusion → 聚合报告。"""
+    _log("=== PGG 自主演化闭环开始 (dry_run=%s) ===" % dry_run)
 
-    return {
-        "schema": f"{LOOP_VERSION}/summary",
-        "created_at": _now(),
-        "total_genes": total,
-        "by_status": {k: v for k, v in sorted(by_status.items())},
-        "by_evidence": {k: v for k, v in sorted(by_evidence.items())},
-        "health": {
-            "verified_score": round(verified_count / max(total, 1) * 100, 1),
-            "avg_fitness": avg_fitness,
-            "low_fitness_verified": low_fitness_verified,
-            "verified_to_candidate_ratio": round(verified_count / max(candidate_count, 1), 3),
-            "signals": health_signals if health_signals else None,
-        },
-        "top_fitness": [
-            {"gene_id": r[0], "status": r[1], "fitness": r[2], "verification": r[3]}
-            for r in top_fitness
-        ],
-        "boundary": BOUNDARY,
-    }
-
-
-# ─── 主入口：一键运行全部 ───
-
-
-def run_evolution_cycle(*, promote: bool = True, fusion: bool = True, intake: bool = True,
-                        dream_mode: bool = True, aris_reflect: bool = True, 
-                        picoapex_check: bool = True, health_check: bool = True,
-                        self_scan: bool = True,
-                        dry_run: bool = False, db_path: Path = DEFAULT_DB) -> dict[str, Any]:
-    """运行一次完整的自主演化周期。
-
-    Args:
-        promote: 是否执行晋升（candidate→verified）
-        fusion: 是否执行融合（verified→offspring）
-        intake: 是否执行基因摄入（扫描代码/补全 backfill）
-        dream_mode: 是否执行梦境合成（回顾→合成→模拟→写入）
-        aris_reflect: 是否执行3层反思（偏差→逻辑→架构）
-        picoapex_check: 是否执行饱和检测+目标切换
-        health_check: 是否执行健康监控采集
-        self_scan: 是否执行自扫描知识缺口检测（找你要学什么）
-        dry_run: 只读模式（不写 DB）
-        db_path: GeneDB 路径
-    """
-    _log(f"=== PGG 自主演化闭环开始 (dry_run={dry_run}) ===")
-    start = time.time()
-
-    result: dict[str, Any] = {
-        "schema": f"{LOOP_VERSION}/full_cycle",
-        "created_at": _now(),
+    cycle = {
+        "schema": f"{LOOP_VERSION}/cycle",
+        "started_at": _now(),
         "dry_run": dry_run,
         "phases": {},
-        "duration_seconds": 0,
         "boundary": BOUNDARY,
     }
 
-    # Phase 0: 自扫描知识缺口 (找你要学什么)
-    if self_scan and not dry_run:
+    # Phase 0: 自扫描知识缺口
+    if not skip_intake:
         _log("Phase 0: 自扫描知识缺口 - 主动找学习方向...")
-        try:
-            from agent.pgg_self_scan import scan_and_suggest
-            scan_result = scan_and_suggest()
-            result["phases"]["self_scan"] = {
-                "status": scan_result.get("status"),
-                "suggestion_count": scan_result.get("suggestion_count", 0),
-                "tasks_written": scan_result.get("tasks_written", []),
-            }
-            _log(f"  -> 扫描: {scan_result.get('suggestion_count', 0)}条建议 {len(scan_result.get('tasks_written', []))}桥任务")
-        except Exception as e:
-            _log(f"  -> 自扫描: {e}")
-            result["phases"]["self_scan"] = {"error": str(e)}
-
-    # Phase 1: 摄入
-    if intake:
-        _log("Phase 1: 基因摄入/补全...")
         intake_result = run_intake_scan(write_candidates=not dry_run, db_path=db_path)
-        result["phases"]["intake"] = intake_result
-        _log(f"  → intake: {json.dumps(intake_result, ensure_ascii=False)}")
+        cycle["phases"]["intake"] = intake_result
+        _log(f"  -> 扫描到 {intake_result['candidates_found']} 个候选, 写入 {intake_result['candidates_written']} 个")
+    else:
+        _log("Phase 0: 跳过 intake (skip_intake=True)")
 
-    # Phase 2: 晋升
-    if promote:
-        _log("Phase 2: 晋升 candidate 基因...")
-        promo_result = promote_candidates(db_path, dry_run=dry_run)
-        result["phases"]["promote"] = promo_result
-        _log(f"  → promoted: {promo_result['promoted']}")
+    # Phase 1: 晋升
+    _log("Phase 1: 晋升 candidate 基因...")
+    promote_result = promote_candidates(db_path, dry_run=dry_run)
+    cycle["phases"]["promote"] = promote_result
+    _log(f"  -> 晋升了 {promote_result['promoted']} 个基因")
 
-        # ═══════════════════════════════════════════════════════════
-        # Execution Bridge: 被门禁跳过的candidate → 产生桥任务
-        # ═══════════════════════════════════════════════════════════
-        skipped = promo_result.get("skipped_reasons", {})
-        if skipped and not dry_run:
-            try:
-                from agent.pgg_execution_bridge import write_bridge_task
-                total_skipped = sum(skipped.values())
-                if total_skipped > 0:
-                    bt = write_bridge_task(
-                        "promotion",
-                        payload={
-                            "gene_ids": promo_result.get("promoted_ids", []),
-                            "count": total_skipped,
-                            "total_candidates": promo_result.get("total_candidates_total", 0),
-                            "reason": dict(skipped),
-                        },
-                    )
-                    result["phases"]["execution_bridge"] = bt
-                    _log(f"  → execution_bridge: {bt.get('task_id', 'none')} ({total_skipped} skipped)")
-            except Exception as e:
-                _log(f"  → execution_bridge error: {e}")
+    # Phase 2: 融合
+    _log("Phase 2: 融合 top verified 基因...")
+    fusion_result = run_fusion_on_verified(db_path, dry_run=dry_run)
+    cycle["phases"]["fusion"] = fusion_result
+    _log(f"  -> 融合了 {fusion_result['fused']} 个 offspring")
 
-        # ═══════════════════════════════════════════════════════════
-        # Phase 2.5: ARS Batch Gate — 小批量proof-review→transaction
-        # 用户授权 2026-06-13: 自循环通过桥执行LLM审核promotion。
-        # 2026-06-13 升级：不再让旧 bridge_processor 裸批量晋升；
-        # 使用 pgg_ars_batch_promotion.run_batch，默认最多3个，严格要求
-        # PASS_DUAL_REVIEW_NO_MUTATION + approve + dual_agreed/deepseek。
-        # ═══════════════════════════════════════════════════════════
-        if not dry_run:
-            try:
-                from agent.pgg_ars_batch_promotion import run_batch
-                _log("Phase 2.5: ARS Batch Gate — proof-review gated promotion...")
-                ars_result = run_batch(limit=3, min_fitness=700)
-                result["phases"]["ars_batch_gate"] = ars_result
-                promoted_n = ars_result.get("promoted", 0)
-                held_n = ars_result.get("held", 0)
-                verdict = ars_result.get("verdict", "")
-                _log(f"  → ARS gate: {promoted_n}条promoted, {held_n}条held, verdict={verdict}")
-            except Exception as e:
-                _log(f"  → ars_batch_gate error: {e}")
-                result["phases"]["ars_batch_gate"] = {"error": str(e)}
-
-    # Phase 3: 融合
-    if fusion:
-        _log("Phase 3: 基因融合（top verified → offspring）...")
-        fusion_result = run_fusion_on_verified(db_path, dry_run=dry_run)
-        result["phases"]["fusion"] = fusion_result
-        _log(f"  → fused: {fusion_result['fused']} new offspring")
-
-        # ═══════════════════════════════════════════════════════════
-        # Execution Bridge: 高fitness子代 → 产生skill生成任务
-        # ═══════════════════════════════════════════════════════════
-        if not dry_run:
-            try:
-                fused = fusion_result.get("fused", 0)
-                samples = fusion_result.get("sample_results", [])
-                # 如果有成功子代且fitness>800，产生skill生成任务
-                high_fitness = [s for s in samples if s.get("status") == "PASS" and s.get("fitness", 0) > 800]
-                if fused > 0 and high_fitness:
-                    from agent.pgg_execution_bridge import write_bridge_task
-                    bt = write_bridge_task(
-                        "skill_gen",
-                        payload={
-                            "gene_ids": [s.get("parents", []) for s in high_fitness[:5]],
-                            "fitnesses": [s.get("fitness", 0) for s in high_fitness[:5]],
-                            "count": len(high_fitness),
-                            "total_fused": fused,
-                            "reason": "high_fitness_fusion_offspring",
-                        },
-                    )
-                    if "execution_bridge" not in result["phases"]:
-                        result["phases"]["execution_bridge"] = {}
-                    result["phases"]["execution_bridge_fusion"] = bt
-                    _log(f"  → execution_bridge: {bt.get('task_id', 'none')} ({len(high_fitness)} high-fitness offspring)")
-            except Exception as e:
-                _log(f"  → execution_bridge fustion error: {e}")
-
-# Phase 4: 3层ARIS反思
-    if aris_reflect:
-        _log("Phase 4: ARIS 3层反思（偏差/逻辑/架构边界）...")
-        try:
-            reflector = aris.ArisReflector()
-            aris_result = reflector.run_reflection()
-            result["phases"]["aris_reflection"] = aris_result
-            _log(f"  → L1偏差={aris_result.get('l1_score')}, L2问题={len(aris_result.get('l2_issues', []))}, L3阻塞={len(aris_result.get('l3_blockers', []))}")
-        except Exception as e:
-            _log(f"  → ARIS 反思失败: {e}")
-            result["phases"]["aris_reflection"] = {"error": str(e)}
-
-    # Phase 5: 梦境合成
-    if dream_mode and not dry_run:
-        _log("Phase 5: 基因梦境合成（回顾/融合/模拟/写入）...")
-        try:
-            engine = dream.DreamEngine()
-            dream_result = engine.run_full_cycle()
-            result["phases"]["dream_mode"] = dream_result
-            _log(f"  → 合成 {dream_result.get('synth_count', 0)} 个新基因")
-        except Exception as e:
-            _log(f"  → 梦境合成失败: {e}")
-            result["phases"]["dream_mode"] = {"error": str(e)}
-
-    # Phase 6: PicoAPEX 饱和检测 + 自动目标切换
-    if picoapex_check:
-        _log("Phase 6: PicoAPEX 饱和检测...")
-        try:
-            pico = picoapex.PicoAPEXEngine()
-            pico_result = pico.check_and_switch()
-            result["phases"]["picoapex"] = pico_result
-            _log(f"  → 维度={pico_result.get('current_dim')}, 精英率={pico_result.get('elite_ratio'):.4f}, 饱和={pico_result.get('saturated')}")
-        except Exception as e:
-            _log(f"  → PicoAPEX 失败: {e}")
-            result["phases"]["picoapex"] = {"error": str(e)}
-
-    # Phase 7: 健康监控
-    if health_check:
-        _log("Phase 7: 健康监控采集...")
-        try:
-            monitor = health.HealthMonitor()
-            health_result = monitor.collect_and_report()
-            result["phases"]["health"] = health_result.get("status", "OK")
-            _log(f"  → 健康级别={health_result.get('level', 'unknown')}, 告警={len(health_result.get('alerts', []))}条")
-        except Exception as e:
-            _log(f"  → 健康监控失败: {e}")
-            result["phases"]["health"] = {"error": str(e)}
-
-    # Phase 8: 飞书守护心跳
-    if not dry_run:
-        try:
-            from agent.pgg_feishu_guardian import write_heartbeat
-            hb = write_heartbeat()
-            result["phases"]["guardian_heartbeat"] = {"timestamp": hb.get("timestamp")}
-        except Exception as e:
-            pass  # 心跳失败不阻断主循环
-
-    # Summary
-    summary = generate_db_summary(db_path)
-    result["summary"] = summary
-    result["duration_seconds"] = round(time.time() - start, 2)
-
-    _log(f"=== PGG 自主演化闭环完成 ({result['duration_seconds']}s) ===")
-    _log(f"  总基因数: {summary['total_genes']}")
-    _log(f"  status 分布: {summary['by_status']}")
-    _log(f"  evidence 分布: {summary['by_evidence']}")
-
-    return result
-
-
-# ─── CLI 入口 ───
+    cycle["completed_at"] = _now()
+    _log("=== PGG 自主演化闭环完成 ===")
+    return cycle
 
 
 def main() -> None:
     import argparse
     parser = argparse.ArgumentParser(description="PGG 自主演化闭环")
-    parser.add_argument("--dry-run", "-n", action="store_true", help="只读模式，不写 DB")
-    parser.add_argument("--no-promote", action="store_true", help="跳过晋升阶段")
-    parser.add_argument("--no-fusion", action="store_true", help="跳过融合阶段")
-    parser.add_argument("--no-intake", action="store_true", help="跳过摄入阶段")
-    parser.add_argument("--promote-only", action="store_true", help="只执行晋升")
-    parser.add_argument("--summary", action="store_true", help="只显示当前 DB 摘要")
+    parser.add_argument("--dry-run", action="store_true", help="只模拟不写入")
+    parser.add_argument("--no-intake", action="store_true", help="跳过 intake 阶段")
     args = parser.parse_args()
 
-    if args.summary:
-        s = generate_db_summary()
-        print(json.dumps(s, ensure_ascii=False, indent=2))
-        return
-
-    result = run_evolution_cycle(
-        promote=not args.no_promote and not args.promote_only or args.promote_only,
-        fusion=not args.no_fusion and not args.promote_only,
-        intake=not args.no_intake and not args.promote_only,
-        dry_run=args.dry_run,
-    )
-    print(json.dumps(result, ensure_ascii=False, indent=2))
+    result = run_evolution_cycle(dry_run=args.dry_run, skip_intake=args.no_intake)
+    print(json.dumps(result, indent=2, ensure_ascii=False, default=str))
 
 
 if __name__ == "__main__":

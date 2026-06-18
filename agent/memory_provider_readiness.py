@@ -1,7 +1,8 @@
 """Read-only readiness gate for external Hermes MemoryProvider activation.
 
 This module audits available memory-provider plugins and config state.  It does
-not enable providers, mutate config, connect to cloud memory, or print secrets.
+not enable providers, mutate config, connect to cloud memory, or print raw
+credential values.
 """
 
 from __future__ import annotations
@@ -50,7 +51,7 @@ def _provider_dirs() -> List[Path]:
     return sorted(out, key=lambda x: x.name)
 
 
-def _secret_presence_for(name: str) -> Dict[str, bool]:
+def _credential_env_presence_for(name: str) -> Dict[str, bool]:
     candidates = {
         "mem0": ["MEM0_API_KEY"],
         "supermemory": ["SUPERMEMORY_API_KEY"],
@@ -77,7 +78,7 @@ def _provider_summary(p: Path) -> Dict[str, Any]:
         "path": str(p),
         "privacy_risk": privacy,
         "tool_count": tool_count,
-        "secret_env_presence": _secret_presence_for(name),
+        "credential_env_presence": _credential_env_presence_for(name),
         "recommendation": recommendation,
     }
 
@@ -100,7 +101,7 @@ def audit_memory_provider_readiness() -> Dict[str, Any]:
         "recommended_provider": recommended,
         "recommended_next_step": "sandbox_eval_before_default_activation" if recommended else "no_provider_candidate_found",
         "config_modified": False,
-        "secrets_printed": False,
+        "credential_values_printed": False,
         "providers": providers,
         "boundary": "Read-only provider readiness gate; no config/provider/credential mutation.",
     }
@@ -116,7 +117,7 @@ def safe_summary(res: dict[str, Any]) -> dict[str, Any]:
         "recommended_provider": res.get("recommended_provider") or "",
         "recommended_next_step": res.get("recommended_next_step") or "",
         "config_modified": bool(res.get("config_modified")),
-        "secrets_printed": bool(res.get("secrets_printed")),
+        "credential_values_printed": bool(res.get("credential_values_printed")),
         "boundary": res.get("boundary"),
     }
 

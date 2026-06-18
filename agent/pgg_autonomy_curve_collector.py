@@ -42,7 +42,7 @@ def _tail_jsonl(path: Path, limit: int = 200) -> list[dict[str, Any]]:
 
 
 def collect() -> dict[str, Any]:
-    evolve_rows = _tail_jsonl(DATA / "pgg_github_evolution_pipeline_ledger.jsonl", 200)
+    evolve_rows = _tail_jsonl(DATA / "pgg_github_evolution_pipeline_ledger.jsonl", 50)
     statuses = [str(r.get("status") or "") for r in evolve_rows]
     pass_count = sum(s.startswith("PASS") for s in statuses)
     watch_count = sum(s.startswith("WATCH") or s.startswith("HOLD") for s in statuses)
@@ -59,7 +59,7 @@ def collect() -> dict[str, Any]:
             open_prs = []
 
     cron = _run(["hermes", "cron", "list", "--all"], timeout=30)
-    git = _run(["git", "-C", str(HOME / "hermes-agent"), "status", "--short", "--branch"], timeout=20)
+    git = _run(["git", "-C", str(HOME / "hermes-agent"), "status", "--porcelain=v1"], timeout=20)
 
     success_rate = round(pass_count / total, 4) if total else None
     readiness = 0

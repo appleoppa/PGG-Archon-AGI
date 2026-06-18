@@ -78,6 +78,21 @@ def _plugins_dir() -> Path:
     return plugins
 
 
+def _safe_path_under_root(path: Path, root: Path) -> Path:
+    """Resolve path and require it to stay under root."""
+    resolved_root = root.expanduser().resolve(strict=False)
+    candidate = path.expanduser().resolve(strict=False)
+    try:
+        candidate.relative_to(resolved_root)
+    except ValueError:
+        raise ValueError(f"path outside plugin root: {candidate}") from None
+    return candidate
+
+
+def _safe_plugin_child(root: Path, *parts: str) -> Path:
+    return _safe_path_under_root(root.joinpath(*parts), root)
+
+
 def _sanitize_plugin_name(
     name: str,
     plugins_dir: Path,
@@ -117,7 +132,7 @@ def _sanitize_plugin_name(
         if bad in name:
             raise ValueError(f"Invalid plugin name '{name}': must not contain '{bad}'.")
 
-    target = (plugins_dir / name).resolve()
+    target = _safe_plugin_child(plugins_dir, name)
     plugins_resolved = plugins_dir.resolve()
 
     if target == plugins_resolved:
@@ -179,7 +194,11 @@ def _repo_name_from_url(url: str) -> str:
 
 def _read_manifest(plugin_dir: Path) -> dict:
     """Read plugin.yaml and return the parsed dict, or empty dict."""
-    manifest_file = plugin_dir / "plugin.yaml"
+    try:
+        plugin_dir = plugin_dir.expanduser().resolve(strict=False)
+        manifest_file = _safe_plugin_child(plugin_dir, "plugin.yaml")
+    except (OSError, RuntimeError, ValueError):
+        return {}
     if not manifest_file.exists():
         return {}
     try:
@@ -198,9 +217,20 @@ def _copy_example_files(plugin_dir: Path, console) -> None:
     For example, ``config.yaml.example`` becomes ``config.yaml``.
     Skips files that already exist to avoid overwriting user config on reinstall.
     """
+    try:
+        plugin_dir = plugin_dir.expanduser().resolve(strict=False)
+    except (OSError, RuntimeError):
+        return
     for example_file in plugin_dir.glob("*.example"):
+        try:
+            example_file = _safe_path_under_root(example_file, plugin_dir)
+        except ValueError:
+            continue
         real_name = example_file.stem  # e.g. "config.yaml" from "config.yaml.example"
-        real_path = plugin_dir / real_name
+        try:
+            real_path = _safe_plugin_child(plugin_dir, real_name)
+        except ValueError:
+            continue
         if not real_path.exists():
             try:
                 shutil.copy2(example_file, real_path)
@@ -441,8 +471,8 @@ def _install_plugin_core(identifier: str, *, force: bool) -> tuple[Path, dict, s
 
         shutil.move(str(tmp_target), str(target))
 
-    has_yaml = (target / "plugin.yaml").exists() or (target / "plugin.yml").exists()
-    if not has_yaml and not (target / "__init__.py").exists():
+    has_yaml = _safe_plugin_child(target, "plugin.yaml").exists() or _safe_plugin_child(target, "plugin.yml").exists()
+    if not has_yaml and not _safe_plugin_child(target, "__init__.py").exists():
         logger.warning(
             "%s has no plugin.yaml / __init__.py; may not be a valid plugin",
             plugin_name,
@@ -493,8 +523,8 @@ def cmd_install(
         console.print(f"[red]Error:[/red] {e}")
         sys.exit(1)
 
-    if not (target / "plugin.yaml").exists() and not (target / "plugin.yml").exists() and not (
-        target / "__init__.py"
+    if not _safe_plugin_child(target, "plugin.yaml").exists() and not _safe_plugin_child(target, "plugin.yml").exists() and not (
+        _safe_plugin_child(target, "__init__.py")
     ).exists():
         console.print(
             f"[yellow]Warning:[/yellow] {installed_name} doesn't contain plugin.yaml "
@@ -552,7 +582,7 @@ def cmd_update(name: str) -> None:
         console.print(f"[red]Error:[/red] {e}")
         sys.exit(1)
 
-    if not (target / ".git").exists():
+    if not _safe_plugin_child(target, ".git").exists():
         console.print(
             f"[red]Error:[/red] Plugin '{name}' was not installed from git "
             f"(no .git directory). Cannot update."
@@ -707,7 +737,11 @@ def _plugin_exists(name: str) -> bool:
     # Installed: directory name or manifest name match in user plugins dir
     user_dir = _plugins_dir()
     if user_dir.is_dir():
-        if (user_dir / name).is_dir():
+        try:
+            user_candidate = _safe_plugin_child(user_dir, name)
+        except ValueError:
+            user_candidate = None
+        if user_candidate is not None and user_candidate.is_dir():
             return True
         for child in user_dir.iterdir():
             if not child.is_dir():
@@ -719,10 +753,13 @@ def _plugin_exists(name: str) -> bool:
     from hermes_cli.plugins import get_bundled_plugins_dir
     repo_plugins = get_bundled_plugins_dir()
     if repo_plugins.is_dir():
-        candidate = repo_plugins / name
-        if candidate.is_dir() and (
-            (candidate / "plugin.yaml").exists()
-            or (candidate / "plugin.yml").exists()
+        try:
+            candidate = _safe_plugin_child(repo_plugins, name)
+        except ValueError:
+            candidate = None
+        if candidate is not None and candidate.is_dir() and (
+            _safe_plugin_child(candidate, "plugin.yaml").exists()
+            or _safe_plugin_child(candidate, "plugin.yml").exists()
         ):
             return True
     return False
@@ -754,9 +791,12 @@ def _discover_all_plugins() -> list:
                 continue
             if source == "bundled" and d.name in {"memory", "context_engine"}:
                 continue
-            manifest_file = d / "plugin.yaml"
+            try:
+                manifest_file = _safe_plugin_child(d, "plugin.yaml")
+            except ValueError:
+                continue
             if not manifest_file.exists():
-                manifest_file = d / "plugin.yml"
+                manifest_file = _safe_plugin_child(d, "plugin.yml")
             if not manifest_file.exists():
                 continue
             name = d.name
@@ -775,7 +815,7 @@ def _discover_all_plugins() -> list:
             if name in seen and source == "bundled":
                 continue
             src_label = source
-            if source == "user" and (d / ".git").exists():
+            if source == "user" and _safe_plugin_child(d, ".git").exists():
                 src_label = "git"
             seen[name] = (name, version, description, src_label, d)
     return list(seen.values())
@@ -1448,7 +1488,7 @@ def dashboard_install_plugin(
         _save_disabled_set(dis)
 
     hint: str | None = None
-    ap = target / "after-install.md"
+    ap = _safe_plugin_child(target, "after-install.md")
     if ap.exists():
         hint = str(ap)
 
@@ -1495,7 +1535,10 @@ def _get_plugin_toolset_key(name: str) -> Optional[str]:
         for base in (get_bundled_plugins_dir(), _plugins_dir()):
             if not base.is_dir():
                 continue
-            candidate = base / name
+            try:
+                candidate = _safe_plugin_child(base, name)
+            except ValueError:
+                continue
             if candidate.is_dir():
                 manifest = _read_manifest(candidate)
                 for tool_name in manifest.get("provides_tools") or []:
@@ -1598,7 +1641,7 @@ def dashboard_update_user_plugin(name: str) -> dict[str, Any]:
             "error": f"Plugin '{name}' was not found under {_plugins_dir()}.",
         }
 
-    if not (target / ".git").exists():
+    if not _safe_plugin_child(target, ".git").exists():
         return {
             "ok": False,
             "error": f"Plugin '{name}' is not a git checkout; cannot pull updates.",
