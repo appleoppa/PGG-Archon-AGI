@@ -734,6 +734,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9b4f627cb1b25917193a259e49bdad08f671f8d9708acfd5fe0a8c1455d87220"
 
 [[package]]
+name = "pgg_actor_critic_review_gate"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "serde",
+ "serde_json",
+ "sha2",
+]
+
+[[package]]
 name = "pgg_capability_tree_gate"
 version = "0.1.0"
 dependencies = [
@@ -750,11 +760,41 @@ dependencies = [
 ]
 
 [[package]]
+name = "pgg_cc_cybernetics_absorption_gate"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "serde",
+ "serde_json",
+ "sha2",
+]
+
+[[package]]
 name = "pgg_cms_case_guard"
 version = "0.1.0"
 dependencies = [
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "pgg_control_curriculum_eval_gate"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "serde",
+ "serde_json",
+ "sha2",
+]
+
+[[package]]
+name = "pgg_control_loop_trace_gate"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "serde",
+ "serde_json",
+ "sha2",
 ]
 
 [[package]]
@@ -767,6 +807,32 @@ dependencies = [
 
 [[package]]
 name = "pgg_daa_governance_gate"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "serde_json",
+]
+
+[[package]]
+name = "pgg_durable_task_object_gate"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "serde",
+ "serde_json",
+ "sha2",
+]
+
+[[package]]
+name = "pgg_email_sync_governance_gate"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "serde_json",
+]
+
+[[package]]
+name = "pgg_email_sync_runner"
 version = "0.1.0"
 dependencies = [
  "chrono",
@@ -790,6 +856,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "pgg_feishu_learning_batch_gate"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "serde",
+ "serde_json",
+ "sha2",
+]
+
+[[package]]
+name = "pgg_feishu_ops_triptych_gate"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "pgg_gene_intake_pipeline"
 version = "0.1.0"
 dependencies = [
@@ -805,6 +890,136 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "rusqlite",
+ "serde",
+ "serde_json",
+ "sha2",
+]
+
+[[package]]
+name = "pgg_health_monitor_light_runner"
+version = "0.1.0"
+dependencies = [
+ "hex",
+ "serde",
+ "serde_json",
+ "sha2",
+]
+
+[[package]]
+name = "pgg_heartbeat_alert_delivery_gate"
+version = "0.1.0"
+dependencies = [
+ "hex",
+ "serde",
+ "serde_json",
+ "sha2",
+]
+
+[[package]]
+name = "pgg_heartbeat_alert_summarizer"
+version = "0.1.0"
+dependencies = [
+ "hex",
+ "serde",
+ "serde_json",
+ "sha2",
+]
+
+[[package]]
+name = "pgg_heartbeat_candidate_executor_preflight"
+version = "0.1.0"
+dependencies = [
+ "hex",
+ "serde",
+ "serde_json",
+ "sha2",
+]
+
+[[package]]
+name = "pgg_heartbeat_candidate_prioritizer"
+version = "0.1.0"
+dependencies = [
+ "hex",
+ "serde",
+ "serde_json",
+ "sha2",
+]
+
+[[package]]
+name = "pgg_heartbeat_capability_gap_probe"
+version = "0.1.0"
+dependencies = [
+ "hex",
+ "serde",
+ "serde_json",
+ "sha2",
+]
+
+[[package]]
+name = "pgg_heartbeat_evolution_planner"
+version = "0.1.0"
+dependencies = [
+ "hex",
+ "serde",
+ "serde_json",
+ "sha2",
+]
+
+[[package]]
+name = "pgg_heartbeat_gap_action_router"
+version = "0.1.0"
+dependencies = [
+ "hex",
+ "serde",
+ "serde_json",
+ "sha2",
+]
+
+[[package]]
+name = "pgg_heartbeat_light_runner"
+version = "0.1.0"
+dependencies = [
+ "hex",
+ "serde",
+ "serde_json",
+ "sha2",
+]
+
+[[package]]
+name = "pgg_heartbeat_mapping_gate"
+version = "0.1.0"
+dependencies = [
+ "hex",
+ "serde",
+ "serde_json",
+ "sha2",
+]
+
+[[package]]
+name = "pgg_heartbeat_plan_rotation_runner"
+version = "0.1.0"
+dependencies = [
+ "hex",
+ "serde",
+ "serde_json",
+ "sha2",
+]
+
+[[package]]
+name = "pgg_heartbeat_recommendation_candidate_gate"
+version = "0.1.0"
+dependencies = [
+ "hex",
+ "serde",
+ "serde_json",
+ "sha2",
+]
+
+[[package]]
+name = "pgg_heartbeat_replay_ledger_gate"
+version = "0.1.0"
+dependencies = [
+ "hex",
  "serde",
  "serde_json",
  "sha2",
@@ -847,6 +1062,24 @@ dependencies = [
 
 [[package]]
 name = "pgg_legal_receipt_template_pack"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "pgg_memory_stability_report"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "pgg_ops_lifecycle_gate"
 version = "0.1.0"
 dependencies = [
  "chrono",
@@ -928,6 +1161,17 @@ name = "pgg_sourceref_repair_runner"
 version = "0.1.0"
 dependencies = [
  "rusqlite",
+ "serde",
+ "serde_json",
+ "sha2",
+]
+
+[[package]]
+name = "pgg_workspace_candidate_report"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "hex",
  "serde",
  "serde_json",
  "sha2",

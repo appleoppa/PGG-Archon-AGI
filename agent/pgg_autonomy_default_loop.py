@@ -179,6 +179,7 @@ def run_probes() -> list[ProbeResult]:
     results.append(_run_prd_quality_probe())
     results.append(_run_engineering_discipline_probe())
     results.append(_run_self_evolution_security_risk_probe())
+    results.append(_run_email_sync_governance_probe())
     results.append(_run_capability_tree_probe())
     return results
 
@@ -407,6 +408,29 @@ def _run_self_evolution_security_risk_probe() -> ProbeResult:
         except Exception:
             return ProbeResult("self_evolution_security_risk", "WATCH", res["output"][:200])
     return ProbeResult("self_evolution_security_risk", "WATCH", f"rc={res['rc']} {res['output'][:200]}")
+
+
+
+def _run_email_sync_governance_probe() -> ProbeResult:
+    gate = HERMES_HOME / "bin" / "pgg-email-sync-governance-gate"
+    if not gate.exists():
+        return ProbeResult("email_sync_governance", "WATCH", "entry_point not found")
+    t0 = time.time()
+    res = _run([str(gate)], timeout=90)
+    if res["rc"] == 0:
+        try:
+            data = json.loads(res["output"])
+            status = data.get("status", "")
+            score = data.get("score", 0)
+            return ProbeResult(
+                "email_sync_governance",
+                "PASS" if status.startswith("PASS") else "WATCH",
+                f"{status} score={score} t={time.time()-t0:.0f}s",
+                {"data": data},
+            )
+        except Exception:
+            return ProbeResult("email_sync_governance", "WATCH", res["output"][:200])
+    return ProbeResult("email_sync_governance", "WATCH", f"rc={res['rc']} {res['output'][:200]}")
 
 
 def _run_capability_tree_probe() -> ProbeResult:
