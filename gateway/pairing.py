@@ -21,6 +21,7 @@ Storage: ~/.hermes/pairing/
 import hashlib
 import json
 import os
+import re
 import secrets
 import tempfile
 import threading
@@ -50,6 +51,26 @@ MAX_PENDING_PER_PLATFORM = 3        # Max pending codes per platform
 MAX_FAILED_ATTEMPTS = 5             # Failed approvals before lockout
 
 PAIRING_DIR = get_hermes_dir("platforms/pairing", "pairing")
+_PLATFORM_RE = re.compile(r"^[A-Za-z0-9_.-]+$")
+
+
+def _safe_pairing_path(path: Path) -> Path:
+    """Resolve a pairing store path and require it under PAIRING_DIR."""
+    root = PAIRING_DIR.expanduser().resolve(strict=False)
+    candidate = path.expanduser().resolve(strict=False)
+    try:
+        candidate.relative_to(root)
+    except ValueError:
+        raise ValueError(f"pairing path outside store root: {candidate}") from None
+    return candidate
+
+
+def _safe_platform_slug(platform: str) -> str:
+    """Return a filename-safe platform key for pairing JSON files."""
+    slug = str(platform or "").strip()
+    if not slug or not _PLATFORM_RE.fullmatch(slug):
+        raise ValueError(f"invalid pairing platform: {platform!r}")
+    return slug
 
 
 def _secure_write(path: Path, data: str) -> None:
@@ -89,21 +110,22 @@ class PairingStore:
     """
 
     def __init__(self):
-        PAIRING_DIR.mkdir(parents=True, exist_ok=True)
+        _safe_pairing_path(PAIRING_DIR).mkdir(parents=True, exist_ok=True)
         # Protects all read-modify-write cycles. The gateway runs multiple
         # platform adapters concurrently in threads sharing one PairingStore.
         self._lock = threading.RLock()
 
     def _pending_path(self, platform: str) -> Path:
-        return PAIRING_DIR / f"{platform}-pending.json"
+        return _safe_pairing_path(PAIRING_DIR / f"{_safe_platform_slug(platform)}-pending.json")
 
     def _approved_path(self, platform: str) -> Path:
-        return PAIRING_DIR / f"{platform}-approved.json"
+        return _safe_pairing_path(PAIRING_DIR / f"{_safe_platform_slug(platform)}-approved.json")
 
     def _rate_limit_path(self) -> Path:
-        return PAIRING_DIR / "_rate_limits.json"
+        return _safe_pairing_path(PAIRING_DIR / "_rate_limits.json")
 
     def _load_json(self, path: Path) -> dict:
+        path = _safe_pairing_path(path)
         if path.exists():
             try:
                 return json.loads(path.read_text(encoding="utf-8"))

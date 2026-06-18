@@ -261,6 +261,22 @@ def _normalize_board_slug(slug: Optional[str]) -> Optional[str]:
     return s
 
 
+def _safe_path_under_root(path: Path, root: Path) -> Path:
+    """Resolve path and require it to stay under root."""
+    resolved_root = root.expanduser().resolve(strict=False)
+    candidate = path.expanduser().resolve(strict=False)
+    try:
+        candidate.relative_to(resolved_root)
+    except ValueError:
+        raise ValueError(f"path outside kanban root: {candidate}") from None
+    return candidate
+
+
+def _safe_child_path(root: Path, *parts: str) -> Path:
+    """Join path parts under root after resolving traversal/symlinks."""
+    return _safe_path_under_root(root.joinpath(*parts), root)
+
+
 def kanban_home() -> Path:
     """Return the shared Hermes root that anchors the kanban board.
 
@@ -485,7 +501,7 @@ def attachments_root(board: Optional[str] = None) -> Path:
 
 def task_attachments_dir(task_id: str, board: Optional[str] = None) -> Path:
     """Return the per-task attachment directory ``<root>/<task_id>/``."""
-    return attachments_root(board=board) / task_id
+    return _safe_child_path(attachments_root(board=board), task_id)
 
 
 def worker_logs_dir(board: Optional[str] = None) -> Path:
@@ -500,8 +516,8 @@ def worker_logs_dir(board: Optional[str] = None) -> Path:
     if slug is None:
         slug = get_current_board()
     if slug == DEFAULT_BOARD:
-        return kanban_home() / "kanban" / "logs"
-    return board_dir(slug) / "logs"
+        return _safe_path_under_root(kanban_home() / "kanban" / "logs", kanban_home())
+    return _safe_path_under_root(board_dir(slug) / "logs", kanban_home())
 
 
 def board_metadata_path(board: Optional[str] = None) -> Path:
@@ -7491,7 +7507,7 @@ def worker_log_path(task_id: str, *, board: Optional[str] = None) -> Path:
     current-board file → default). The dispatcher always passes the
     board explicitly to avoid any resolution ambiguity when multiple
     boards exist."""
-    return worker_logs_dir(board=board) / f"{task_id}.log"
+    return _safe_child_path(worker_logs_dir(board=board), f"{task_id}.log")
 
 
 def read_worker_log(

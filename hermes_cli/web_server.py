@@ -845,6 +845,12 @@ def _safe_web_dist_path(*parts: str) -> Path:
     return _safe_path_under_roots(WEB_DIST.joinpath(*parts), [WEB_DIST])
 
 
+def _safe_import_archive_path(raw_path: str) -> Path:
+    """Resolve an import archive path under user-owned Hermes/project roots."""
+    roots = [get_hermes_home(), Path.home(), PROJECT_ROOT]
+    return _safe_path_under_roots(raw_path, roots)
+
+
 @app.get("/api/media")
 async def get_media(path: str):
     """Return a gateway-local image file as a base64 data URL.
@@ -6701,10 +6707,11 @@ async def run_import(body: ImportRequest):
     archive = (body.archive or "").strip()
     if not archive:
         raise HTTPException(status_code=400, detail="archive path is required")
-    if not os.path.isfile(archive):
+    archive_path = _safe_import_archive_path(archive)
+    if not archive_path.is_file():
         raise HTTPException(status_code=404, detail=f"Archive not found: {archive}")
     try:
-        proc = _spawn_hermes_action(["import", archive], "import")
+        proc = _spawn_hermes_action(["import", str(archive_path)], "import")
     except Exception as exc:
         _log.exception("Failed to spawn import")
         raise HTTPException(status_code=500, detail=f"Failed to run import: {exc}")
