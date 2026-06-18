@@ -150,9 +150,10 @@ class WecomCallbackAdapter(BasePlatformAdapter):
                 try:
                     await self._refresh_access_token(app)
                 except Exception as exc:
+                    from agent.redact import redact_sensitive_text
                     logger.warning(
                         "[WecomCallback] Initial token refresh failed for app '%s': %s",
-                        app.get("name", "default"), exc,
+                        app.get("name", "default"), redact_sensitive_text(str(exc), force=True),
                     )
             return True
         except Exception:

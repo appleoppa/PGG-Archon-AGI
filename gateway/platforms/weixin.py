@@ -1855,14 +1855,16 @@ class WeixinAdapter(BasePlatformAdapter):
                 try:
                     await _deliver_media(media_path, is_voice)
                 except Exception as exc:
-                    logger.warning("[%s] media delivery failed for %s: %s", self.name, media_path, exc)
+                    from agent.redact import redact_sensitive_text
+                    logger.warning("[%s] media delivery failed for %s: %s", self.name, redact_sensitive_text(str(media_path), force=True), redact_sensitive_text(str(exc), force=True))
 
             # Deliver bare local file paths.
             for file_path in local_files:
                 try:
                     await _deliver_media(file_path, is_voice=False)
                 except Exception as exc:
-                    logger.warning("[%s] local file delivery failed for %s: %s", self.name, file_path, exc)
+                    from agent.redact import redact_sensitive_text
+                    logger.warning("[%s] local file delivery failed for %s: %s", self.name, redact_sensitive_text(str(file_path), force=True), redact_sensitive_text(str(exc), force=True))
 
             # Deliver text content.
             chunks = [c for c in self._split_text(self.format_message(final_content)) if c and c.strip()]
@@ -1879,7 +1881,8 @@ class WeixinAdapter(BasePlatformAdapter):
                     await asyncio.sleep(self._send_chunk_delay_seconds)
             return SendResult(success=True, message_id=last_message_id)
         except Exception as exc:
-            logger.error("[%s] send failed to=%s: %s", self.name, _safe_id(chat_id), exc)
+            from agent.redact import redact_sensitive_text
+            logger.error("[%s] send failed to=%s: %s", self.name, _safe_id(chat_id), redact_sensitive_text(str(exc), force=True))
             return SendResult(success=False, error=str(exc))
 
     async def _ensure_typing_ticket(self, chat_id: str) -> Optional[str]:
@@ -2014,7 +2017,8 @@ class WeixinAdapter(BasePlatformAdapter):
             message_id = await self._send_file(chat_id, file_path, caption or "")
             return SendResult(success=True, message_id=message_id)
         except Exception as exc:
-            logger.error("[%s] send_document failed to=%s: %s", self.name, _safe_id(chat_id), exc)
+            from agent.redact import redact_sensitive_text
+            logger.error("[%s] send_document failed to=%s: %s", self.name, _safe_id(chat_id), redact_sensitive_text(str(exc), force=True))
             return SendResult(success=False, error=str(exc))
 
     async def send_video(

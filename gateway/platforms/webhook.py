@@ -822,7 +822,8 @@ class WebhookAdapter(BasePlatformAdapter):
         if deliver_type == "log":
             # Shouldn't reach here — startup validation rejects deliver_only
             # with deliver=log — but guard defensively.
-            logger.info("[webhook] direct-deliver log-only: %s", content[:200])
+            from agent.redact import redact_sensitive_text
+            logger.info("[webhook] direct-deliver log-only: %s", redact_sensitive_text(content[:200], force=True))
             return SendResult(success=True)
 
         if deliver_type == "github_comment":

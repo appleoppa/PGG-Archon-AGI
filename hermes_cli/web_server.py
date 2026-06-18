@@ -5086,7 +5086,8 @@ def _codex_full_login_worker(session_id: str) -> None:
             sess["status"] = "approved"
         _log.info("oauth/device: openai-codex login completed (session=%s)", session_id)
     except Exception as e:
-        _log.warning("codex device-code worker failed (session=%s): %s", session_id, e)
+        from agent.redact import redact_sensitive_text
+        _log.warning("codex device-code worker failed (session=%s): %s", session_id, redact_sensitive_text(str(e), force=True))
         with _oauth_sessions_lock:
             s = _oauth_sessions.get(session_id)
             if s:
