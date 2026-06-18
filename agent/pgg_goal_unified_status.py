@@ -129,8 +129,11 @@ def main() -> int:
     hermes_evolve = HERMES_BIN / "hermes-evolve"
     evolve_cmd = [str(hermes_evolve), "status"] if hermes_evolve.exists() else ["hermes-evolve", "status"]
     out, rc = run(evolve_cmd, 30)
-    # Use cached status file if live call fails (network timeout)
-    if rc != 0 or not out.strip():
+    # Non-zero rc can be a legitimate WATCH/BLOCKED business status while the
+    # command still emits structured JSON. Parse first; fall back to cached only
+    # when there is no output or the output is not parseable JSON.
+    data = load_json_or_error(out, "evolution_pipeline") if out.strip() else {"status": "ERROR"}
+    if not out.strip() or data.get("status") == "ERROR":
         cached_path = Path.home() / ".hermes/data/pgg_github_evolution_pipeline_latest.json"
         try:
             data = json.loads(cached_path.read_text())
@@ -138,8 +141,6 @@ def main() -> int:
             data["live_call_failed"] = True
         except Exception:
             data = {"status": "WATCH_GITHUB_EVOLUTION_PIPELINE", "blockers": ["live_call_failed_both"], "source": "unavailable"}
-    else:
-        data = load_json_or_error(out, "evolution_pipeline")
     # Some pipeline invocations return a non-zero rc for WATCH while still emitting
     # well-formed JSON. Prefer the structured status over a raw ERROR wrapper so
     # the /goal surface does not confuse an expected remediation state with a
