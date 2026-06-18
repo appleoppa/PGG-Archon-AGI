@@ -61,4 +61,5 @@ members = [
     "pgg_heartbeat_capability_gap_probe",
     "pgg_heartbeat_gap_action_router",
     "pgg_health_monitor_light_runner",
+    "pgg_token_cost_governance_status",
 ]
