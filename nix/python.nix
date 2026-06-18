@@ -48,6 +48,8 @@ let
       "alibabacloud-gateway-dingtalk"
       "alibabacloud-gateway-spi"
       "alibabacloud-tea"
+      "alibabacloud-tea-openapi"
+      "alibabacloud-tea-xml"
     ] (_: null));
 
   pythonPackageOverrides = final: _prev:
