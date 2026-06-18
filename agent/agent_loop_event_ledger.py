@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
 """Read-only observability ledger for PGGAgentLoopEvent/v1.
 
-Writes compact, secret-safe event metadata for Exec Dashboard aggregation.
+Writes compact, credential-safe event metadata for Exec Dashboard aggregation.
 No provider/config/scheduler/security mutation. Fail-open by design.
 """
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 import time
@@ -26,24 +25,22 @@ def _hermes_home() -> Path:
         return Path(os.environ.get("HERMES_HOME") or Path.home() / ".hermes")
 
 
-def _stable_hash(value: Any) -> str:
-    try:
-        raw = json.dumps(value, ensure_ascii=False, sort_keys=True, default=str)
-    except Exception:
-        raw = repr(value)
-    return hashlib.sha256(raw.encode("utf-8", "replace")).hexdigest()
+def _id_fingerprint(value: Any) -> dict[str, Any]:
+    """Return only non-identifying identifier shape metadata."""
+    raw = str(value or "")
+    return {"present": bool(raw), "length": len(raw)}
 
 
 def _arg_shape(args: Any) -> dict[str, Any]:
     """Return non-secret argument shape, never raw values."""
     if isinstance(args, Mapping):
         keys = sorted(str(k) for k in args.keys())[:50]
-        return {"kind": "object", "keys": keys, "sha256": _stable_hash(args)}
+        return {"kind": "object", "key_count": len(keys)}
     if isinstance(args, (list, tuple)):
-        return {"kind": "array", "len": len(args), "sha256": _stable_hash(args)}
+        return {"kind": "array", "len": len(args)}
     if args is None:
-        return {"kind": "null", "sha256": _stable_hash(args)}
-    return {"kind": type(args).__name__, "sha256": _stable_hash(args)}
+        return {"kind": "null"}
+    return {"kind": type(args).__name__}
 
 
 def append_agent_loop_event(event_type: str, **fields: Any) -> None:
@@ -57,32 +54,35 @@ def append_agent_loop_event(event_type: str, **fields: Any) -> None:
             "schema": "PGGAgentLoopEvent/v1",
             "type": event_type,
             "timestamp": time.time(),
-            "session_id": str(fields.get("session_id") or ""),
-            "task_id": fields.get("task_id") or None,
-            "turn_id": fields.get("turn_id") or None,
-            "step_id": fields.get("step_id") or None,
-            "phase_id": fields.get("phase_id") or None,
-            "model": fields.get("model") or None,
-            "provider": fields.get("provider") or None,
-            "tool_name": fields.get("tool_name") or None,
-            "tool_call_id": fields.get("tool_call_id") or None,
-            "api_request_id": fields.get("api_request_id") or None,
+            "session_ref": _id_fingerprint(fields.get("session_id")),
+            "task_ref": _id_fingerprint(fields.get("task_id")),
+            "turn_ref": _id_fingerprint(fields.get("turn_id")),
+            "step_ref": _id_fingerprint(fields.get("step_id")),
+            "phase_ref": _id_fingerprint(fields.get("phase_id")),
+            "model_ref": _id_fingerprint(fields.get("model")),
+            "provider_ref": _id_fingerprint(fields.get("provider")),
+            "tool_name_ref": _id_fingerprint(fields.get("tool_name")),
+            "tool_call_ref": _id_fingerprint(fields.get("tool_call_id")),
+            "api_request_ref": _id_fingerprint(fields.get("api_request_id")),
             "status": fields.get("status") or "observed",
-            "usage": fields.get("usage") or {},
+            "usage_shape": _arg_shape(fields.get("usage") or {}),
             "cost_usd": fields.get("cost_usd") if fields.get("cost_usd") is not None else None,
-            "boundary": fields.get("boundary") or "PGGAgentLoopEvent ledger; metadata/hash only; no raw args/results/secrets",
+            "boundary": fields.get("boundary") or "PGGAgentLoopEvent ledger; metadata/hash only; no raw args/results/credential values",
         }
         if "args" in fields:
             payload["args_shape"] = _arg_shape(fields.get("args"))
         if "summary_material" in fields:
-            payload["summary_hash"] = _stable_hash(fields.get("summary_material"))
+            payload["summary_shape"] = _arg_shape(fields.get("summary_material"))
         for key in (
-            "before_tokens", "after_tokens", "before_messages", "after_messages", "old_session_id", "new_session_id", "lossy",
+            "before_tokens", "after_tokens", "before_messages", "after_messages", "lossy",
             "result_subtype", "api_calls", "max_turns", "turn_exit_reason", "completed", "failed", "partial", "interrupted",
             "error_type",
         ):
             if key in fields:
                 payload[key] = fields.get(key)
+        for key in ("old_session_id", "new_session_id"):
+            if key in fields:
+                payload[key.replace("_id", "_ref")] = _id_fingerprint(fields.get(key))
         if "budget" in fields and isinstance(fields.get("budget"), Mapping):
             allowed_budget = {"max_turns", "max_wall_seconds", "max_budget_usd", "max_tool_calls", "max_write_ops", "budget_used", "budget_max"}
             payload["budget"] = {str(k): v for k, v in fields.get("budget", {}).items() if str(k) in allowed_budget}

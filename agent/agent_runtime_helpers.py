@@ -1207,6 +1207,26 @@ def anthropic_prompt_cache_policy(
         return True, True
     if (is_openrouter or is_nous_portal) and is_claude:
         return True, False
+
+    # ChuangAgent / 5yuantoken Claude is exposed as an OpenAI-wire proxy
+    # (``/v1/chat/completions`` or ``/v1/responses``) but still honours
+    # Anthropic-style ``cache_control`` markers on text parts.  Without this
+    # explicit branch, switching Claude between chat_completions and
+    # codex_responses leaves ``_use_prompt_caching`` false, so Hermes sends the
+    # same huge SOUL/tools/session prefix without cache breakpoints and the
+    # user's 5yuantoken dashboard reports full prompt burn.  Use the envelope
+    # layout so markers stay on content parts instead of native Anthropic
+    # top-level message/tool fields.
+    is_chuangagent_proxy = (
+        base_url_host_matches(eff_base_url, "5yuantoken.org")
+        or base_url_host_matches(eff_base_url, "chuangagent.eu.cc")
+    )
+    if is_chuangagent_proxy and is_claude and eff_api_mode in {
+        "chat_completions",
+        "codex_responses",
+    }:
+        return True, False
+
     # Nous Portal Qwen (e.g. qwen3.6-plus) takes the same envelope-layout
     # cache_control path as Portal Claude. Portal proxies to OpenRouter
     # and the upstream Qwen route accepts cache_control markers; without
@@ -1352,7 +1372,7 @@ def create_openai_client(agent, client_kwargs: dict, *, reason: str, shared: boo
                 keys_to_del = [k for k in result if k.lower().startswith("x-stainless-")]
                 for k in keys_to_del:
                     del result[k]
-                result["user-agent"] = "python-requests/2.32.3"
+                result["user-agent"] = "Hermes-Agent/1.0"
                 result["accept"] = "*/*"
                 return result
             _patched_headers._patched_for_header_block = True

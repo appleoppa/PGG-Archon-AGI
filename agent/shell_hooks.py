@@ -723,6 +723,43 @@ _SCRIPT_EXTENSIONS: Tuple[str, ...] = (
 )
 
 
+def _hook_script_allowed_root(path: Path) -> bool:
+    """Return True when a hook script path is inside local hook roots.
+
+    Hook doctor only needs to inspect user-controlled hook scripts. Bound
+    read-only stat/access probes before they touch the filesystem so a config
+    value cannot make the doctor probe arbitrary system paths.
+    """
+    roots = [Path.home(), Path(tempfile.gettempdir()), Path.cwd()]
+    try:
+        resolved = path.expanduser().resolve(strict=False)
+    except OSError:
+        return False
+    for root in roots:
+        try:
+            resolved.relative_to(root.expanduser().resolve(strict=False))
+            return True
+        except ValueError:
+            continue
+    return False
+
+
+def _safe_hook_script_path(command: str) -> Optional[Path]:
+    path = _command_script_path(command)
+    if not path:
+        return None
+    candidate = Path(os.path.expanduser(path))
+    if not candidate.is_absolute():
+        candidate = Path.cwd() / candidate
+    try:
+        resolved = candidate.resolve(strict=False)
+    except OSError:
+        return None
+    if not _hook_script_allowed_root(resolved):
+        return None
+    return resolved
+
+
 def _command_script_path(command: str) -> str:
     """Return the script path from ``command`` for doctor / drift checks.
 
@@ -791,14 +828,13 @@ def allowlist_entry_for(event: str, command: str) -> Optional[Dict[str, Any]]:
 
 def script_mtime_iso(command: str) -> Optional[str]:
     """ISO-8601 mtime of the resolved script path, or ``None`` if the
-    script is missing."""
-    path = _command_script_path(command)
-    if not path:
+    script is missing or outside local hook roots."""
+    resolved = _safe_hook_script_path(command)
+    if not resolved:
         return None
     try:
-        expanded = os.path.expanduser(path)
         return datetime.fromtimestamp(
-            os.path.getmtime(expanded), tz=timezone.utc,
+            os.path.getmtime(resolved), tz=timezone.utc,
         ).isoformat().replace("+00:00", "Z")
     except OSError:
         return None
@@ -812,19 +848,19 @@ def script_is_executable(command: str) -> bool:
     /path/hook.py``, ``/usr/bin/env bash hook.sh``) the script just has
     to be readable — the interpreter doesn't care about the ``X_OK``
     bit.  Mirrors what ``_spawn`` would actually do at runtime."""
-    path = _command_script_path(command)
-    if not path:
+    resolved = _safe_hook_script_path(command)
+    if not resolved:
         return False
-    expanded = os.path.expanduser(path)
-    if not os.path.isfile(expanded):
+    if not os.path.isfile(resolved):
         return False
     try:
         argv = shlex.split(command)
     except ValueError:
         return False
+    path = _command_script_path(command)
     is_bare_invocation = bool(argv) and argv[0] == path
     required = os.X_OK if is_bare_invocation else os.R_OK
-    return os.access(expanded, required)
+    return os.access(resolved, required)
 
 
 def run_once(

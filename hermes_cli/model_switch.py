@@ -35,6 +35,7 @@ from hermes_cli.providers import (
 from hermes_cli.model_normalize import (
     normalize_model_for_provider,
 )
+from utils import base_url_host_matches
 from agent.models_dev import (
     ModelCapabilities,
     ModelInfo,
@@ -1704,7 +1705,7 @@ def list_authenticated_providers(
             # explicit models: dict — avoid a misleading zero count in /model.
             if not models_list:
                 url_lower = str(api_url).strip().lower()
-                if "api.openai.com" in url_lower:
+                if base_url_host_matches(url_lower, "api.openai.com"):
                     fb = curated.get("openai") or []
                     if fb:
                         models_list = list(fb)

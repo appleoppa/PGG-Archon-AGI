@@ -1254,12 +1254,13 @@ def cache_document_from_bytes(data: bytes, filename: str) -> str:
     # Sanitize: strip directory components, null bytes, and control characters
     safe_name = Path(filename).name if filename else "document"
     safe_name = safe_name.replace("\x00", "").strip()
+    safe_name = re.sub(r"[^A-Za-z0-9._ -]+", "_", safe_name).strip(" .")
     if not safe_name or safe_name in {".", ".."}:
         safe_name = "document"
     cached_name = f"doc_{uuid.uuid4().hex[:12]}_{safe_name}"
-    filepath = cache_dir / cached_name
+    filepath = (cache_dir / cached_name).resolve(strict=False)
     # Final safety check: ensure path stays inside cache dir
-    if not filepath.resolve().is_relative_to(cache_dir.resolve()):
+    if not filepath.is_relative_to(cache_dir.resolve(strict=False)):
         raise ValueError(f"Path traversal rejected: {filename!r}")
     filepath.write_bytes(data)
     return str(filepath)

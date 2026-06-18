@@ -225,6 +225,7 @@ def build_status(*, repo_root: Path = DEFAULT_REPO) -> dict[str, Any]:
         and bool(safety.get("require_human_or_llm_review_for_pr", False))
         and bool(pr_stage.get("enabled", False))
     )
+    # Core checks — only read-only / safety invariants that must always PASS
     checks = {
         "config_present": Path(ensure["path"]).exists(),
         "self_status_non_skillflow_core_pass": self_non_skillflow_ok,
@@ -232,14 +233,26 @@ def build_status(*, repo_root: Path = DEFAULT_REPO) -> dict[str, Any]:
         "github_source_readable": _github_source_readable(gh),
         "auto_merge_disabled": not bool(safety.get("auto_merge", False)),
         "direct_default_push_disabled": str(safety.get("push_target", "")).lower() != "default_branch",
+    }
+    # Capabilities — write/PR power that is optional for read-only status monitoring.
+    # Only promoted to blocker when explicit write mode is requested.
+    capabilities = {
         "scoped_bot_branch_pr_enabled": scoped_bot_write_enabled,
     }
     blockers = [name for name, ok in checks.items() if not ok]
+    write_expected = (
+        bool(pr_stage.get("enabled", False))
+        or bool(safety.get("auto_push", False))
+        or bool(safety.get("auto_pr", False))
+    )
+    if write_expected and not scoped_bot_write_enabled:
+        blockers.append("scoped_bot_branch_pr_enabled")
     return {
         "schema": "PGGGithubEvolutionPipelineStatus/v1",
         "generated_at": _now(),
         "status": "PASS_GITHUB_EVOLUTION_PIPELINE_BOUNDED" if not blockers else "WATCH_GITHUB_EVOLUTION_PIPELINE",
         "checks": checks,
+        "capabilities": capabilities,
         "blockers": blockers,
         "config": ensure,
         "launchd_probe": launchd.to_json_dict(),
@@ -247,7 +260,7 @@ def build_status(*, repo_root: Path = DEFAULT_REPO) -> dict[str, Any]:
         "github_auth_status": _github_auth_status(gh),
         "self_status": {"status": self_status.get("status"), "checks": self_status.get("checks"), "blockers": self_status.get("blockers"), "latest": self_status.get("_latest_path")},
         "git": git_state,
-        "write_mode": "scoped_bot_branch_pr_enabled" if checks.get("scoped_bot_branch_pr_enabled") else "read_only_or_blocked",
+        "write_mode": "scoped_bot_branch_pr_enabled" if capabilities.get("scoped_bot_branch_pr_enabled") else "read_only_or_blocked",
         "boundary": "Bounded pipeline status only; scoped bot branch + PR may be enabled when gates pass; no auto-merge, no default-branch direct push, no scheduler/security/provider/production route mutation.",
     }
 
