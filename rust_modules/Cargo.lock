@@ -1026,6 +1026,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "pgg_launchd_omnibus"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "serde_json",
+ "sha2",
+]
+
+[[package]]
 name = "pgg_legal_multiagent_ops_gate"
 version = "0.1.0"
 dependencies = [

@@ -63,4 +63,5 @@ members = [
     "pgg_health_monitor_light_runner",
     "pgg_token_cost_governance_status",
     "pgg_neuron_autoevolve_guard",
+    "pgg_launchd_omnibus",
 ]
