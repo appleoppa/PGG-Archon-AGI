@@ -267,9 +267,8 @@ def check_website_access(url: str, config_path: Optional[Path] = None) -> Option
     for rule in policy.get("rules", []):
         pattern = rule.get("pattern", "")
         if _match_host_against_rule(host, pattern):
-            from agent.redact import redact_sensitive_text
-            logger.info("Blocked URL %s — matched rule '%s' from %s",
-                        redact_sensitive_text(url, force=True), pattern, rule.get("source", "config"))
+            logger.info("Blocked URL host=%s — matched rule '%s' from %s",
+                        host, pattern, rule.get("source", "config"))
             return {
                 "url": url,
                 "host": host,
