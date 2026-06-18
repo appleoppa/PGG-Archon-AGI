@@ -35,4 +35,5 @@ members = [
     "pgg_legal_receipt_queue",
     "pgg_legal_receipt_template_pack",
     "pgg_legal_receipt_executor",
+    "pgg_self_evolution_security_risk_gate",
 ]
