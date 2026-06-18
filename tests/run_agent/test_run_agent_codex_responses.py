@@ -300,6 +300,50 @@ def test_build_api_kwargs_codex(monkeypatch):
     assert "extra_body" not in kwargs
 
 
+def test_codex_responses_preserves_cache_control_when_enabled(monkeypatch):
+    """ChuangAgent/5yuantoken Claude Responses needs cache_control markers.
+
+    The generic Responses converter strips unknown content-part keys for strict
+    OpenAI compatibility.  When Hermes has explicitly enabled prompt caching
+    with envelope layout, the marker must survive into ``input`` or Claude pays
+    full prompt cost every turn.
+    """
+    _patch_agent_bootstrap(monkeypatch)
+    agent = run_agent.AIAgent(
+        model="claude-sonnet-4-6",
+        provider="custom",
+        api_mode="codex_responses",
+        base_url="https://5yuantoken.org/v1",
+        api_key="claude-token",
+        quiet_mode=True,
+        max_iterations=4,
+        skip_context_files=True,
+        skip_memory=True,
+    )
+    agent._cleanup_task_resources = lambda task_id: None
+    agent._persist_session = lambda messages, history=None: None
+    agent._save_trajectory = lambda messages, user_message, completed: None
+    agent._use_prompt_caching = True
+    agent._use_native_cache_layout = False
+
+    kwargs = agent._build_api_kwargs(
+        [
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": "stable prefix",
+                        "cache_control": {"type": "ephemeral"},
+                    }
+                ],
+            }
+        ]
+    )
+
+    assert kwargs["input"][0]["content"][0]["cache_control"] == {"type": "ephemeral"}
+
+
 def test_build_api_kwargs_codex_clamps_minimal_effort(monkeypatch):
     """'minimal' reasoning effort is clamped to 'low' on the Responses API.
 

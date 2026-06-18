@@ -17,7 +17,7 @@ from typing import Any, Mapping
 
 from agent.controlled_auto_core_patch import controlled_auto_core_patch
 
-DEFAULT_GENE_DB_PATH = Path("/Users/appleoppa/.hermes/workspace/开智/02-进化基因/apex_evolution_genes.sqlite3")
+DEFAULT_GENE_DB_PATH = Path("/Users/appleoppa/.hermes/workspace/04_knowledge/开智/02-进化基因/apex_evolution_genes.sqlite3")
 DEFAULT_AUDIT_DIR = Path("/Users/appleoppa/.hermes/workspace/agi-routing/auto-promotions")
 
 

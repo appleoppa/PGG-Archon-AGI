@@ -63,7 +63,9 @@ LLM_API_URL = "https://5yuantoken.org/v1/chat/completions"
 LLM_MODEL = "gpt-5.5-turbo"
 LLM_TIMEOUT = 30
 
-# --- Dual-channel adversarial constants ---
+# --- Claude on 5yuantoken: MUST use /v1/responses (codex_responses mode). ---
+#     /v1/chat/completions on 5yuantoken Claude burns full prompt without caching.
+CLAUDE_API_URL = "https://5yuantoken.org/v1/responses"
 CLAUDE_MODEL = "claude-sonnet-4-6"
 CLAUDE_KEY_ENV = "CLAUDE_OPUS47_5YUANTOKEN_API_KEY"
 DEEPSEEK_URL = "https://api.deepseek.com/v1/chat/completions"
@@ -92,12 +94,17 @@ def _read_env_key(key_name: str) -> str:
 
 
 def _llm_call(payload: str, api_key: str, base_url: str, timeout: int = LLM_TIMEOUT) -> dict[str, Any]:
-    """通用 LLM 调用：curl → 解析 → 返回结构化的 decision/confidence/reason。"""
+    """通用 LLM 调用：curl → 解析 → 返回 decision/confidence/reason。
+    
+    兼容 /v1/chat/completions (choices[...].message.content) 和
+    /v1/responses (output[...].content[...].text) 两种格式。
+    """
     try:
         r = subprocess.run(
             ["curl", "-s", "-m", str(timeout),
              "-X", "POST", base_url,
              "-H", "Content-Type: application/json",
+             "-H", "User-Agent: Hermes-Agent/1.0",
              "-H", f"Authorization: Bearer {api_key}",
              "-d", payload],
             capture_output=True, text=True, timeout=timeout + 5,
@@ -111,7 +118,15 @@ def _llm_call(payload: str, api_key: str, base_url: str, timeout: int = LLM_TIME
 
         try:
             resp = json.loads(output)
-            content = resp.get("choices", [{}])[0].get("message", {}).get("content", "")
+            # 兼容 chat_completions 和 codex_responses 两种响应格式
+            content = ""
+            if "choices" in resp:
+                content = resp.get("choices", [{}])[0].get("message", {}).get("content", "")
+            elif "output" in resp:
+                for item in resp.get("output", []):
+                    for cpart in item.get("content", []):
+                        if cpart.get("type") == "output_text":
+                            content += cpart.get("text", "")
             content = content.strip()
             if content.startswith("```"):
                 content = content.split("```")[1]
@@ -195,17 +210,50 @@ def _llm_review_gene(gene: dict[str, Any]) -> dict[str, Any]:
 
 
 def _claude_review_gene(gene: dict[str, Any]) -> dict[str, Any]:
-    """通道2（Claude Opus 4.6）：逻辑边界与一致性审核。"""
+    """通道2（Claude Opus 4.6）：逻辑边界与一致性审核。通过 /v1/responses (codex_responses mode)。"""
     prompt = _build_review_prompt(gene, CLAUDE_RULES_EXTRA)
     api_key = _read_env_key(CLAUDE_KEY_ENV)
     if not api_key:
         return {"decision": "error", "confidence": 0, "reason": "claude_key_not_found"}
+    # 将静态规则与基因特定信息分离，让静态规则可以被 5yuantoken 缓存
+    # static rules: 评估标准的固定部分（跨基因相同）
+    static_rules = (
+        'Evaluate this candidate gene for promotion to verified status.\n'
+        '\n'
+        'Required criteria:\n'
+        '1. Must have absorbed_knowledge (with signals_match field) ✅\n'
+        '2. Must have evidence_grade (non-empty) ✅\n'
+        '3. Must have source_refs_json (non-empty, >10 chars) ✅\n'
+        '4. fitness >= 700\n'
+        '5. Dream fusion offspring (dream_auto_fusion_*) fitness>1000 & evidence>=B → auto-approve\n'
+        '6. Gene intake genes (pgg_gene_*) fitness>800 & evidence>=B → auto-approve\n'
+        + CLAUDE_RULES_EXTRA
+    )
+    # 基因特定信息（每次不同）
+    gene_info = (
+        f'Gene info:\n'
+        f'  ID: {gene["gene_id"]}\n'
+        f'  Name: {gene["gene_name"]}\n'
+        f'  fitness: {gene["fitness"]}\n'
+        f'  evidence_grade: {gene["evidence_grade"]}\n'
+        f'  gate_type: {gene["gate_type"]}\n'
+        f'  severity_rank: {gene["severity_rank"]}\n'
+        '\nRespond ONLY with JSON (no extra text):\n'
+        '{"decision": "approve" or "reject", "confidence": 0-100, "reason": "one sentence reason"}'
+    )
+    # codex_responses 格式：静态规则带 cache_control，基因信息不带
+    # 5yuantoken 支持在 /v1/responses 的 input 块上设置 cache_control
     payload = json.dumps({
-        "model": CLAUDE_MODEL, "messages": [{"role": "user", "content": prompt}],
-        "max_tokens": 150, "temperature": 0.1,
+        "model": CLAUDE_MODEL,
+        "input": [
+            {"type": "input_text", "text": static_rules, "cache_control": {"type": "ephemeral"}},
+            {"type": "input_text", "text": gene_info},
+        ],
+        "max_output_tokens": 150, "temperature": 0.1,
     })
     # Claude on 5yuantoken gateway has higher latency than GPT; use 60s timeout
-    result = _llm_call(payload, api_key, LLM_API_URL, timeout=60)
+    # MUST use /v1/responses — /v1/chat/completions burns full prompt without caching
+    result = _llm_call(payload, api_key, CLAUDE_API_URL, timeout=60)
     result["channel"] = "claude"
     return result
 
@@ -568,16 +616,24 @@ def _dual_channel_review(gene: dict[str, Any], stats: dict) -> dict[str, Any]:
 
 
 def _probe_availability(api_key: str, model: str) -> bool:
-    """探测LLM可达性。"""
+    """探测LLM可达性。Claude 用 /v1/responses, GPT 用 /v1/chat/completions。"""
+    is_claude = model == CLAUDE_MODEL
+    url = CLAUDE_API_URL if is_claude else LLM_API_URL
     try:
+        if is_claude:
+            payload = json.dumps({"model": model, "input": [{"type": "input_text", "text": "ping"}], "max_output_tokens": 5})
+        else:
+            payload = json.dumps({"model": model, "messages": [{"role": "user", "content": "ping"}], "max_tokens": 5})
         tr = subprocess.run(
             ["curl", "-s", "-m", "5",
-             "-X", "POST", LLM_API_URL,
+             "-X", "POST", url,
              "-H", "Content-Type: application/json",
              "-H", f"Authorization: Bearer {api_key}",
-             "-d", json.dumps({"model": model, "messages": [{"role": "user", "content": "ping"}], "max_tokens": 5})],
+             "-d", payload],
             capture_output=True, text=True, timeout=10,
         )
+        if is_claude:
+            return "output" in tr.stdout
         return "choices" in tr.stdout
     except Exception:
         return False

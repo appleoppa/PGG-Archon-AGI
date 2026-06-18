@@ -19,6 +19,9 @@ def test_append_loop_result_event_preserves_result_subtype_and_budget(tmp_path, 
     ledger = tmp_path / "data" / "pgg_agent_loop_event_ledger.jsonl"
     row = json.loads(ledger.read_text().splitlines()[-1])
     assert row["type"] == "loop_result"
+    assert row["session_ref"]["present"] is True
+    assert row["session_ref"]["length"] == 2
+    assert "session_id" not in row
     assert row["result_subtype"] == "error_max_turns"
     assert row["api_calls"] == 3
     assert row["budget"]["max_turns"] == 3
@@ -58,7 +61,7 @@ def test_handle_function_call_unknown_tool_emits_error_tool_invalid(tmp_path, mo
     ledger = tmp_path / "data" / "pgg_agent_loop_event_ledger.jsonl"
     rows = [json.loads(line) for line in ledger.read_text().splitlines()]
     tool_rows = [r for r in rows if r.get("type") == "tool_result"]
-    assert tool_rows[-1]["session_id"] == "s-invalid"
+    assert tool_rows[-1]["session_ref"]["length"] == len("s-invalid")
     assert tool_rows[-1]["result_subtype"] == "error_tool_invalid"
     assert tool_rows[-1]["error_type"] == "unknown_tool"
 
@@ -76,8 +79,8 @@ def test_parse_tool_call_args_json_error_emits_error_tool_json(tmp_path, monkeyp
     ledger = tmp_path / "data" / "pgg_agent_loop_event_ledger.jsonl"
     row = json.loads(ledger.read_text().splitlines()[-1])
     assert row["type"] == "tool_result"
-    assert row["session_id"] == "s-json"
-    assert row["tool_name"] == "read_file"
+    assert row["session_ref"]["length"] == len("s-json")
+    assert row["tool_name_ref"]["length"] == len("read_file")
     assert row["result_subtype"] == "error_tool_json"
     assert row["error_type"] == "json_parse_error"
 
@@ -103,6 +106,6 @@ def test_acp_edit_denial_emits_blocked_permission(tmp_path, monkeypatch):
     ledger = tmp_path / "data" / "pgg_agent_loop_event_ledger.jsonl"
     rows = [json.loads(line) for line in ledger.read_text().splitlines()]
     tool_rows = [r for r in rows if r.get("type") == "tool_result"]
-    assert tool_rows[-1]["session_id"] == "s-permission"
+    assert tool_rows[-1]["session_ref"]["length"] == len("s-permission")
     assert tool_rows[-1]["result_subtype"] == "blocked_permission"
     assert tool_rows[-1]["error_type"] == "edit_approval_denied"

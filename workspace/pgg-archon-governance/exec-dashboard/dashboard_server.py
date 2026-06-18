@@ -11,6 +11,34 @@ HERMES_DATA = HOME / '.hermes' / 'data'
 DASH_DIR = Path(__file__).parent
 AGENT_LOG = HOME / '.hermes' / 'logs' / 'agent.log'
 
+
+def _safe_data_path(raw_path: str | Path) -> Path | None:
+    """Resolve a data/log path under ~/.hermes before file I/O."""
+    roots = [HERMES_DATA.resolve(strict=False), (HOME / '.hermes' / 'logs').resolve(strict=False)]
+    candidate = Path(raw_path)
+    if not candidate.is_absolute():
+        candidate = HERMES_DATA / candidate
+    candidate = candidate.expanduser().resolve(strict=False)
+    for root in roots:
+        try:
+            candidate.relative_to(root)
+            return candidate
+        except ValueError:
+            continue
+    return None
+
+
+def _safe_dashboard_static_path(raw_path: str) -> Path | None:
+    """Resolve a URL path under DASH_DIR before serving static files."""
+    rel = raw_path.lstrip('/')
+    candidate = (DASH_DIR / rel).resolve(strict=False)
+    try:
+        candidate.relative_to(DASH_DIR.resolve(strict=False))
+    except ValueError:
+        return None
+    return candidate
+
+
 _cache = {}
 _cache_ts = 0
 _CACHE_TTL = 5  # seconds
@@ -18,8 +46,8 @@ _CACHE_TTL = 5  # seconds
 def load_jsonl(path, key=None):
     """Load a JSONL file, return list of parsed dicts"""
     result = []
-    p = HERMES_DATA / path
-    if not p.exists():
+    p = _safe_data_path(path)
+    if p is None or not p.exists():
         return result
     for line in p.read_text(errors='replace').strip().split('\n'):
         line = line.strip()
@@ -36,8 +64,8 @@ def load_jsonl(path, key=None):
 
 def load_json(path):
     """Load a single JSON file"""
-    p = HERMES_DATA / path
-    if not p.exists():
+    p = _safe_data_path(path)
+    if p is None or not p.exists():
         return {}
     try:
         return json.loads(p.read_text(errors='replace'))
@@ -46,10 +74,11 @@ def load_json(path):
 
 def tail_log(n=500):
     """Tail agent.log for last N lines"""
-    if not AGENT_LOG.exists():
+    log_path = _safe_data_path(AGENT_LOG)
+    if log_path is None or not log_path.exists():
         return []
     try:
-        text = AGENT_LOG.read_text(errors='replace')
+        text = log_path.read_text(errors='replace')
         lines = text.strip().split('\n')
         return lines[-n:]
     except:
@@ -569,8 +598,8 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                     self.wfile.write(b'<html><body><h1>Dashboard not found</h1></body></html>')
             return
         
-        static_path = DASH_DIR / path.lstrip('/')
-        if static_path.exists() and static_path.is_file():
+        static_path = _safe_dashboard_static_path(path)
+        if static_path and static_path.exists() and static_path.is_file():
             ext = static_path.suffix
             ct_map = {'.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css',
                       '.png': 'image/png', '.jpg': 'image/jpeg', '.svg': 'image/svg+xml'}

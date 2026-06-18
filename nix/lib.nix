@@ -21,7 +21,7 @@ let
 
   # Single npm deps fetch from the workspace root lockfile.
   # All workspace packages share this derivation.
-  npmDepsHash = "sha256-g7+u07CzeSXxS/Nw+6zIOb2OEt+sW4tvf4tIAjcICoA=";
+  npmDepsHash = "sha256-c2ME4v69j0xoUQ1SY2PsDoZMHg3DbDJAUehzy03u/jk=";
 
   npmDeps = pkgs.fetchNpmDeps {
     inherit src;
@@ -242,6 +242,18 @@ in
       # strips from the deps cache, tripping npmConfigHook). So when prefetch
       # claims the hash is current, confirm with a real consumer build before
       # believing it.
+      if [ "$NEW_HASH" != "$OLD_HASH" ]; then
+        # prefetch-npm-deps can disagree with fetchNpmDeps. Before reporting a
+        # stale lockfile, verify whether the committed hash already builds the
+        # real fixed-output npmDeps derivation. If it does, the flake failure is
+        # not a stale npm hash; leave the current hash alone and surface the
+        # real downstream failure honestly.
+        if nix build ".#${attr}.npmDeps" --no-link --print-build-logs >/dev/null 2>&1; then
+          echo "prefetch-npm-deps suggests $NEW_HASH but committed fetchNpmDeps hash $OLD_HASH builds; treating as non-stale" >&2
+          NEW_HASH="$OLD_HASH"
+        fi
+      fi
+
       if [ "$NEW_HASH" = "$OLD_HASH" ]; then
         if VERIFY_OUT=$(nix build ".#${attr}" --no-link --print-build-logs 2>&1); then
           echo "ok"

@@ -396,6 +396,248 @@ def _extract_first_json_object(text: str) -> dict:
     raise json.JSONDecodeError("no top-level JSON object found", text or "", 0)
 
 
+# ── Pattern 15/16: Rust binary self-healing ───────────────────────────
+
+SELF_HEALING_DATA = DATA / "self-healing"
+RUST_WORKSPACE = REPO / "rust_modules"
+RUST_TARGET_RELEASE = RUST_WORKSPACE / "target" / "release"
+
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _append_jsonl(path: Path, row: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as fh:
+        fh.write(json.dumps(row, ensure_ascii=False, default=str) + "\n")
+
+
+def _load_toml(path: Path) -> dict[str, Any]:
+    try:
+        import tomllib  # Python 3.11+
+    except ModuleNotFoundError:  # pragma: no cover - compatibility fallback
+        import tomli as tomllib  # type: ignore
+    return tomllib.loads(path.read_text(encoding="utf-8"))
+
+
+def _workspace_members() -> list[str]:
+    data = _load_toml(RUST_WORKSPACE / "Cargo.toml")
+    members = data.get("workspace", {}).get("members", [])
+    return [str(m) for m in members]
+
+
+def _rust_workspace_inventory() -> dict[str, Any]:
+    """Return workspace package/member/bin inventory for cargo repair actions."""
+    members = _workspace_members()
+    packages: dict[str, dict[str, Any]] = {}
+    binaries: dict[str, dict[str, Any]] = {}
+    for member in members:
+        cargo_toml = RUST_WORKSPACE / member / "Cargo.toml"
+        if not cargo_toml.exists():
+            continue
+        try:
+            data = _load_toml(cargo_toml)
+        except Exception as exc:
+            packages[member] = {"member": member, "error": f"{type(exc).__name__}: {exc}", "bins": []}
+            continue
+        package_name = str(data.get("package", {}).get("name") or member)
+        bins = [str(item.get("name")) for item in data.get("bin", []) if item.get("name")]
+        if not bins and (RUST_WORKSPACE / member / "src" / "main.rs").exists():
+            bins = [package_name]
+        info = {"member": member, "package": package_name, "bins": bins}
+        packages[package_name] = info
+        for binary in bins:
+            binaries[binary] = info
+    return {"members": members, "packages": packages, "binaries": binaries}
+
+
+def _is_rust_release_target(path: Path) -> bool:
+    try:
+        rel = path.resolve(strict=False).relative_to(RUST_TARGET_RELEASE.resolve(strict=False))
+        return len(rel.parts) == 1 and bool(rel.parts[0])
+    except ValueError:
+        return False
+
+
+class Pattern15BrokenSymlink:
+    """Pattern 15 — scan ~/.hermes/bin broken symlinks and repair Rust release targets."""
+
+    interval_seconds = 3600
+    log_path = SELF_HEALING_DATA / "broken-symlink-fix.jsonl"
+
+    def __init__(self, bin_dir: str | Path = BIN, workspace: str | Path = RUST_WORKSPACE) -> None:
+        self.bin_dir = Path(bin_dir)
+        self.workspace = Path(workspace)
+
+    def execute(self) -> dict[str, Any]:
+        inventory = _rust_workspace_inventory()
+        results: list[dict[str, Any]] = []
+        summary = {
+            "pattern": 15,
+            "name": "broken_symlink_self_repair",
+            "created_at": _now_iso(),
+            "bin_dir": str(self.bin_dir),
+            "scanned_symlinks": 0,
+            "broken_count": 0,
+            "fixed_count": 0,
+            "deleted_count": 0,
+            "reported_count": 0,
+            "results": results,
+            "boundary": "local ~/.hermes/bin symlink scan + rust cargo build only; no credential/config/security/scheduler mutation",
+        }
+        if not self.bin_dir.exists():
+            row = {**summary, "status": "WARN_BIN_DIR_MISSING"}
+            _append_jsonl(self.log_path, row)
+            print(json.dumps(row, ensure_ascii=False, indent=2))
+            return row
+
+        for entry in sorted(self.bin_dir.iterdir(), key=lambda p: p.name):
+            if not entry.is_symlink():
+                continue
+            summary["scanned_symlinks"] += 1
+            try:
+                target = entry.readlink()
+                resolved = entry.resolve(strict=False)
+                valid = entry.exists()
+            except OSError as exc:
+                target = None
+                resolved = None
+                valid = False
+                results.append({
+                    "name": entry.name,
+                    "path": str(entry),
+                    "action": "report_only",
+                    "status": "ERROR_READLINK",
+                    "error": f"{type(exc).__name__}: {exc}",
+                })
+                summary["reported_count"] += 1
+                continue
+            if valid:
+                continue
+
+            summary["broken_count"] += 1
+            item: dict[str, Any] = {
+                "name": entry.name,
+                "path": str(entry),
+                "target": str(target),
+                "resolved": str(resolved),
+            }
+            if resolved and _is_rust_release_target(resolved):
+                binary = resolved.name
+                crate = inventory["binaries"].get(binary) or inventory["packages"].get(binary)
+                if crate:
+                    package = crate["package"]
+                    build = _run(["cargo", "build", "--release", "-p", package], cwd=self.workspace, timeout=60)
+                    repaired = entry.exists()
+                    item.update({
+                        "action": "cargo_build_release",
+                        "crate": package,
+                        "binary": binary,
+                        "rc": build["rc"],
+                        "output_tail": (build.get("output") or "")[-1000:],
+                        "status": "FIXED" if repaired else "BUILD_FAILED_OR_TARGET_STILL_MISSING",
+                    })
+                    if repaired:
+                        summary["fixed_count"] += 1
+                    else:
+                        summary["reported_count"] += 1
+                else:
+                    try:
+                        entry.unlink()
+                        item.update({
+                            "action": "delete_stale_rust_symlink",
+                            "binary": binary,
+                            "status": "DELETED_STALE_SYMLINK",
+                            "reason": "target binary/crate is not defined by current rust workspace",
+                        })
+                        summary["deleted_count"] += 1
+                    except OSError as exc:
+                        item.update({
+                            "action": "delete_stale_rust_symlink",
+                            "binary": binary,
+                            "status": "DELETE_FAILED",
+                            "error": f"{type(exc).__name__}: {exc}",
+                        })
+                        summary["reported_count"] += 1
+            else:
+                item.update({
+                    "action": "report_only",
+                    "status": "UNHANDLED_BROKEN_SYMLINK",
+                    "reason": "target is not under rust_modules/target/release",
+                })
+                summary["reported_count"] += 1
+            results.append(item)
+
+        summary["status"] = "PASS" if summary["broken_count"] == 0 else "DONE"
+        _append_jsonl(self.log_path, summary)
+        print(json.dumps(summary, ensure_ascii=False, indent=2))
+        return summary
+
+
+class Pattern16RustAutoBuild:
+    """Pattern 16 — ensure workspace Rust binaries exist in rust_modules/target/release."""
+
+    interval_seconds = 3600
+    log_path = SELF_HEALING_DATA / "rust-build-fix.jsonl"
+
+    def __init__(self, workspace: str | Path = RUST_WORKSPACE, target_release: str | Path = RUST_TARGET_RELEASE) -> None:
+        self.workspace = Path(workspace)
+        self.target_release = Path(target_release)
+
+    def execute(self) -> dict[str, Any]:
+        inventory = _rust_workspace_inventory()
+        results: list[dict[str, Any]] = []
+        summary = {
+            "pattern": 16,
+            "name": "rust_auto_build_missing_binaries",
+            "created_at": _now_iso(),
+            "workspace": str(self.workspace),
+            "target_release": str(self.target_release),
+            "member_count": len(inventory["members"]),
+            "binary_count": len(inventory["binaries"]),
+            "missing_count": 0,
+            "built_count": 0,
+            "failed_count": 0,
+            "results": results,
+            "timeout_seconds": 60,
+            "boundary": "local rust workspace cargo build only; no credential/config/security/scheduler mutation",
+        }
+        for binary, crate in sorted(inventory["binaries"].items()):
+            binary_path = self.target_release / binary
+            if binary_path.exists():
+                results.append({
+                    "binary": binary,
+                    "crate": crate["package"],
+                    "member": crate["member"],
+                    "path": str(binary_path),
+                    "status": "PRESENT",
+                })
+                continue
+            summary["missing_count"] += 1
+            build = _run(["cargo", "build", "--release", "-p", crate["package"]], cwd=self.workspace, timeout=60)
+            exists_after = binary_path.exists()
+            results.append({
+                "binary": binary,
+                "crate": crate["package"],
+                "member": crate["member"],
+                "path": str(binary_path),
+                "action": "cargo_build_release",
+                "rc": build["rc"],
+                "output_tail": (build.get("output") or "")[-1000:],
+                "status": "BUILT" if exists_after else "FAILED_OR_STILL_MISSING",
+            })
+            if exists_after:
+                summary["built_count"] += 1
+            else:
+                summary["failed_count"] += 1
+
+        summary["status"] = "PASS" if summary["failed_count"] == 0 else "WARN"
+        _append_jsonl(self.log_path, summary)
+        print(json.dumps(summary, ensure_ascii=False, indent=2))
+        return summary
+
+
 def main() -> int:
     WORKSPACE.mkdir(parents=True, exist_ok=True)
     

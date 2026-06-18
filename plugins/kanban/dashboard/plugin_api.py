@@ -668,6 +668,17 @@ def _safe_attachment_name(raw: str) -> str:
     return name[:200]
 
 
+def _safe_attachment_path(root: Path, *parts: str) -> Path:
+    """Resolve an attachment path and require it under the attachment root."""
+    resolved_root = root.expanduser().resolve(strict=False)
+    candidate = resolved_root.joinpath(*parts).resolve(strict=False)
+    try:
+        candidate.relative_to(resolved_root)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="attachment file unavailable") from None
+    return candidate
+
+
 @router.get("/tasks/{task_id}/attachments")
 def list_task_attachments(task_id: str, board: Optional[str] = Query(None)):
     board = _resolve_board(board)
@@ -707,7 +718,10 @@ async def upload_task_attachment(
 
         # Stream to disk with a hard size cap so a huge upload can't fill
         # the disk. Read in chunks; abort + clean up if the cap is hit.
-        dest_dir = kanban_db.task_attachments_dir(task_id, board=board)
+        dest_dir = _safe_attachment_path(
+            kanban_db.attachments_root(board=board),
+            task_id,
+        )
         dest_dir.mkdir(parents=True, exist_ok=True)
 
         # Resolve name collisions: foo.pdf → foo (1).pdf, foo (2).pdf, …
@@ -717,7 +731,7 @@ async def upload_task_attachment(
         while (dest_dir / candidate).exists():
             candidate = f"{stem} ({n}){dot}{ext}"
             n += 1
-        dest_path = dest_dir / candidate
+        dest_path = _safe_attachment_path(dest_dir, candidate)
 
         total = 0
         try:
@@ -769,12 +783,12 @@ def download_attachment(attachment_id: int, board: Optional[str] = Query(None)):
             raise HTTPException(status_code=404, detail="attachment not found")
         # Confirm the blob still lives under the board's attachments root
         # before serving — defense in depth against a tampered DB row.
-        root = kanban_db.attachments_root(board=board).resolve()
+        root = kanban_db.attachments_root(board=board)
         try:
-            stored = Path(att.stored_path).resolve()
-            stored.relative_to(root)
-        except (ValueError, OSError):
-            raise HTTPException(status_code=404, detail="attachment file unavailable")
+            rel_stored = Path(att.stored_path).resolve(strict=False).relative_to(root.resolve(strict=False))
+        except (ValueError, OSError, RuntimeError):
+            raise HTTPException(status_code=404, detail="attachment file unavailable") from None
+        stored = _safe_attachment_path(root, str(rel_stored))
         if not stored.is_file():
             raise HTTPException(status_code=404, detail="attachment file missing on disk")
         return FileResponse(

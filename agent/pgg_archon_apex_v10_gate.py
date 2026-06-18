@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """
-PGG Archon APEX_V10 (Φ_APEX) 证据门 — Python 桥接模块
+PGG Archon APEX_V10 (Φ_APEX) 证据门 — Rust-only Python 桥接模块
 
 该模块是 Hermes PGG APEX_V10 Rust/PyO3 证据门的 Python 封装。
 所有核心计算由 Rust 实现 (hermes_pgg_apex_v10_gate)，通过 PyO3 导出。
+无 Python fallback。Rust .so 未加载时直接报错，不自欺。
 
 边界声明：
   这是一个有界的内部就绪度评估门。评分 (0–100) 仅用于内部就绪度评估，
@@ -32,30 +33,42 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, Optional
 
+# VENV site-packages 显式路径（确保系统 python3 也能加载 .so）
+# .abi3.so 在 VENV (Python 3.11) 下编译。系统 python3 可能是 3.9，所以硬编码 3.11
+_VENV_SITE = str(
+    Path.home() / ".hermes" / "hermes-agent" / ".venv" / "lib"
+    / "python3.11" / "site-packages"
+)
+if _VENV_SITE not in sys.path and os.path.isdir(_VENV_SITE):
+    sys.path.insert(0, _VENV_SITE)
+
 
 class PggApexV10Gate:
-    """APEX_V10 (Φ_APEX) 证据门评估器"""
+    """APEX_V10 (Φ_APEX) 证据门评估器 — Rust-only"""
 
-    VERSION = "v1.0-py"
+    VERSION = "v1.0-rust-only"
 
     def __init__(self):
         self._module = None
         self._loaded = False
 
     def _ensure_loaded(self):
-        """延迟加载 Rust 扩展模块，fallback 到 Python 实现"""
+        """延迟加载 Rust 扩展模块。无 Python fallback。"""
         if self._loaded:
             return
 
         lib_name = "hermes_pgg_apex_v10_gate"
 
-        # 首先尝试通过正常 import
-        try:
-            self._module = __import__(lib_name)
-            self._loaded = True
-            return
-        except ImportError:
-            pass
+        # 尝试正常 import（VENV 下的 direct import 路径）
+        for path_candidate in [None, _VENV_SITE]:
+            if path_candidate is not None and path_candidate not in sys.path:
+                sys.path.insert(0, path_candidate)
+            try:
+                self._module = __import__(lib_name)
+                self._loaded = True
+                return
+            except ImportError:
+                continue
 
         # 尝试从 release 目录加载
         rust_module_dir = os.path.join(
@@ -83,69 +96,22 @@ class PggApexV10Gate:
                 except ImportError:
                     continue
 
-        # Fallback: Python 实现
-        self._loaded = True
-        self._module = None
+        # Rust .so 不存在 — 直接报错，不自欺
+        raise RuntimeError(
+            f"Rust .so 未加载: {lib_name} 在 sys.path={sys.path[:5]} 中找不到。"
+            "请运行 'cd rust_modules && cargo build --release' 编译 Rust 核心。"
+        )
 
     def evaluate(self, config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """评估 Φ_APEX。只走 Rust。"""
         self._ensure_loaded()
 
-        if self._module is not None:
-            if config is None:
-                config_str = self._module.sample_config_json()
-            else:
-                config_str = json.dumps(config, ensure_ascii=False)
-            result_str = self._module.evaluate_config_json(config_str)
-            return json.loads(result_str)
-
-        # Python fallback: Φ_APEX = H_err × P_asm × D_pro
         if config is None:
-            # Read from real runtime evidence
-            try:
-                ep = Path.home() / ".hermes" / "data" / "apex_v10_evidence.json"
-                if ep.exists():
-                    ev = json.loads(ep.read_text())
-                    h_err = ev.get("h_err", 0.20)
-                    p_asm = ev.get("p_asm", 0.85)
-                    d_pro = ev.get("d_pro", 0.85)
-                else:
-                    h_err = 0.85; p_asm = 0.82; d_pro = 0.88
-            except Exception:
-                h_err = 0.85; p_asm = 0.82; d_pro = 0.88
-            config = {"h_err_rate": h_err, "p_asm_rate": p_asm, "d_pro_rate": d_pro}
-
-        h_err = config.get("h_err_rate", 0.85)
-        p_asm = config.get("p_asm_rate", 0.82)
-        d_pro = config.get("d_pro_rate", 0.88)
-
-        phi_apex = h_err * p_asm * d_pro
-        score = round(min(100.0, phi_apex * 100.0), 2)
-        gaps = []
-        if h_err < 0.60:
-            gaps.append("h_err_rate_below_0_60")
-        if p_asm < 0.60:
-            gaps.append("p_asm_rate_below_0_60")
-        if d_pro < 0.60:
-            gaps.append("d_pro_rate_below_0_60")
-
-        status = "PASS_READY" if score >= 70 else ("WATCH_EVOLVING" if score >= 50 else "BLOCKED_IMMATURE")
-
-        return {
-            "schema": "ApexV10Score/v1-py",
-            "version": self.VERSION,
-            "status": status,
-            "score": score,
-            "formula": "H_err × P_asm × D_pro",
-            "components": {
-                "h_err_rate": h_err,
-                "p_asm_rate": p_asm,
-                "d_pro_rate": d_pro,
-                "phi_apex": round(phi_apex, 4),
-            },
-            "gaps": gaps,
-            "method": "python_fallback",
-            "boundary": "Internal bounded APEX V10 readiness gate. Python fallback (Rust .so not compiled).",
-        }
+            config_str = self._module.sample_config_json()
+        else:
+            config_str = json.dumps(config, ensure_ascii=False)
+        result_str = self._module.evaluate_config_json(config_str)
+        return json.loads(result_str)
 
     def sample_config(self) -> Dict[str, Any]:
         """返回示例配置"""
@@ -206,7 +172,7 @@ def main_cli():
     import argparse
 
     parser = argparse.ArgumentParser(
-        description="APEX_V10 (Φ_APEX) 有界内部证据门 - CLI",
+        description="APEX_V10 (Φ_APEX) 有界内部证据门 - CLI (Rust-only)",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "边界声明:\n"

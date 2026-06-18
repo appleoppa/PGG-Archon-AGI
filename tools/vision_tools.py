@@ -861,8 +861,8 @@ async def vision_analyze_tool(
         if is_interrupted():
             return tool_error("Interrupted", success=False)
 
-        logger.info("Analyzing image: %s", image_url[:60])
-        logger.info("User prompt: %s", user_prompt[:100])
+        logger.info("Analyzing image input omitted length=%d", len(str(image_url or "")))
+        logger.info("User prompt omitted length=%d", len(str(user_prompt or "")))
         
         # Determine if this is a local file path or a remote URL
         # Strip file:// scheme so file URIs resolve as local paths.
@@ -872,7 +872,7 @@ async def vision_analyze_tool(
         local_path = Path(os.path.expanduser(resolved_url))
         if local_path.is_file():
             # Local file path (e.g. from platform image cache) -- skip download
-            logger.info("Using local image file: %s", image_url)
+            logger.info("Using local image file: %s", local_path.name)
             temp_image_path = local_path
             should_cleanup = False  # Don't delete cached/local files
         elif await _validate_image_url_async(image_url):

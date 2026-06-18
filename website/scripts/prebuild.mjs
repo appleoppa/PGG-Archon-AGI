@@ -23,7 +23,7 @@
 // deploys get real data.
 
 import { spawnSync } from "node:child_process";
-import { mkdirSync, writeFileSync, existsSync, statSync } from "node:fs";
+import { mkdirSync, writeFileSync, existsSync, statSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -118,10 +118,29 @@ async function ensureUnifiedIndex() {
   }
 }
 
-// 0) Pull unified index if we don't have a fresh one.
+function patchGrayMatterForJsYaml4() {
+  const enginesFile = join(websiteDir, "node_modules", "gray-matter", "lib", "engines.js");
+  if (!existsSync(enginesFile)) {
+    return;
+  }
+  const text = readFileSync(enginesFile, "utf8");
+  if (!text.includes("yaml.safeLoad") && !text.includes("yaml.safeDump")) {
+    return;
+  }
+  const patched = text
+    .replace("parse: yaml.safeLoad.bind(yaml)", "parse: yaml.load.bind(yaml)")
+    .replace("stringify: yaml.safeDump.bind(yaml)", "stringify: yaml.dump.bind(yaml)");
+  writeFileSync(enginesFile, patched);
+  console.log("[prebuild] patched gray-matter YAML engine for js-yaml v4 compatibility");
+}
+
+// 0) Patch gray-matter runtime if npm overrides dedupe js-yaml to v4.
+patchGrayMatterForJsYaml4();
+
+// 1) Pull unified index if we don't have a fresh one.
 await ensureUnifiedIndex();
 
-// 1) skills.json — required for the Skills Hub page.
+// 2) skills.json — required for the Skills Hub page.
 if (!existsSync(extractScript)) {
   writeEmptyFallback("extract script missing");
 } else {
