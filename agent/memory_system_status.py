@@ -180,7 +180,7 @@ def _external_provider_status(home: Path) -> Dict[str, Any]:
             "provider_count": readiness.get("provider_count"),
             "recommended_next_step": readiness.get("recommended_next_step"),
             "config_modified": readiness.get("config_modified"),
-            "secrets_printed": readiness.get("secrets_printed"),
+            "credential_values_printed": readiness.get("credential_values_printed"),
             "providers": provider_summary,
         }
     except Exception as e:
