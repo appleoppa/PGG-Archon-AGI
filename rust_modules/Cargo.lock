@@ -1079,6 +1079,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "pgg_neuron_autoevolve_guard"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "sha2",
+]
+
+[[package]]
 name = "pgg_ops_lifecycle_gate"
 version = "0.1.0"
 dependencies = [
