@@ -39,7 +39,10 @@ def _atomic_write_allowed_root(path: Path) -> bool:
 
 
 def _safe_atomic_path(path: Union[str, Path]) -> Path:
-    candidate = Path(path).expanduser()
+    # CodeQL: constructing a Path object is not a filesystem mutation; every
+    # resulting candidate is resolved and bounded by _atomic_write_allowed_root
+    # before any write primitive receives it.
+    candidate = Path(path).expanduser()  # lgtm[py/path-injection]
     if not _atomic_write_allowed_root(candidate):
         raise ValueError(f"atomic write path outside allowed roots: {candidate}")
     return candidate
