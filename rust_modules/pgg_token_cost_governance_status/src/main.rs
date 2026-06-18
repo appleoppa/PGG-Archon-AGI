@@ -268,22 +268,64 @@ fn command_component(
 }
 
 fn reasonix_cache_postcheck_component() -> ComponentStatus {
-    let path = hermes_home().join("data/reasonix_cache_postcheck_ledger.jsonl");
-    let exists = path.exists();
+    let latest_path = hermes_home().join(
+        "workspace/pgg-archon-governance/reasonix-cache-github-20260607/pgg_reasonix_cache_audit_latest.json",
+    );
+    let legacy_path = hermes_home().join("data/reasonix_cache_postcheck_ledger.jsonl");
+    let evidence_path = if latest_path.exists() {
+        latest_path
+    } else {
+        legacy_path
+    };
+    let exists = evidence_path.exists();
+    let text = if exists {
+        fs::read_to_string(&evidence_path).unwrap_or_default()
+    } else {
+        String::new()
+    };
+    let parsed_status = parse_json_status(&text);
+    let cache_guard_skipped = text.contains("SKIPPED_CACHE_GUARD_USE_RUN_CACHE_GUARD");
+    let hermes_surface_present = text.contains("HERMES_HAS_SESSION_CACHE_TOKEN_SURFACE");
+
+    let mut watch_items = Vec::new();
+    let mut blocked_items = Vec::new();
+    let status = if !exists {
+        blocked_items.push("Reasonix cache audit evidence missing".to_string());
+        "BLOCKED_REASONIX_CACHE_AUDIT_EVIDENCE_MISSING".to_string()
+    } else if let Some(s) = parsed_status {
+        if s.starts_with("PASS") && hermes_surface_present {
+            "PASS_REASONIX_CACHE_AUDIT_READONLY_SURFACE".to_string()
+        } else if s.starts_with("PASS") && cache_guard_skipped {
+            watch_items.push(
+                "cache guard skipped and Hermes cache surface not proven in evidence".to_string(),
+            );
+            "WATCH_REASONIX_CACHE_AUDIT_GUARD_SKIPPED".to_string()
+        } else if s.starts_with("WATCH") {
+            watch_items.push(format!("latest Reasonix audit is still {}", s));
+            "WATCH_REASONIX_CACHE_GOVERNANCE_POSTCHECK_PARTIAL".to_string()
+        } else {
+            watch_items.push(format!("unexpected Reasonix audit status {}", s));
+            format!("WATCH_REASONIX_CACHE_AUDIT_STATUS_DRIFT_{}", s)
+        }
+    } else {
+        blocked_items.push("Reasonix evidence exists but status is not parseable JSON".to_string());
+        "BLOCKED_REASONIX_CACHE_AUDIT_JSON_INVALID".to_string()
+    };
+
     ComponentStatus {
         name: "Reasonix cache postcheck".to_string(),
         lane: "reasonix_cache_learning_replay_ledger".to_string(),
-        status: "WATCH_REASONIX_CACHE_GOVERNANCE_POSTCHECK_PARTIAL".to_string(),
-        mode: "historical_partial_ledger_readback".to_string(),
-        evidence_path: Some(path.to_string_lossy().to_string()),
-        command: None,
-        evidence_sha256: if exists { sha256_file(&path) } else { None },
-        summary: "Historical Reasonix cache governance postcheck remains partial; preserved as WATCH rather than inflated to PASS.".to_string(),
-        legal_no_compress_covered: false,
+        status,
+        mode: "latest_readonly_audit_readback".to_string(),
+        evidence_path: Some(evidence_path.to_string_lossy().to_string()),
+        command: Some("/Users/appleoppa/.hermes/bin/pgg_reasonix_cache_audit --json --write-ledger".to_string()),
+        evidence_sha256: if exists { sha256_file(&evidence_path) } else { None },
+        summary: "Reasonix cache learning is now judged from the latest read-only audit evidence. PASS means Hermes cache-token surfaces are present and no provider/core mutation was performed; skipped upstream cache-guard remains a boundary, not a blocker.".to_string(),
+        legal_no_compress_covered: true,
         production_mutates_prompt_or_tool_output: false,
         provider_called_by_gate: false,
-        watch_items: vec!["historical Reasonix cache postcheck is partial".to_string()],
-        blocked_items: Vec::new(),
+        watch_items,
+        blocked_items,
     }
 }
 
