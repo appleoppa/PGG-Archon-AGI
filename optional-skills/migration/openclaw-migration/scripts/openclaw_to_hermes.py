@@ -19,6 +19,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
+from utils import base_url_host_matches
+
 try:
     import yaml
 except Exception:  # pragma: no cover - handled at runtime
@@ -1545,9 +1547,9 @@ class Migrator:
                 if isinstance(base_url, str):
                     if "openrouter" in base_url.lower():
                         env_var = "OPENROUTER_API_KEY"
-                    elif "openai.com" in base_url.lower():
+                    elif base_url_host_matches(base_url, "openai.com"):
                         env_var = "OPENAI_API_KEY"
-                    elif "anthropic" in base_url.lower():
+                    elif base_url_host_matches(base_url, "anthropic.com"):
                         env_var = "ANTHROPIC_API_KEY"
 
                 # Match by api type

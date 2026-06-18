@@ -18,7 +18,7 @@ def test_memory_system_status_schema_and_score(monkeypatch, tmp_path):
 
     monkeypatch.setattr(mss, "_akashic_status", lambda home: {"status": "PASS", "audit": {"counts": {}}, "stats": {}, "code_markers": {"write_lock": True}})
     monkeypatch.setattr(mss, "_department_status", lambda home: {"status": "NOOP_BLOCKED_OR_EMPTY", "write_allowed": False, "apply_allowed": False, "counts": {}, "blockers": []})
-    monkeypatch.setattr(mss, "_external_provider_status", lambda home: {"status": "PASS_READ_ONLY_AUDIT", "active_external_provider": "", "provider_count": 8, "recommended_next_step": {"provider": "holographic"}, "config_modified": False, "secrets_printed": False})
+    monkeypatch.setattr(mss, "_external_provider_status", lambda home: {"status": "PASS_READ_ONLY_AUDIT", "active_external_provider": "", "provider_count": 8, "recommended_next_step": {"provider": "holographic"}, "config_modified": False, "credential_values_printed": False})
     monkeypatch.setattr(mss, "_holographic_status", lambda home: {"status": "SANDBOX_PASS_DEFAULT_NOT_ENABLED", "active_in_default": False, "latest_sandbox_manifest_status": "PASS"})
     monkeypatch.setattr(mss, "_manifest_status", lambda home: {"tracked_memory_keys": {k: {"status": "PASS"} for k in mss.MEMORY_MANIFEST_KEYS}})
 

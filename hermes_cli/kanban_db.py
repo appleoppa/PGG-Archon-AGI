@@ -261,6 +261,22 @@ def _normalize_board_slug(slug: Optional[str]) -> Optional[str]:
     return s
 
 
+def _safe_path_under_root(path: Path, root: Path) -> Path:
+    """Resolve path and require it to stay under root."""
+    resolved_root = root.expanduser().resolve(strict=False)
+    candidate = path.expanduser().resolve(strict=False)
+    try:
+        candidate.relative_to(resolved_root)
+    except ValueError:
+        raise ValueError(f"path outside kanban root: {candidate}") from None
+    return candidate
+
+
+def _safe_child_path(root: Path, *parts: str) -> Path:
+    """Join path parts under root after resolving traversal/symlinks."""
+    return _safe_path_under_root(root.joinpath(*parts), root)
+
+
 def kanban_home() -> Path:
     """Return the shared Hermes root that anchors the kanban board.
 
@@ -279,7 +295,7 @@ def kanban_home() -> Path:
     """
     override = os.environ.get("HERMES_KANBAN_HOME", "").strip()
     if override:
-        return Path(override).expanduser()
+        return _safe_path_under_root(Path(override).expanduser(), Path(override).expanduser().parent)
     from hermes_constants import get_default_hermes_root
     return get_default_hermes_root()
 
@@ -389,7 +405,7 @@ def board_dir(board: Optional[str] = None) -> Path:
     everything inside that directory including the ``kanban.db``.
     """
     slug = _normalize_board_slug(board) or DEFAULT_BOARD
-    return boards_root() / slug
+    return _safe_child_path(boards_root(), slug)
 
 
 def board_exists(board: Optional[str] = None) -> bool:
@@ -422,13 +438,13 @@ def kanban_db_path(board: Optional[str] = None) -> Path:
     """
     override = os.environ.get("HERMES_KANBAN_DB", "").strip()
     if override:
-        return Path(override).expanduser()
+        return _safe_path_under_root(Path(override).expanduser(), Path(override).expanduser().parent)
     slug = _normalize_board_slug(board)
     if slug is None:
         slug = get_current_board()
     if slug == DEFAULT_BOARD:
-        return kanban_home() / "kanban.db"
-    return board_dir(slug) / "kanban.db"
+        return _safe_path_under_root(kanban_home() / "kanban.db", kanban_home())
+    return _safe_child_path(board_dir(slug), "kanban.db")
 
 
 def workspaces_root(board: Optional[str] = None) -> Path:
@@ -444,13 +460,13 @@ def workspaces_root(board: Optional[str] = None) -> Path:
     """
     override = os.environ.get("HERMES_KANBAN_WORKSPACES_ROOT", "").strip()
     if override:
-        return Path(override).expanduser()
+        return _safe_path_under_root(Path(override).expanduser(), Path(override).expanduser().parent)
     slug = _normalize_board_slug(board)
     if slug is None:
         slug = get_current_board()
     if slug == DEFAULT_BOARD:
-        return kanban_home() / "kanban" / "workspaces"
-    return board_dir(slug) / "workspaces"
+        return _safe_path_under_root(kanban_home() / "kanban" / "workspaces", kanban_home())
+    return _safe_child_path(board_dir(slug), "workspaces")
 
 
 def attachments_root(board: Optional[str] = None) -> Path:
@@ -474,18 +490,18 @@ def attachments_root(board: Optional[str] = None) -> Path:
     """
     override = os.environ.get("HERMES_KANBAN_ATTACHMENTS_ROOT", "").strip()
     if override:
-        return Path(override).expanduser()
+        return _safe_path_under_root(Path(override).expanduser(), Path(override).expanduser().parent)
     slug = _normalize_board_slug(board)
     if slug is None:
         slug = get_current_board()
     if slug == DEFAULT_BOARD:
-        return kanban_home() / "kanban" / "attachments"
-    return board_dir(slug) / "attachments"
+        return _safe_path_under_root(kanban_home() / "kanban" / "attachments", kanban_home())
+    return _safe_child_path(board_dir(slug), "attachments")
 
 
 def task_attachments_dir(task_id: str, board: Optional[str] = None) -> Path:
     """Return the per-task attachment directory ``<root>/<task_id>/``."""
-    return attachments_root(board=board) / task_id
+    return _safe_child_path(attachments_root(board=board), task_id)
 
 
 def worker_logs_dir(board: Optional[str] = None) -> Path:
@@ -500,8 +516,8 @@ def worker_logs_dir(board: Optional[str] = None) -> Path:
     if slug is None:
         slug = get_current_board()
     if slug == DEFAULT_BOARD:
-        return kanban_home() / "kanban" / "logs"
-    return board_dir(slug) / "logs"
+        return _safe_path_under_root(kanban_home() / "kanban" / "logs", kanban_home())
+    return _safe_path_under_root(board_dir(slug) / "logs", kanban_home())
 
 
 def board_metadata_path(board: Optional[str] = None) -> Path:
@@ -512,7 +528,7 @@ def board_metadata_path(board: Optional[str] = None) -> Path:
     is purely for presentation in the CLI / dashboard.
     """
     slug = _normalize_board_slug(board) or DEFAULT_BOARD
-    return board_dir(slug) / "board.json"
+    return _safe_child_path(board_dir(slug), "board.json")
 
 
 def _default_board_display_name(slug: str) -> str:
@@ -666,8 +682,8 @@ def list_boards(*, include_archived: bool = True) -> list[dict]:
                 continue
             if not normed or normed in seen:
                 continue
-            has_db = (child / "kanban.db").exists()
-            has_meta = (child / "board.json").exists()
+            has_db = _safe_child_path(child, "kanban.db").exists()
+            has_meta = _safe_child_path(child, "board.json").exists()
             if not (has_db or has_meta):
                 continue
             meta = read_board_metadata(normed)
@@ -705,17 +721,17 @@ def remove_board(slug: str, *, archive: bool = True) -> dict:
     # A concurrent connect(board=normed) after the rename/delete recreates
     # an empty sqlite file via mkdir(exist_ok=True); the cache entry must be
     # dropped first so the schema init pass re-runs on that fresh file.
-    _INITIALIZED_PATHS.discard(str((d / "kanban.db").resolve()))
+    _INITIALIZED_PATHS.discard(str(_safe_child_path(d, "kanban.db").resolve()))
 
     if archive:
-        archive_root = boards_root() / "_archived"
+        archive_root = _safe_child_path(boards_root(), "_archived")
         archive_root.mkdir(parents=True, exist_ok=True)
         ts = int(time.time())
-        target = archive_root / f"{normed}-{ts}"
+        target = _safe_child_path(archive_root, f"{normed}-{ts}")
         # Avoid collision on rapid double-archives.
         suffix = 1
         while target.exists():
-            target = archive_root / f"{normed}-{ts}-{suffix}"
+            target = _safe_child_path(archive_root, f"{normed}-{ts}-{suffix}")
             suffix += 1
         d.rename(target)
         return {"slug": normed, "action": "archived", "new_path": str(target)}
@@ -1169,6 +1185,7 @@ def _resolve_busy_timeout_ms() -> int:
 def _sqlite_connect(path: Path) -> sqlite3.Connection:
     """Open a Kanban SQLite connection with consistent lock waiting."""
     busy_timeout_ms = _resolve_busy_timeout_ms()
+    path = _safe_path_under_root(path, path.parent)
     conn = sqlite3.connect(
         str(path),
         isolation_level=None,
@@ -1192,8 +1209,9 @@ def _cross_process_init_lock(path: Path):
     additive migrations single-file/single-writer across the whole host while
     leaving normal post-init DB usage concurrent under SQLite WAL.
     """
+    path = _safe_path_under_root(path, path.parent)
     path.parent.mkdir(parents=True, exist_ok=True)
-    lock_path = path.with_name(path.name + ".init.lock")
+    lock_path = _safe_child_path(path.parent, path.name + ".init.lock")
     handle = lock_path.open("a+b")
     try:
         if _IS_WINDOWS:
@@ -1255,6 +1273,7 @@ def _validate_sqlite_header(path: Path) -> None:
     being collapsed into a generic PRAGMA error and lets the gateway's corrupt
     board handling identify the board by fingerprint.
     """
+    path = _safe_path_under_root(path, path.parent)
     try:
         stat = path.stat()
     except FileNotFoundError:
@@ -1320,7 +1339,7 @@ def _backup_corrupt_db(path: Path) -> Optional[Path]:
     # Resolve once and pin the parent so subsequent path operations cannot
     # escape it. ``Path.resolve()`` collapses any ``..`` segments and
     # symlinks, and we only ever write inside ``parent``.
-    resolved = path.resolve()
+    resolved = _safe_path_under_root(path, path.parent).resolve()
     parent = resolved.parent
     base_name = resolved.name  # basename only
     digest = hashlib.sha256()
@@ -1331,7 +1350,7 @@ def _backup_corrupt_db(path: Path) -> Optional[Path]:
     except OSError:
         return None
     token = digest.hexdigest()[:16]
-    candidate = parent / f"{base_name}.corrupt.{token}.bak"
+    candidate = _safe_child_path(parent, f"{base_name}.corrupt.{token}.bak")
     # Defensive: candidate must still be inside parent after construction.
     if candidate.parent != parent:
         return None
@@ -1341,10 +1360,10 @@ def _backup_corrupt_db(path: Path) -> Optional[Path]:
         except OSError:
             return None
     for suffix in ("-wal", "-shm"):
-        sidecar = parent / (base_name + suffix)
+        sidecar = _safe_child_path(parent, base_name + suffix)
         if sidecar.parent != parent or not sidecar.exists():
             continue
-        sidecar_backup = parent / (candidate.name + suffix)
+        sidecar_backup = _safe_child_path(parent, candidate.name + suffix)
         if sidecar_backup.parent != parent or sidecar_backup.exists():
             continue
         try:
@@ -1382,7 +1401,7 @@ def _guard_existing_db_is_healthy(path: Path) -> None:
     # Resolve before any I/O. ``Path.resolve()`` normalizes ``..`` and
     # symlinks, giving us a canonical path whose parent dir we can pin.
     try:
-        resolved = path.resolve()
+        resolved = _safe_path_under_root(path, path.parent).resolve()
     except OSError:
         return
     try:
@@ -1439,6 +1458,7 @@ def connect(
         path = db_path
     else:
         path = kanban_db_path(board=board)
+    path = _safe_path_under_root(path, path.parent)
     path.parent.mkdir(parents=True, exist_ok=True)
     with _cross_process_init_lock(path):
         # Cheap byte-level check first — catches the #29507 TLS-overwrite shape
@@ -1543,6 +1563,7 @@ def init_db(
         path = db_path
     else:
         path = kanban_db_path(board=board)
+    path = _safe_path_under_root(path, path.parent)
     path.parent.mkdir(parents=True, exist_ok=True)
     resolved = str(path.resolve())
     # Clear the cache entry so the underlying connect() re-runs the
@@ -4710,14 +4731,14 @@ def resolve_workspace(task: Task, *, board: Optional[str] = None) -> Path:
             # Legacy scratch tasks that were set to an explicit path get the
             # same absolute-path guard as dir: — consistent with the
             # threat model.
-            p = Path(task.workspace_path).expanduser()
+            p = _safe_path_under_root(Path(task.workspace_path).expanduser(), Path(task.workspace_path).expanduser().parent)
             if not p.is_absolute():
                 raise ValueError(
                     f"task {task.id} has non-absolute workspace_path "
                     f"{task.workspace_path!r}; workspace paths must be absolute"
                 )
         else:
-            p = workspaces_root(board=board) / task.id
+            p = _safe_child_path(workspaces_root(board=board), task.id)
         p.mkdir(parents=True, exist_ok=True)
         return p
     if kind == "dir":
@@ -4725,7 +4746,7 @@ def resolve_workspace(task: Task, *, board: Optional[str] = None) -> Path:
             raise ValueError(
                 f"task {task.id} has workspace_kind=dir but no workspace_path"
             )
-        p = Path(task.workspace_path).expanduser()
+        p = _safe_path_under_root(Path(task.workspace_path).expanduser(), Path(task.workspace_path).expanduser().parent)
         if not p.is_absolute():
             raise ValueError(
                 f"task {task.id} has non-absolute workspace_path "
@@ -4737,8 +4758,8 @@ def resolve_workspace(task: Task, *, board: Optional[str] = None) -> Path:
     if kind == "worktree":
         if not task.workspace_path:
             # Default: .worktrees/<id>/ under CWD.  Worker skill creates it.
-            return Path.cwd() / ".worktrees" / task.id
-        p = Path(task.workspace_path).expanduser()
+            return _safe_child_path(Path.cwd() / ".worktrees", task.id)
+        p = _safe_path_under_root(Path(task.workspace_path).expanduser(), Path(task.workspace_path).expanduser().parent)
         if not p.is_absolute():
             raise ValueError(
                 f"task {task.id} has non-absolute worktree path "
@@ -6818,7 +6839,7 @@ def _default_spawn(
     # logs don't collide across boards that happen to share task ids.
     log_dir = worker_logs_dir(board=board)
     log_dir.mkdir(parents=True, exist_ok=True)
-    log_path = log_dir / f"{task.id}.log"
+    log_path = _safe_child_path(log_dir, f"{task.id}.log")
     rotate_bytes, backup_count = worker_log_rotation_config()
     _rotate_worker_log(log_path, rotate_bytes, backup_count)
 
@@ -7491,7 +7512,7 @@ def worker_log_path(task_id: str, *, board: Optional[str] = None) -> Path:
     current-board file → default). The dispatcher always passes the
     board explicitly to avoid any resolution ambiguity when multiple
     boards exist."""
-    return worker_logs_dir(board=board) / f"{task_id}.log"
+    return _safe_child_path(worker_logs_dir(board=board), f"{task_id}.log")
 
 
 def read_worker_log(

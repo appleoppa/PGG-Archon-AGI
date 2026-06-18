@@ -822,7 +822,7 @@ class WebhookAdapter(BasePlatformAdapter):
         if deliver_type == "log":
             # Shouldn't reach here — startup validation rejects deliver_only
             # with deliver=log — but guard defensively.
-            logger.info("[webhook] direct-deliver log-only: %s", content[:200])
+            logger.info("[webhook] direct-deliver log-only content omitted length=%d", len(content or ""))
             return SendResult(success=True)
 
         if deliver_type == "github_comment":

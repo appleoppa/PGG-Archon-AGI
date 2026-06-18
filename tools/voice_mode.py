@@ -896,7 +896,7 @@ def transcribe_recording(wav_path: str, model: Optional[str] = None) -> Dict[str
 
     # Filter out Whisper hallucinations (common on silent/near-silent audio)
     if result.get("success") and is_whisper_hallucination(result.get("transcript", "")):
-        logger.info("Filtered Whisper hallucination: %r", result["transcript"])
+        logger.info("Filtered Whisper hallucination transcript omitted length=%d", len(str(result.get("transcript", ""))))
         return {"success": True, "transcript": "", "filtered": True}
 
     return result

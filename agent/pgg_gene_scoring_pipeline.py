@@ -10,6 +10,7 @@ Boundary: heuristic static scoring only; no LLM calls, no network.
 """
 import json, sqlite3, re, time
 from pathlib import Path
+from urllib.parse import urlparse
 
 DB_PATH = Path.home() / '.hermes' / 'data' / 'pgg_archon.db'
 MIN_SCORE_TO_KEEP = 10
@@ -27,21 +28,53 @@ MEDIUM_QUALITY_ORGS = {
     'OpenBMB', 'meta-llama', 'deepseek-ai',
 }
 
+
+def _github_owner_repo(repo: str) -> tuple[str, str, bool]:
+    """Return (owner, owner/repo, is_github_host) after parsing the repo URL.
+
+    CodeQL correctly flags raw substring checks such as ``"github.com/" in url``.
+    This helper parses host/path first and only treats an input as GitHub when
+    the hostname is exactly ``github.com`` (or ``www.github.com``).
+    """
+    raw = (repo or '').strip()
+    if not raw:
+        return '', '', False
+    candidate = raw if '://' in raw else f'https://{raw}'
+    parsed = urlparse(candidate)
+    host = (parsed.hostname or '').lower()
+    is_github = host in {'github.com', 'www.github.com'}
+    if not is_github:
+        return '', '', False
+    parts = [p for p in parsed.path.split('/') if p]
+    owner = parts[0].lower() if parts else ''
+    full = f'{owner}/{parts[1].lower()}' if len(parts) >= 2 else owner
+    return owner, full, True
+
+
+def _repo_tokens(repo: str) -> set[str]:
+    return {t for t in re.split(r'[^a-z0-9_.-]+', (repo or '').lower()) if t}
+
 def _repo_score(repo: str) -> int:
     if not repo:
         return 10
     repo_lower = repo.lower()
     if repo_lower.startswith('local') or '~/' in repo_lower:
         return 20
+    owner, full_repo, is_github = _github_owner_repo(repo)
+    parsed_raw = urlparse(repo) if '://' in repo else urlparse('')
+    external_non_github = bool(parsed_raw.scheme and parsed_raw.hostname and (parsed_raw.hostname or '').lower() not in {'github.com', 'www.github.com'})
+    tokens = set() if external_non_github else _repo_tokens(repo)
     for org in HIGH_QUALITY_ORGS:
-        if org.lower() in repo_lower:
+        org_l = org.lower()
+        if org_l == owner or org_l == full_repo or org_l in tokens:
             return 90
     for org in MEDIUM_QUALITY_ORGS:
-        if org.lower() in repo_lower:
+        org_l = org.lower()
+        if org_l == owner or org_l == full_repo or org_l in tokens:
             return 60
-    if 'github.com/' in repo_lower:
+    if is_github:
         return 40
-    if 'hermes' in repo_lower or 'pgg' in repo_lower or 'archon' in repo_lower:
+    if 'hermes' in tokens or 'pgg' in tokens or 'archon' in tokens:
         return 50
     return 25
 

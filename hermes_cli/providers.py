@@ -512,9 +512,9 @@ def determine_api_mode(provider: str, base_url: str = "") -> str:
             url_lower = base_url.rstrip("/").lower()
             if "api.kimi.com/coding" in url_lower:
                 return "anthropic_messages"
-            if url_lower.endswith("/anthropic") or "api.anthropic.com" in url_lower:
+            if url_lower.endswith("/anthropic") or base_url_host_matches(url_lower, "api.anthropic.com"):
                 return "anthropic_messages"
-            if "api.openai.com" in url_lower:
+            if base_url_host_matches(url_lower, "api.openai.com"):
                 return "codex_responses"
         return TRANSPORT_TO_API_MODE.get(pdef.transport, "chat_completions")
 

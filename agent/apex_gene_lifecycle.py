@@ -13,7 +13,7 @@ from typing import Any, Dict, Mapping, Sequence
 
 ALLOWED_GENE_STATUSES = ("active", "verified", "retired")
 PROMOTABLE_STATUSES = ("verified",)
-DEFAULT_GENE_DB_PATH = Path("/Users/appleoppa/.hermes/workspace/开智/02-进化基因/apex_evolution_genes.sqlite3")
+DEFAULT_GENE_DB_PATH = Path("/Users/appleoppa/.hermes/workspace/04_knowledge/开智/02-进化基因/apex_evolution_genes.sqlite3")
 
 
 class GeneLifecycleValidationError(ValueError):

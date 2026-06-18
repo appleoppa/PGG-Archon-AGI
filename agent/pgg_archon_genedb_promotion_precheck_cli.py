@@ -11,7 +11,7 @@ from agent.pgg_archon_genedb_promotion_precheck import evaluate_precheck_on_reco
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run GeneDB promotion precheck on candidate rows.")
-    parser.add_argument("--db", default="/Users/appleoppa/.hermes/workspace/开智/02-进化基因/apex_evolution_genes.sqlite3")
+    parser.add_argument("--db", default="/Users/appleoppa/.hermes/workspace/04_knowledge/开智/02-进化基因/apex_evolution_genes.sqlite3")
     parser.add_argument("--gate-type", default="activation_path_candidate_gene_intake", help="Filter by gate_type")
     parser.add_argument("--output-dir", default=None)
     args = parser.parse_args()

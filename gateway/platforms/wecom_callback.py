@@ -152,7 +152,7 @@ class WecomCallbackAdapter(BasePlatformAdapter):
                 except Exception as exc:
                     logger.warning(
                         "[WecomCallback] Initial token refresh failed for app '%s': %s",
-                        app.get("name", "default"), exc,
+                        app.get("name", "default"), type(exc).__name__,
                     )
             return True
         except Exception:
