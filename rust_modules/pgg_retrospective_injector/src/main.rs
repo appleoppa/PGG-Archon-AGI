@@ -88,25 +88,28 @@ fn build_context(selected: &[Lesson]) -> String {
     out
 }
 
+fn collect_strings(v: &Value, parts: &mut Vec<String>) {
+    match v {
+        Value::String(s) if !s.trim().is_empty() => parts.push(s.clone()),
+        Value::Array(arr) => {
+            for item in arr {
+                collect_strings(item, parts);
+            }
+        }
+        Value::Object(map) => {
+            for (k, item) in map {
+                if k != "hook_event_name" {
+                    collect_strings(item, parts);
+                }
+            }
+        }
+        _ => {}
+    }
+}
+
 fn extract_query(payload: &Value) -> String {
     let mut parts = Vec::new();
-    if let Some(s) = payload.get("user_message").and_then(|v| v.as_str()) {
-        parts.push(s.to_string());
-    }
-    if let Some(s) = payload.get("tool_name").and_then(|v| v.as_str()) {
-        parts.push(s.to_string());
-    }
-    if let Some(s) = payload.get("task_id").and_then(|v| v.as_str()) {
-        parts.push(s.to_string());
-    }
-    if let Some(extra) = payload.get("extra") {
-        if let Some(s) = extra.get("user_message").and_then(|v| v.as_str()) {
-            parts.push(s.to_string());
-        }
-        if let Some(s) = extra.get("conversation_history").and_then(|v| v.as_array()) {
-            parts.push(format!("history:{}", s.len()));
-        }
-    }
+    collect_strings(payload, &mut parts);
     parts.join(" ")
 }
 
@@ -171,6 +174,14 @@ mod tests {
                 conflict_status: "active".into(),
             },
             Lesson {
+                trigger: "PRD Quick-Spec 大改动 系统修改 多文件 生产链路".into(),
+                right_action: "触发时先使用 PRD/Quick-Spec checklist".into(),
+                injection_prompt: "PRD治理：中高风险/多文件/系统修改先写 PRD 或 Quick-Spec。"
+                    .into(),
+                confidence: 0.87,
+                conflict_status: "active".into(),
+            },
+            Lesson {
                 trigger: "低置信".into(),
                 right_action: "不注入".into(),
                 injection_prompt: "不应出现".into(),
@@ -208,11 +219,11 @@ mod tests {
 
     #[test]
     fn pre_llm_payload_injects_on_first_turn_only() {
-        let payload = json!({"hook_event_name":"pre_llm_call", "extra":{"is_first_turn": true, "user_message":"请阅读飞书文档"}});
+        let payload = json!({"hook_event_name":"pre_llm_call", "extra":{"is_first_turn": true, "user_message":"PRD Quick-Spec 大改动 系统修改 多文件 生产链路"}});
         let ctx = context_from_payload(&payload, &sample_lessons()).expect("context");
-        assert!(ctx.contains("飞书文档任务先保存原文/meta"));
+        assert!(ctx.contains("PRD治理"));
 
-        let payload2 = json!({"hook_event_name":"pre_llm_call", "extra":{"is_first_turn": false, "user_message":"请阅读飞书文档"}});
+        let payload2 = json!({"hook_event_name":"pre_llm_call", "extra":{"is_first_turn": false, "user_message":"PRD Quick-Spec 大改动 系统修改 多文件 生产链路"}});
         assert!(context_from_payload(&payload2, &sample_lessons()).is_none());
     }
 }

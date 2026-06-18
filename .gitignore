@@ -125,3 +125,5 @@ scripts/out/
 RELEASE_v*.md
 rust_modules/**/target/
 rust_bins/
+
+$VAULT/

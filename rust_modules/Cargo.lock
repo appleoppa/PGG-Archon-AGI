@@ -138,7 +138,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1aa79e62e7697b8e29b513a68abacf485adcd1fe8284a4316c5ae868e6633327"
 dependencies = [
  "iana-time-zone",
+ "js-sys",
  "num-traits",
+ "serde",
+ "wasm-bindgen",
  "windows-link",
 ]
 
@@ -731,6 +734,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9b4f627cb1b25917193a259e49bdad08f671f8d9708acfd5fe0a8c1455d87220"
 
 [[package]]
+name = "pgg_capability_tree_gate"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "serde_json",
+]
+
+[[package]]
 name = "pgg_case_free_evolution_runner"
 version = "0.1.0"
 dependencies = [
@@ -751,6 +762,22 @@ name = "pgg_curve_collector"
 version = "0.1.0"
 dependencies = [
  "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "pgg_daa_governance_gate"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "serde_json",
+]
+
+[[package]]
+name = "pgg_engineering_discipline_gate"
+version = "0.1.0"
+dependencies = [
+ "chrono",
  "serde_json",
 ]
 
@@ -784,6 +811,58 @@ dependencies = [
 ]
 
 [[package]]
+name = "pgg_legal_multiagent_ops_gate"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "pgg_legal_ops_observer"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "pgg_legal_receipt_executor"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "pgg_legal_receipt_queue"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "pgg_legal_receipt_template_pack"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "pgg_prd_quality_gate"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "serde_json",
+]
+
+[[package]]
 name = "pgg_provider_cost_profile"
 version = "0.1.0"
 dependencies = [
@@ -807,6 +886,14 @@ name = "pgg_query_complexity_gate"
 version = "0.1.0"
 dependencies = [
  "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "pgg_report_quality_gate"
+version = "0.1.0"
+dependencies = [
+ "chrono",
  "serde_json",
 ]
 

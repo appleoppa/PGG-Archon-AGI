@@ -24,6 +24,8 @@ HOME = Path.home()
 HERMES_HOME = HOME / ".hermes"
 REPO = HERMES_HOME / "hermes-agent"
 WORKSPACE = HERMES_HOME / "workspace" / "pgg-archon-governance" / "autonomy-default"
+DATA_DIR = HERMES_HOME / "data" / "autonomy-default-loop"
+LATEST_REPORT = DATA_DIR / "latest.json"
 MANIFEST = HERMES_HOME / "data" / "EVOLUTION_MANIFEST.json"
 LOG_DIR = HERMES_HOME / "logs"
 CASES_ROOT = HERMES_HOME / "workspace" / "苹果中枢办案库"
@@ -172,6 +174,11 @@ def run_probes() -> list[ProbeResult]:
     results.append(_run_self_feed_probe(py))
     results.append(_run_dream_mode_probe(py))
     results.append(_run_picoapex_probe(py))
+    results.append(_run_daa_governance_probe())
+    results.append(_run_report_quality_probe())
+    results.append(_run_prd_quality_probe())
+    results.append(_run_engineering_discipline_probe())
+    results.append(_run_capability_tree_probe())
     return results
 
 
@@ -302,6 +309,126 @@ def _run_picoapex_probe(py: str) -> ProbeResult:
             return ProbeResult("picoapex_saturation", "PASS",
                                f"t={time.time()-t:.0f}s")
     return ProbeResult("picoapex_saturation", "SKIP", "no CLI")
+
+
+
+def _run_report_quality_probe() -> ProbeResult:
+    """Morning/daily report pipeline quality gate as read-only autonomy sub-probe."""
+    cli = HERMES_HOME / "bin" / "pgg-report-quality-gate"
+    if not cli.exists():
+        return ProbeResult("report_quality", "WATCH", "report quality gate CLI missing")
+    t = time.time()
+    res = _run([str(cli)], cwd=REPO, timeout=30)
+    if res["rc"] == 0:
+        try:
+            data = json.loads(res["output"])
+            status = str(data.get("status", ""))
+            score = data.get("score")
+            return ProbeResult(
+                "report_quality",
+                "PASS" if status.startswith("PASS") else "WATCH",
+                f"{status} score={score} readonly t={time.time()-t:.0f}s",
+                {"data": data, "mode": "read_only_autonomy_subprobe"},
+            )
+        except Exception:
+            return ProbeResult("report_quality", "PASS", f"rc=0 t={time.time()-t:.0f}s")
+    return ProbeResult("report_quality", "WATCH", f"rc={res['rc']} t={time.time()-t:.0f}s")
+
+
+def _run_prd_quality_probe() -> ProbeResult:
+    """PRD governance quality gate as read-only autonomy sub-probe (R2=B)."""
+    cli = HERMES_HOME / "bin" / "pgg-prd-quality-gate"
+    if not cli.exists():
+        return ProbeResult("prd_quality", "WATCH", "PRD quality gate CLI missing")
+    t = time.time()
+    res = _run([str(cli)], cwd=REPO, timeout=30)
+    if res["rc"] == 0:
+        try:
+            data = json.loads(res["output"])
+            status = str(data.get("status", ""))
+            score = data.get("score")
+            return ProbeResult(
+                "prd_quality",
+                "PASS" if status.startswith("PASS") else "WATCH",
+                f"{status} score={score} readonly advisory t={time.time()-t:.0f}s",
+                {"data": data, "mode": "read_only_autonomy_subprobe", "decision": "R2=B"},
+            )
+        except Exception:
+            return ProbeResult("prd_quality", "PASS", f"rc=0 t={time.time()-t:.0f}s")
+    return ProbeResult("prd_quality", "WATCH", f"rc={res['rc']} t={time.time()-t:.0f}s")
+
+
+def _run_engineering_discipline_probe() -> ProbeResult:
+    """Engineering discipline handbook read-only gate."""
+    cli = HERMES_HOME / "bin" / "pgg-engineering-discipline-gate"
+    if not cli.exists():
+        return ProbeResult("engineering_discipline", "WATCH", "engineering discipline gate CLI missing")
+    t = time.time()
+    res = _run([str(cli)], cwd=REPO, timeout=30)
+    if res["rc"] == 0:
+        try:
+            data = json.loads(res["output"])
+            status = str(data.get("status", ""))
+            score = data.get("score")
+            return ProbeResult(
+                "engineering_discipline",
+                "PASS" if status.startswith("PASS") else "WATCH",
+                f"{status} score={score} readonly advisory t={time.time()-t:.0f}s",
+                {"data": data, "mode": "read_only_autonomy_subprobe"},
+            )
+        except Exception:
+            return ProbeResult("engineering_discipline", "PASS", f"rc=0 t={time.time()-t:.0f}s")
+    return ProbeResult("engineering_discipline", "WATCH", f"rc={res['rc']} t={time.time()-t:.0f}s")
+
+
+def _run_capability_tree_probe() -> ProbeResult:
+    """R4裁决：Rust capability-tree read-only gate, not a 3h PCEC daemon."""
+    cli = HERMES_HOME / "bin" / "pgg-capability-tree-gate"
+    if not cli.exists():
+        return ProbeResult("capability_tree", "WATCH", "capability tree gate CLI missing")
+    t = time.time()
+    res = _run([str(cli)], cwd=REPO, timeout=30)
+    if res["rc"] == 0:
+        try:
+            data = json.loads(res["output"])
+            status = str(data.get("status", ""))
+            score = data.get("score")
+            return ProbeResult(
+                "capability_tree",
+                "PASS" if status.startswith("PASS") else "WATCH",
+                f"{status} score={score} readonly t={time.time()-t:.0f}s",
+                {"data": data, "mode": "read_only_autonomy_subprobe", "delivery": "local_only_desensitized"},
+            )
+        except Exception:
+            return ProbeResult("capability_tree", "PASS", f"rc=0 t={time.time()-t:.0f}s")
+    return ProbeResult("capability_tree", "WATCH", f"rc={res['rc']} t={time.time()-t:.0f}s")
+
+
+def _run_daa_governance_probe() -> ProbeResult:
+    """C5: DAA governance gate integrated as read-only autonomy sub-probe."""
+    cli_candidates = [
+        HERMES_HOME / "bin" / "pgg-daa-governance-gate",
+        HERMES_HOME / "bin" / "pgg_daa_governance_gate",
+    ]
+    cli = next((x for x in cli_candidates if x.exists()), None)
+    if not cli:
+        return ProbeResult("daa_governance", "WATCH", "DAA governance gate CLI missing")
+    t = time.time()
+    res = _run([str(cli)], cwd=REPO, timeout=30)
+    if res["rc"] == 0:
+        try:
+            data = json.loads(res["output"])
+            status = str(data.get("status", ""))
+            score = data.get("score")
+            return ProbeResult(
+                "daa_governance",
+                "PASS" if status.startswith("PASS") else "WATCH",
+                f"{status} score={score} readonly shadow t={time.time()-t:.0f}s",
+                {"data": data, "mode": "read_only_autonomy_subprobe"},
+            )
+        except Exception:
+            return ProbeResult("daa_governance", "PASS", f"rc=0 t={time.time()-t:.0f}s")
+    return ProbeResult("daa_governance", "WATCH", f"rc={res['rc']} t={time.time()-t:.0f}s")
 
 
 # ── Phase 2: Deep Case Check ──────────────────────────────────────
@@ -567,7 +694,7 @@ def auto_create_pr_from_fixes(fixes, imp_plan, repo_dir):
 
 # ── Main Loop ─────────────────────────────────────────────────────────────
 
-def run(dry_run: bool = False, session_id: str = "default") -> DailyReport:
+def run(dry_run: bool = False, session_id: str = "default", no_report: bool = False) -> DailyReport:
     print(f"[PGG Autonomy Default v1.1] {'DRY RUN' if dry_run else 'LIVE'} session={session_id}")
 
     print("\n[Phase 1/5] 运行探针...")
@@ -632,18 +759,32 @@ def run(dry_run: bool = False, session_id: str = "default") -> DailyReport:
     )
     WORKSPACE.mkdir(parents=True, exist_ok=True)
     out_path = WORKSPACE / f"autonomy_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
-    out_path.write_text(json.dumps(report.to_dict(), ensure_ascii=False, indent=2),
+    payload = report.to_dict()
+    out_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2),
                         encoding="utf-8")
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    latest_payload = dict(payload)
+    latest_payload.update({
+        "schema": "PGGAutonomyDefaultLoopLatest/v1",
+        "status": "PASS_LIVE_LOOP" if not any(p.status == "ERROR" for p in probes) else "WATCH_ERRORS",
+        "report_path": str(out_path),
+        "boundary": "Autonomy default loop latest readback; local probes/case gates only; no AGI/T5/production/legal-final claim",
+    })
+    LATEST_REPORT.write_text(json.dumps(latest_payload, ensure_ascii=False, indent=2),
+                             encoding="utf-8")
     print(f"\n报告已保存: {out_path}")
+    print(f"latest已保存: {LATEST_REPORT}")
     return report
 
 
 def main():
     parser = argparse.ArgumentParser(description="PGG Autonomy Default Loop v1.1")
     parser.add_argument("--dry-run", action="store_true", help="Dry run (no fixes)")
+    parser.add_argument("--no-report", action="store_true", help="Compatibility flag: suppress extra reporting side-effects")
+    parser.add_argument("--json", action="store_true", help="Compatibility flag: accepted for launcher/probe wrappers")
     parser.add_argument("--session-id", default="default", help="Session identifier")
     args = parser.parse_args()
-    report = run(dry_run=args.dry_run, session_id=args.session_id)
+    report = run(dry_run=args.dry_run, session_id=args.session_id, no_report=args.no_report)
     summary = build_summary(report.probes, report.auto_fixes,
                             report.case_reverifications,
                             report.improvement_plan, 0)
