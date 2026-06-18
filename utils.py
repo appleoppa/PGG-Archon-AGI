@@ -17,6 +17,34 @@ logger = logging.getLogger(__name__)
 TRUTHY_STRINGS = frozenset({"1", "true", "yes", "on"})
 
 
+def _atomic_write_allowed_root(path: Path) -> bool:
+    """Return True when *path* stays inside local writable roots.
+
+    ``atomic_replace`` is a shared write primitive. Resolve and bound paths
+    before passing them to filesystem mutation APIs so untrusted callers cannot
+    redirect writes to arbitrary locations.
+    """
+    roots = [Path.home(), Path(tempfile.gettempdir()), Path.cwd()]
+    try:
+        resolved = path.expanduser().resolve(strict=False)
+    except OSError:
+        return False
+    for root in roots:
+        try:
+            resolved.relative_to(root.expanduser().resolve(strict=False))
+            return True
+        except ValueError:
+            continue
+    return False
+
+
+def _safe_atomic_path(path: Union[str, Path]) -> Path:
+    candidate = Path(path).expanduser()
+    if not _atomic_write_allowed_root(candidate):
+        raise ValueError(f"atomic write path outside allowed roots: {candidate}")
+    return candidate
+
+
 def is_truthy_value(value: Any, default: bool = False) -> bool:
     """Coerce bool-ish values using the project's shared truthy string set."""
     if value is None:
@@ -76,10 +104,13 @@ def atomic_replace(tmp_path: Union[str, Path], target: Union[str, Path]) -> str:
     Returns the resolved real path used for the replace, so callers that
     need to re-apply permissions can target it instead of the symlink.
     """
-    target_str = str(target)
-    real_path = os.path.realpath(target_str) if os.path.islink(target_str) else target_str
-    os.replace(str(tmp_path), real_path)
-    return real_path
+    safe_target = _safe_atomic_path(target)
+    safe_tmp = _safe_atomic_path(tmp_path)
+    real_path = safe_target.resolve(strict=False) if safe_target.is_symlink() else safe_target
+    if not _atomic_write_allowed_root(real_path):
+        raise ValueError(f"atomic write resolved target outside allowed roots: {real_path}")
+    os.replace(safe_tmp, real_path)
+    return str(real_path)
 
 
 def atomic_json_write(

@@ -91,6 +91,12 @@ def test_atomic_replace_accepts_pathlike_and_str(tmp_path: Path) -> None:
     assert target.read_text(encoding="utf-8") == "2"
 
 
+def test_atomic_replace_rejects_outside_allowed_roots(tmp_path: Path) -> None:
+    tmp = _write_tmp(tmp_path, "blocked")
+    with pytest.raises(ValueError):
+        atomic_replace(tmp, Path("/etc/hermes-agent-blocked-test"))
+
+
 # ─── atomic_json_write / atomic_yaml_write wiring ──────────────────────────
 
 
