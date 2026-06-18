@@ -814,6 +814,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "pgg_debt_ledger_runner"
+version = "0.1.0"
+dependencies = [
+ "hex",
+ "serde",
+ "serde_json",
+ "sha2",
+]
+
+[[package]]
 name = "pgg_durable_task_object_gate"
 version = "0.1.0"
 dependencies = [

@@ -1,5 +1,6 @@
 import json
 
+from agent import pgg_archon_apex_core_gate as core_gate
 from agent import pgg_goal_unified_status as goal
 from agent.pgg_goal_unified_status import status_class
 
@@ -47,8 +48,10 @@ def test_hermes_goal_schema_fast_regression(monkeypatch, capsys):
             return "Hermes Agent v0.16.0", 0
         if "gh --version" in joined:
             return "gh version 2.92.0", 0
-        if "gh auth status" in joined:
-            return "✓ Logged in to github.com account appleoppa", 0
+        if "gh auth token" in joined:
+            return "ghp_testtoken", 0
+        if "git config github.user" in joined:
+            return "appleoppa", 0
         if "hermes mcp list" in joined:
             return "hermes-studio enabled\ngithub enabled\nfilesystem enabled\nllm-audit enabled", 0
         if "hermes-evolve status" in joined:
@@ -66,6 +69,8 @@ def test_hermes_goal_schema_fast_regression(monkeypatch, capsys):
 
     monkeypatch.setattr(goal, "run", fake_run)
     monkeypatch.setattr(goal, "gate_json", fake_gate_json)
+    monkeypatch.setattr(core_gate, "evaluate_core", lambda: {"status": "PASS_READY", "score": 88.0})
+    monkeypatch.setattr(core_gate, "evaluate_v10", lambda: {"status": "PASS_READY", "score": 88.0})
 
     assert goal.main() == 0
     data = json.loads(capsys.readouterr().out)
@@ -85,8 +90,10 @@ def test_hermes_goal_watch_when_any_component_watch(monkeypatch, capsys):
             return "Hermes Agent v0.16.0", 0
         if "gh --version" in joined:
             return "gh version 2.92.0", 0
-        if "gh auth status" in joined:
-            return "✓ Logged in to github.com account appleoppa", 0
+        if "gh auth token" in joined:
+            return "ghp_testtoken", 0
+        if "git config github.user" in joined:
+            return "appleoppa", 0
         if "hermes mcp list" in joined:
             return "hermes-studio enabled\ngithub enabled\nfilesystem enabled\nllm-audit enabled", 0
         if "hermes-evolve status" in joined:
@@ -106,6 +113,8 @@ def test_hermes_goal_watch_when_any_component_watch(monkeypatch, capsys):
 
     monkeypatch.setattr(goal, "run", fake_run)
     monkeypatch.setattr(goal, "gate_json", fake_gate_json)
+    monkeypatch.setattr(core_gate, "evaluate_core", lambda: {"status": "PASS_READY", "score": 88.0})
+    monkeypatch.setattr(core_gate, "evaluate_v10", lambda: {"status": "PASS_READY", "score": 88.0})
     assert goal.main() == 0
     data = json.loads(capsys.readouterr().out)
     assert data["overall_status"] == "WATCH"
@@ -120,8 +129,10 @@ def test_hermes_goal_github_auth_missing_is_watch_not_error(monkeypatch, capsys)
             return "Hermes Agent v0.16.0", 0
         if "gh --version" in joined:
             return "gh version 2.92.0", 0
-        if "gh auth status" in joined:
-            return "You are not logged into any GitHub hosts", 1
+        if "gh auth token" in joined:
+            return "", 1
+        if "git config github.user" in joined:
+            return "", 1
         if "hermes mcp list" in joined:
             return "hermes-studio enabled\ngithub enabled\nfilesystem enabled\nllm-audit enabled", 0
         if "hermes-evolve status" in joined:
@@ -139,6 +150,8 @@ def test_hermes_goal_github_auth_missing_is_watch_not_error(monkeypatch, capsys)
 
     monkeypatch.setattr(goal, "run", fake_run)
     monkeypatch.setattr(goal, "gate_json", fake_gate_json)
+    monkeypatch.setattr(core_gate, "evaluate_core", lambda: {"status": "PASS_READY", "score": 88.0})
+    monkeypatch.setattr(core_gate, "evaluate_v10", lambda: {"status": "PASS_READY", "score": 88.0})
     assert goal.main() == 0
     data = json.loads(capsys.readouterr().out)
     assert data["overall_status"] == "WATCH"
