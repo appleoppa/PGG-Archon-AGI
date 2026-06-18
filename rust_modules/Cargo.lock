@@ -1167,6 +1167,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "pgg_token_cost_governance_status"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "sha2",
+]
+
+[[package]]
 name = "pgg_workspace_candidate_report"
 version = "0.1.0"
 dependencies = [
