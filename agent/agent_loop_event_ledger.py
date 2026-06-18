@@ -6,8 +6,6 @@ No provider/config/scheduler/security mutation. Fail-open by design.
 """
 from __future__ import annotations
 
-import hashlib
-import hmac
 import json
 import os
 import time
@@ -17,7 +15,6 @@ from typing import Any, Mapping
 _ALLOWED_TYPES = {"tool_request", "tool_result", "compact_boundary", "loop_result", "stream_event"}
 _LEDGER_NAME = "pgg_agent_loop_event_ledger.jsonl"
 _MAX_LINES_BYTES = 8192
-_LOCAL_HMAC_ENV = "HERMES_AGENT_LOOP_LEDGER_HMAC_KEY"
 
 
 def _hermes_home() -> Path:
@@ -28,40 +25,22 @@ def _hermes_home() -> Path:
         return Path(os.environ.get("HERMES_HOME") or Path.home() / ".hermes")
 
 
-def _ledger_hmac_key() -> bytes:
-    """Return local-only HMAC key material without logging or exporting it."""
-    configured = os.environ.get(_LOCAL_HMAC_ENV)
-    if configured:
-        return configured.encode("utf-8", "replace")
-    # Deterministic per-install fallback.  This keeps dashboard joins stable on
-    # the same machine while avoiding bare unsalted hashes of sensitive inputs.
-    return str(_hermes_home()).encode("utf-8", "replace") + b"\0pgg-agent-loop-ledger-v1"
-
-
-def _stable_hmac(value: Any) -> str:
-    try:
-        raw = json.dumps(value, ensure_ascii=False, sort_keys=True, default=str)
-    except Exception:
-        raw = repr(value)
-    return hmac.new(_ledger_hmac_key(), raw.encode("utf-8", "replace"), hashlib.sha256).hexdigest()
-
-
 def _id_fingerprint(value: Any) -> dict[str, Any]:
-    """Return a non-reversible identifier fingerprint for observability joins."""
+    """Return only non-identifying identifier shape metadata."""
     raw = str(value or "")
-    return {"present": bool(raw), "hmac_sha256": _stable_hmac(raw), "length": len(raw)}
+    return {"present": bool(raw), "length": len(raw)}
 
 
 def _arg_shape(args: Any) -> dict[str, Any]:
     """Return non-secret argument shape, never raw values."""
     if isinstance(args, Mapping):
         keys = sorted(str(k) for k in args.keys())[:50]
-        return {"kind": "object", "key_count": len(keys), "keys_hmac_sha256": _stable_hmac(keys), "hmac_sha256": _stable_hmac(args)}
+        return {"kind": "object", "key_count": len(keys)}
     if isinstance(args, (list, tuple)):
-        return {"kind": "array", "len": len(args), "hmac_sha256": _stable_hmac(args)}
+        return {"kind": "array", "len": len(args)}
     if args is None:
-        return {"kind": "null", "hmac_sha256": _stable_hmac(args)}
-    return {"kind": type(args).__name__, "hmac_sha256": _stable_hmac(args)}
+        return {"kind": "null"}
+    return {"kind": type(args).__name__}
 
 
 def append_agent_loop_event(event_type: str, **fields: Any) -> None:
@@ -93,7 +72,7 @@ def append_agent_loop_event(event_type: str, **fields: Any) -> None:
         if "args" in fields:
             payload["args_shape"] = _arg_shape(fields.get("args"))
         if "summary_material" in fields:
-            payload["summary_hmac_sha256"] = _stable_hmac(fields.get("summary_material"))
+            payload["summary_shape"] = _arg_shape(fields.get("summary_material"))
         for key in (
             "before_tokens", "after_tokens", "before_messages", "after_messages", "lossy",
             "result_subtype", "api_calls", "max_turns", "turn_exit_reason", "completed", "failed", "partial", "interrupted",
