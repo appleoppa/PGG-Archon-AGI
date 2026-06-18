@@ -261,6 +261,8 @@ import subprocess
 from pathlib import Path
 from typing import Optional
 
+from utils import base_url_host_matches
+
 
 from hermes_cli.subcommands._shared import add_accept_hooks_flag as _add_accept_hooks_flag
 from hermes_cli.subcommands.cron import build_cron_parser
@@ -5599,7 +5601,7 @@ def _model_flow_kimi(config, current_model=""):
 def _infer_stepfun_region(base_url: str) -> str:
     """Infer the current StepFun region from the configured endpoint."""
     normalized = (base_url or "").strip().lower()
-    if "api.stepfun.com" in normalized:
+    if base_url_host_matches(normalized, "api.stepfun.com"):
         return "china"
     return "international"
 

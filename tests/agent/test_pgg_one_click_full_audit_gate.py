@@ -17,6 +17,8 @@ def test_one_click_gate_uses_all_core_checks(monkeypatch):
             return {"returncode": 0, "stdout": '{"status":"PASS_OMNIROUTE_UI_PRACTICAL_READY_CONFIG_SYNC","passed":15,"total":15}', "stderr": ""}
         if "pgg_omniroute_provider_probe_gate" in joined:
             return {"returncode": 0, "stdout": '{"status":"PASS_OMNIROUTE_PROVIDER_PROBE_GATE_V109","passed":31,"total":31}', "stderr": ""}
+        if "pgg_provider_cost_profile" in joined:
+            return {"returncode": 0, "stdout": '{"profiles":{"ark":{},"deepseek":{},"mimo":{},"agnes":{},"gpt":{},"claude":{}},"global_cost_order":["ark","deepseek","mimo","agnes","gpt","claude"]}', "stderr": ""}
         if "pgg_guarded_production_enable_gate" in joined:
             return {"returncode": 0, "stdout": '{"status":"PASS_GUARDED_STRICT_EXACT_GENERAL_PRODUCTION_ACTIVE","passed":10,"total":10}', "stderr": ""}
         if "记忆系统" in joined:
@@ -33,7 +35,7 @@ def test_one_click_gate_uses_all_core_checks(monkeypatch):
     monkeypatch.setattr("agent.pgg_one_click_full_audit_gate._memory_system_status", lambda: (0, {"overall": {"score_percent": 100.0, "failed_or_watch": []}}))
     rec = build_status()
     assert rec["status"] == "PASS_ONE_CLICK_FULL_AUDIT_ANTI_REGRESSION"
-    assert rec["passed"] == rec["total"] == 9
+    assert rec["passed"] == rec["total"] == 11
     assert any(c["name"] == "l2_readiness_live_agi_gap_pass" and c["ok"] for c in rec["checks"])
 
 

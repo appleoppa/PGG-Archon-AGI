@@ -67,8 +67,8 @@ def compute_defects_from_gates() -> tuple[dict[str, dict[str, Any]], dict[str, A
         'Au': {'user_authorization_gate': True, 'hot_switch_protocol': True, 'rollback_plan': True},
     }, ensure_ascii=False)
     gates={
-        'apex_core': _run_json([str(BIN/'pgg_apex_core_gate'), '--config', str(apex_core_cfg)]),
-        'apex_v10': _run_json([str(BIN/'pgg_apex_v10_gate'), '--config', str(apex_v10_cfg)]),
+        'apex_core': _run_json([str(ROOT/'.venv/bin/python'), '-m', 'agent.pgg_archon_apex_core_gate', '--config', str(apex_core_cfg)]),
+        'apex_v10': _run_json([str(ROOT/'.venv/bin/python'), '-m', 'agent.pgg_archon_apex_core_gate', '--v10', '--config', str(apex_v10_cfg)]),
         'evm': _run_json([str(BIN/'pgg_evm_runtime_gate')]),
         'engineering': _run_json([str(BIN/'pgg_apex_engineering_formula_gate')]),
         'apexagi': _run_json([str(BIN/'pgg_apexagi_runtime_gate'), '--eval', apexagi_cfg, '--json']),

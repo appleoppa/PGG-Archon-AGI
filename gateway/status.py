@@ -17,6 +17,7 @@ import os
 import signal
 import subprocess
 import sys
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 from hermes_constants import get_hermes_home
@@ -39,6 +40,33 @@ _gateway_lock_handle = None
 # past the JSON payload so runtime status / PID readers can still read the file
 # while another process holds the mutual-exclusion lock.
 _WINDOWS_LOCK_OFFSET = 1024 * 1024
+
+
+def _gateway_path_allowed_root(path: Path) -> bool:
+    """Return True when a gateway control-file path stays in local roots."""
+    roots = [Path.home(), Path(tempfile.gettempdir()), Path.cwd()]
+    try:
+        resolved = path.expanduser().resolve(strict=False)
+    except OSError:
+        return False
+    for root in roots:
+        try:
+            resolved.relative_to(root.expanduser().resolve(strict=False))
+            return True
+        except ValueError:
+            continue
+    return False
+
+
+def _safe_gateway_path(path: Path) -> Optional[Path]:
+    """Resolve and bound gateway PID/lock/status paths before filesystem I/O."""
+    try:
+        resolved = path.expanduser().resolve(strict=False)
+    except OSError:
+        return None
+    if not _gateway_path_allowed_root(resolved):
+        return None
+    return resolved
 
 
 def _get_pid_path() -> Path:
@@ -246,12 +274,13 @@ def _write_json_file(path: Path, payload: dict[str, Any]) -> None:
 
 
 def _read_pid_record(pid_path: Optional[Path] = None) -> Optional[dict]:
-    pid_path = pid_path or _get_pid_path()
-    if not pid_path.exists():
+    raw_pid_path = pid_path or _get_pid_path()
+    safe_pid_path = _safe_gateway_path(raw_pid_path)
+    if safe_pid_path is None or not safe_pid_path.exists():
         return None
 
     try:
-        raw = pid_path.read_text().strip()
+        raw = safe_pid_path.read_text().strip()
     except (OSError, UnicodeDecodeError):
         # File was deleted between exists() and read_text(), permission
         # flipped, or it holds non-UTF-8 / binary garbage.
@@ -299,12 +328,17 @@ def _cleanup_invalid_pid_path(pid_path: Path, *, cleanup_stale: bool) -> None:
     """
     if not cleanup_stale:
         return
+    safe_pid_path = _safe_gateway_path(pid_path)
+    if safe_pid_path is None:
+        return
     try:
-        pid_path.unlink(missing_ok=True)
+        safe_pid_path.unlink(missing_ok=True)
     except Exception:
         pass
     try:
-        _get_gateway_lock_path(pid_path).unlink(missing_ok=True)
+        safe_lock_path = _safe_gateway_path(_get_gateway_lock_path(safe_pid_path))
+        if safe_lock_path is not None:
+            safe_lock_path.unlink(missing_ok=True)
     except Exception:
         pass
 
@@ -460,14 +494,17 @@ def release_gateway_runtime_lock() -> None:
 def is_gateway_runtime_lock_active(lock_path: Optional[Path] = None) -> bool:
     """Return True when some process currently owns the gateway runtime lock."""
     global _gateway_lock_handle
-    resolved_lock_path = lock_path or _get_gateway_lock_path()
-    if _gateway_lock_handle is not None and resolved_lock_path == _get_gateway_lock_path():
+    raw_lock_path = lock_path or _get_gateway_lock_path()
+    safe_lock_path = _safe_gateway_path(raw_lock_path)
+    if safe_lock_path is None:
+        return False
+    if _gateway_lock_handle is not None and safe_lock_path == _get_gateway_lock_path().resolve(strict=False):
         return True
 
-    if not resolved_lock_path.exists():
+    if not safe_lock_path.exists():
         return False
 
-    handle = open(resolved_lock_path, "a+", encoding="utf-8")
+    handle = open(safe_lock_path, "a+", encoding="utf-8")
     try:
         if _try_acquire_file_lock(handle):
             _release_file_lock(handle)

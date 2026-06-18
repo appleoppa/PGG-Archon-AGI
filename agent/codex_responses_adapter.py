@@ -76,7 +76,12 @@ _TOOL_CALL_LEAK_PATTERN = re.compile(
 # Multimodal content helpers
 # ---------------------------------------------------------------------------
 
-def _chat_content_to_responses_parts(content: Any, *, role: str = "user") -> List[Dict[str, Any]]:
+def _chat_content_to_responses_parts(
+    content: Any,
+    *,
+    role: str = "user",
+    preserve_cache_control: bool = False,
+) -> List[Dict[str, Any]]:
     """Convert chat-style multimodal content to Responses API input parts.
 
     Input:  ``[{"type":"text"|"image_url", ...}]`` (native OpenAI Chat format)
@@ -108,7 +113,11 @@ def _chat_content_to_responses_parts(content: Any, *, role: str = "user") -> Lis
         if ptype in {"text", "input_text", "output_text"}:
             text = part.get("text")
             if isinstance(text, str) and text:
-                converted.append({"type": text_type, "text": text})
+                converted_part: Dict[str, Any] = {"type": text_type, "text": text}
+                cache_control = part.get("cache_control")
+                if preserve_cache_control and isinstance(cache_control, dict):
+                    converted_part["cache_control"] = dict(cache_control)
+                converted.append(converted_part)
             continue
         if ptype in {"image_url", "input_image"}:
             image_ref = part.get("image_url")
@@ -282,6 +291,7 @@ def _chat_messages_to_responses_input(
     is_xai_responses: bool = False,
     replay_encrypted_reasoning: bool = True,
     current_issuer_kind: Optional[str] = None,
+    preserve_cache_control: bool = False,
 ) -> List[Dict[str, Any]]:
     """Convert internal chat-style messages to Responses input items.
 
@@ -330,7 +340,11 @@ def _chat_messages_to_responses_input(
         if role in {"user", "assistant"}:
             content = msg.get("content", "")
             if isinstance(content, list):
-                content_parts = _chat_content_to_responses_parts(content, role=role)
+                content_parts = _chat_content_to_responses_parts(
+                    content,
+                    role=role,
+                    preserve_cache_control=preserve_cache_control,
+                )
                 text_type = "output_text" if role == "assistant" else "input_text"
                 content_text = "".join(
                     p.get("text", "") for p in content_parts if p.get("type") == text_type
