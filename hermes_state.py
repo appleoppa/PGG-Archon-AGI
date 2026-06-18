@@ -402,7 +402,8 @@ class SessionDB:
     _CHECKPOINT_EVERY_N_WRITES = 50
 
     def __init__(self, db_path: Path = None, read_only: bool = False):
-        self.db_path = db_path or DEFAULT_DB_PATH
+        raw_db_path = db_path or DEFAULT_DB_PATH
+        self.db_path = raw_db_path.expanduser().resolve(strict=False)
         self.read_only = read_only
 
         self._lock = threading.Lock()
@@ -3398,18 +3399,25 @@ class SessionDB:
         """
         if sessions_dir is None:
             return
+        safe_session_id = re.sub(r"[^A-Za-z0-9_.-]+", "_", str(session_id)).strip("._")
+        if not safe_session_id:
+            return
+        root = sessions_dir.expanduser().resolve(strict=False)
         for suffix in (".json", ".jsonl"):
-            p = sessions_dir / f"{session_id}{suffix}"
+            p = (root / f"{safe_session_id}{suffix}").resolve(strict=False)
             try:
+                p.relative_to(root)
                 p.unlink(missing_ok=True)
-            except OSError:
+            except (ValueError, OSError):
                 pass
         # request_dump files use session_id as a prefix component
         try:
-            for p in sessions_dir.glob(f"request_dump_{session_id}_*.json"):
+            for p in root.glob(f"request_dump_{safe_session_id}_*.json"):
                 try:
+                    p = p.resolve(strict=False)
+                    p.relative_to(root)
                     p.unlink(missing_ok=True)
-                except OSError:
+                except (ValueError, OSError):
                     pass
         except OSError:
             pass
