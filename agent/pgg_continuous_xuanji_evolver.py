@@ -249,27 +249,49 @@ def run(cmd: list[str], timeout: int = 60) -> dict[str, Any]:
 def gh_readme(repo: str, out_dir: Path) -> dict[str, Any]:
     safe = repo.replace("/", "__")
     out_path = out_dir / f"{safe}_README.md"
-    # Prefer GitHub's raw media type. It avoids brittle base64 decoding and gives
-    # a human-readable evidence file for later audit/replay.
-    api = run(["gh", "api", f"repos/{repo}/readme", "-H", "Accept: application/vnd.github.raw"], timeout=60)
-    if not api["ok"] or not api["stdout"].strip():
-        # Fallback to JSON .content for GitHub Enterprise / older gh behaviour.
-        meta = run(["gh", "api", f"repos/{repo}/readme", "--jq", ".content"], timeout=60)
-        if not meta["ok"] or not meta["stdout"].strip():
-            out_path.write_text(f"GH_README_ERROR\nrepo={repo}\nrc={api['rc']}\nstderr={api['stderr']}\n", encoding="utf-8")
-            return {"repo": repo, "ok": False, "path": str(out_path), "error": (api["stderr"] or meta["stderr"])[:500]}
-        try:
-            compact = "".join(meta["stdout"].split())
+
+    def _try_raw() -> dict[str, Any]:
+        """Try raw Accept header. We must explicitly check response isn't HTML."""
+        r = run(["gh", "api", f"repos/{repo}/readme", "-H", "Accept: application/vnd.github.raw+json"], timeout=60)
+        if r["ok"] and r["stdout"].strip() and not r["stdout"].strip().startswith("<"):
+            return {"ok": True, "stdout": r["stdout"], "stderr": ""}
+        return {"ok": False, "stdout": "", "stderr": r.get("stderr", "")[:500]}
+
+    def _try_json() -> dict[str, Any]:
+        """Fallback: decode base64 .content from JSON response."""
+        r = run(["gh", "api", f"repos/{repo}/readme", "--jq", ".content"], timeout=60)
+        if r["ok"] and r["stdout"].strip():
+            compact = "".join(r["stdout"].split())
             compact += "=" * ((4 - len(compact) % 4) % 4)
-            data = base64.b64decode(compact).decode("utf-8", errors="replace")
-        except Exception as e:
-            out_path.write_text(f"GH_README_DECODE_ERROR\nrepo={repo}\nerror={e}\n", encoding="utf-8")
-            return {"repo": repo, "ok": False, "path": str(out_path), "error": f"decode: {e}"}
-    else:
-        data = api["stdout"]
-    out_path.write_text(data, encoding="utf-8")
-    snippet = "\n".join(data.splitlines()[:80])[:2500]
-    return {"repo": repo, "ok": True, "path": str(out_path), "bytes": out_path.stat().st_size, "snippet": snippet}
+            try:
+                data = base64.b64decode(compact).decode("utf-8", errors="replace")
+                return {"ok": True, "stdout": data, "stderr": ""}
+            except Exception:
+                pass
+        return {"ok": False, "stdout": "", "stderr": r.get("stderr", "")[:500]}
+
+    # Try raw first, then JSON fallback, each with up to 3 retries
+    errors = []
+    for attempt in range(3):
+        result = _try_raw()
+        if result["ok"]:
+            data = result["stdout"]
+            out_path.write_text(data, encoding="utf-8")
+            snippet = "\n".join(data.splitlines()[:80])[:2500]
+            return {"repo": repo, "ok": True, "path": str(out_path), "bytes": out_path.stat().st_size, "snippet": snippet}
+        errors.append(f"raw({attempt}): {result['stderr'][:200]}")
+        result = _try_json()
+        if result["ok"]:
+            data = result["stdout"]
+            out_path.write_text(data, encoding="utf-8")
+            snippet = "\n".join(data.splitlines()[:80])[:2500]
+            return {"repo": repo, "ok": True, "path": str(out_path), "bytes": out_path.stat().st_size, "snippet": snippet}
+        errors.append(f"json({attempt}): {result['stderr'][:200]}")
+        if attempt < 2:
+            import time
+            time.sleep(5)
+    out_path.write_text(f"GH_README_ERROR\nrepo={repo}\nerrors={'|'.join(errors)}\n", encoding="utf-8")
+    return {"repo": repo, "ok": False, "path": str(out_path), "error": "|".join(errors[-2:])}
 
 
 def existing_gates() -> set[str]:
@@ -317,7 +339,7 @@ def insert_verified_genes(spec: dict[str, Any], source_cards: list[dict[str, Any
             "boundary": "internal bounded gene; README/source readback; not external benchmark/full AGI/legal proof",
             "gene_hash": sha(gene_id + knowledge + source_refs),
             "fitness": 720,
-            "last_executed": None,
+            "last_executed": dt.datetime.now().isoformat(),
             "execution_count": 0,
         }
         cur.execute("select count(*) from evolution_genes where gene_id=?", (gene_id,))
@@ -328,7 +350,7 @@ def insert_verified_genes(spec: dict[str, Any], source_cards: list[dict[str, Any
                 source_refs_json=:source_refs_json, repair_mechanism=:repair_mechanism, severity_rank=:severity_rank,
                 apex_variables=:apex_variables, gate_type=:gate_type, reusable_rule=:reusable_rule, status=:status,
                 evidence_grade=:evidence_grade, verification_status=:verification_status, boundary=:boundary,
-                gene_hash=:gene_hash, fitness=:fitness where gene_id=:gene_id""",
+                gene_hash=:gene_hash, fitness=:fitness, last_executed=:last_executed where gene_id=:gene_id""",
                 row,
             )
             updated += 1

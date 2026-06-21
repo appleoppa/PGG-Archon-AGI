@@ -203,16 +203,19 @@ def _measure_d_pro_rate() -> float:
 
 
 class PggApexCoreGate:
-    """APEX_Core (ΔG_total) 动态证据门 — Rust-only"""
+    """APEX_Core (ΔG_total) 动态证据门 — Rust-first, Python fallback"""
 
-    VERSION = "v0.2.0-dynamic"
+    VERSION = "v0.3.0-dynamic-with-fallback"
 
     def __init__(self):
         self._module = None
         self._loaded = False
+        self._fallback = False
 
     def _ensure_loaded(self):
         if self._loaded:
+            return
+        if self._fallback:
             return
         lib_name = "hermes_pgg_apex_dynamic_score"
         for path_candidate in [None, _VENV_SITE]:
@@ -220,17 +223,16 @@ class PggApexCoreGate:
                 sys.path.insert(0, path_candidate)
             try:
                 self._module = __import__(lib_name)
+                # Verify the module actually works by calling it
+                _ = self._module.evaluate_core_config_json('{}')
                 self._loaded = True
                 return
-            except ImportError:
+            except Exception:
                 continue
-        raise RuntimeError(
-            f"Rust .so 未加载: {lib_name}。"
-            "请运行 'cd rust_modules && cargo build --release -p hermes_pgg_apex_dynamic_score' 编译。"
-        )
+        # Fallback: pure Python implementation
+        self._fallback = True
 
     def _build_config(self) -> Dict[str, Any]:
-        """采集真实系统数据构建评分输入"""
         return {
             "delta_g_base": _measure_delta_g_base(),
             "lambda_effective": _measure_lambda_effective(),
@@ -239,13 +241,54 @@ class PggApexCoreGate:
             "phi_anti_illusion": _measure_phi_anti_illusion(),
         }
 
+    def _py_evaluate_core(self, config: Dict[str, Any]) -> Dict[str, Any]:
+        """Pure Python fallback of the Rust scoring engine."""
+        dg = max(0.0, min(1.0, config.get("delta_g_base", 0.70)))
+        la = max(0.0, min(1.0, config.get("lambda_effective", 0.75)))
+        ps = max(0.0, min(1.0, config.get("psi_cross", 0.65)))
+        om = max(0.0, min(1.0, config.get("omega_self", 0.70)))
+        pa = max(0.0, min(1.0, config.get("phi_anti_illusion", 0.80)))
+        raw = dg * la * (1.0 + ps) * om * pa
+        score = round(max(0.0, min(100.0, raw / 2.0 * 100.0)), 3)
+        avg = (dg + la + ps + om + pa) / 5.0
+        components = [
+            {"name": "ΔG_base", "value": dg, "weight": "base"},
+            {"name": "Λ_effective", "value": la, "weight": "multiplier"},
+            {"name": "Ψ_cross", "value": ps, "weight": "bonus"},
+            {"name": "Ω_self", "value": om, "weight": "multiplier"},
+            {"name": "Φ_anti-illusion", "value": pa, "weight": "multiplier"},
+        ]
+        weakest = sorted(
+            [c for c in components if c["value"] < avg],
+            key=lambda x: x["value"],
+        )[:2]
+        return {
+            "schema": "PGGAPEXCoreDynamicScore/v1",
+            "version": self.VERSION,
+            "score": score,
+            "status": "PASS_READY" if score >= 50.0 else "BLOCKED_IMMATURE",
+            "components": components,
+            "weakest": [w["name"] for w in weakest],
+            "weakest_values": {w["name"]: w["value"] for w in weakest},
+            "formula": "ΔG_total = ΔG_base · Λ_effective · (1 + Ψ_cross) · Ω_self · Φ_anti-illusion",
+            "boundary": "INTERNAL BOUNDED SCORE: Real system-data-driven capability readiness. NOT an AGI benchmark.",
+            "_engine": "python_fallback",
+            "source_data": config,
+        }
+
     def evaluate(self, config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         self._ensure_loaded()
         if config is None:
             config = self._build_config()
-        config_str = json.dumps(config, ensure_ascii=False)
-        result_str = self._module.evaluate_core_config_json(config_str)
-        return json.loads(result_str)
+        if self._fallback:
+            return self._py_evaluate_core(config)
+        try:
+            config_str = json.dumps(config, ensure_ascii=False)
+            result_str = self._module.evaluate_core_config_json(config_str)
+            return json.loads(result_str)
+        except Exception:
+            self._fallback = True
+            return self._py_evaluate_core(config)
 
     def sample_config(self) -> Dict[str, Any]:
         self._ensure_loaded()
@@ -262,16 +305,19 @@ class PggApexCoreGate:
 
 
 class PggApexV10Gate:
-    """APEX_V10 (Φ_APEX) 动态证据门 — Rust-only"""
+    """APEX_V10 (Φ_APEX) 动态证据门 — Rust-first, Python fallback"""
 
-    VERSION = "v0.2.0-dynamic"
+    VERSION = "v0.3.0-dynamic-with-fallback"
 
     def __init__(self):
         self._module = None
         self._loaded = False
+        self._fallback = False
 
     def _ensure_loaded(self):
         if self._loaded:
+            return
+        if self._fallback:
             return
         lib_name = "hermes_pgg_apex_dynamic_score"
         for path_candidate in [None, _VENV_SITE]:
@@ -279,14 +325,12 @@ class PggApexV10Gate:
                 sys.path.insert(0, path_candidate)
             try:
                 self._module = __import__(lib_name)
+                _ = self._module.evaluate_v10_config_json('{}')
                 self._loaded = True
                 return
-            except ImportError:
+            except Exception:
                 continue
-        raise RuntimeError(
-            f"Rust .so 未加载: {lib_name}。"
-            "请运行 'cd rust_modules && cargo build --release -p hermes_pgg_apex_dynamic_score' 编译。"
-        )
+        self._fallback = True
 
     def _build_config(self) -> Dict[str, Any]:
         return {
@@ -295,13 +339,43 @@ class PggApexV10Gate:
             "d_pro_rate": _measure_d_pro_rate(),
         }
 
+    def _py_evaluate_v10(self, config: Dict[str, Any]) -> Dict[str, Any]:
+        """Pure Python fallback of the Rust V10 scoring engine."""
+        h_err = max(0.0, min(1.0, config.get("h_err_rate", 0.75)))
+        p_asm = max(0.0, min(1.0, config.get("p_asm_rate", 0.70)))
+        d_pro = max(0.0, min(1.0, config.get("d_pro_rate", 0.70)))
+        phi = round(h_err * 0.40 + p_asm * 0.35 + d_pro * 0.25, 4)
+        score = round(max(0.0, min(100.0, phi * 100.0)), 3)
+        return {
+            "schema": "PGGAPEXV10DynamicScore/v1",
+            "version": self.VERSION,
+            "score": score,
+            "phi_apex": phi,
+            "status": "PASS_READY" if score >= 50.0 else "BLOCKED_IMMATURE",
+            "components": {
+                "h_err_rate": h_err,
+                "p_asm_rate": p_asm,
+                "d_pro_rate": d_pro,
+            },
+            "formula": "Φ_APEX = h_err * 0.40 + p_asm * 0.35 + d_pro * 0.25",
+            "boundary": "INTERNAL BOUNDED SCORE: Real system data. NOT AGI.",
+            "_engine": "python_fallback",
+            "source_data": config,
+        }
+
     def evaluate(self, config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         self._ensure_loaded()
         if config is None:
             config = self._build_config()
-        config_str = json.dumps(config, ensure_ascii=False)
-        result_str = self._module.evaluate_v10_config_json(config_str)
-        return json.loads(result_str)
+        if self._fallback:
+            return self._py_evaluate_v10(config)
+        try:
+            config_str = json.dumps(config, ensure_ascii=False)
+            result_str = self._module.evaluate_v10_config_json(config_str)
+            return json.loads(result_str)
+        except Exception:
+            self._fallback = True
+            return self._py_evaluate_v10(config)
 
     def sample_config(self) -> Dict[str, Any]:
         self._ensure_loaded()

@@ -4860,7 +4860,7 @@ class HermesCLI(CLICommandsMixin):
         self._command_status = status
         self._invalidate(min_interval=0.0)
         try:
-            print(f"⏳ {status}")
+            _cprint(f"⏳ {status}")
             yield
         finally:
             self._command_running = False
