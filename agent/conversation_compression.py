@@ -516,10 +516,10 @@ def compress_context(
                 agent._session_db.update_system_prompt(agent.session_id, new_system_prompt)
                 agent._last_flushed_db_idx = 0
             else:
-                # Rotation path: preserve existing local semantics from the
-                # rotation-state guard batch (flush old transcript, rollback on
-                # child create failure, migrate /goal, propagate title, update
-                # contextvars + logging context).
+                # Rotation path: flush the old transcript, end the parent,
+                # create a child session, and roll back cleanly if child create
+                # fails. This preserves the local in-place compaction feature
+                # while absorbing the upstream rotation-state guard.
                 try:
                     agent._flush_messages_to_session_db(messages)
                 except Exception:
@@ -528,11 +528,14 @@ def compress_context(
                 agent._session_db.end_session(agent.session_id, "compression")
                 old_session_id = agent.session_id
                 agent.session_id = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:6]}"
+                # Ordering contract: the agent thread updates the contextvar here;
+                # the gateway propagates to SessionEntry after run_in_executor returns.
                 try:
                     from gateway.session_context import set_current_session_id
                     set_current_session_id(agent.session_id)
                 except Exception:
                     os.environ["HERMES_SESSION_ID"] = agent.session_id
+                # Keep log correlation aligned with the rotated session id.
                 try:
                     from hermes_logging import set_session_context
                     set_session_context(agent.session_id)
@@ -580,11 +583,15 @@ def compress_context(
                     _rotation_child_created = True
                 if _rotation_child_created:
                     # Carry a persistent /goal onto the continuation session.
+                    # Compression mints a fresh child id; load_goal does a flat
+                    # per-session lookup with no parent walk, so without this an
+                    # active goal silently dies at the boundary.
                     try:
                         from hermes_cli.goals import migrate_goal_to_session
                         migrate_goal_to_session(old_session_id, agent.session_id, reason="compression")
                     except Exception as _goal_err:
                         logger.debug("Could not migrate goal on compression: %s", _goal_err)
+                    # Auto-number the title for the continuation session.
                     if old_title:
                         try:
                             new_title = agent._session_db.get_next_title_in_lineage(old_title)
@@ -595,6 +602,9 @@ def compress_context(
                 # Reset flush cursor — new session starts with no messages written
                 agent._last_flushed_db_idx = 0
         except Exception as e:
+            # If child creation failed, the code above rolls the live id back
+            # to the still-indexed parent and clears old_session_id, so this is
+            # recovery rather than an unindexed orphan.
             if locals().get("old_session_id") is None and not in_place:
                 logger.warning(
                     "Compression rotation aborted and rolled back to the parent "
