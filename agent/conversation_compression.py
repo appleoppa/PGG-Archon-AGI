@@ -531,26 +531,81 @@ def compress_context(
             except Exception:
                 pass
             agent._session_db_created = False
-            agent._session_db.create_session(
-                session_id=agent.session_id,
-                source=agent.platform or os.environ.get("HERMES_SESSION_SOURCE", "cli"),
-                model=agent.model,
-                model_config=agent._session_init_model_config,
-                parent_session_id=old_session_id,
-            )
-            agent._session_db_created = True
-            # Auto-number the title for the continuation session
-            if old_title:
+            try:
+                agent._session_db.create_session(
+                    session_id=agent.session_id,
+                    source=agent.platform or os.environ.get("HERMES_SESSION_SOURCE", "cli"),
+                    model=agent.model,
+                    model_config=agent._session_init_model_config,
+                    parent_session_id=old_session_id,
+                )
+            except Exception as _cs_err:
+                # Child row could not be created (e.g. FK constraint or
+                # contended write). Roll back the live id to the still-indexed
+                # parent instead of continuing on a phantom child session.
+                logger.warning(
+                    "Compression child session create failed (%s) — rolling back "
+                    "to parent session %s to avoid an orphan.",
+                    _cs_err,
+                    old_session_id,
+                )
+                agent.session_id = old_session_id
                 try:
-                    new_title = agent._session_db.get_next_title_in_lineage(old_title)
-                    agent._session_db.set_session_title(agent.session_id, new_title)
-                except (ValueError, Exception) as e:
-                    logger.debug("Could not propagate title on compression: %s", e)
+                    from gateway.session_context import set_current_session_id
+                    set_current_session_id(agent.session_id)
+                except Exception:
+                    os.environ["HERMES_SESSION_ID"] = agent.session_id
+                try:
+                    from hermes_logging import set_session_context
+                    set_session_context(agent.session_id)
+                except Exception:
+                    pass
+                try:
+                    agent._session_db.reopen_session(old_session_id)
+                except Exception:
+                    pass
+                old_session_id = None
+                agent._session_db_created = True
+                _rotation_child_created = False
+            else:
+                agent._session_db_created = True
+                _rotation_child_created = True
+            if _rotation_child_created:
+                # Carry a persistent /goal onto the continuation session.
+                # Compression mints a fresh child id; load_goal does a flat
+                # per-session lookup with no parent walk, so without this an
+                # active goal silently dies at the boundary.
+                try:
+                    from hermes_cli.goals import migrate_goal_to_session
+                    migrate_goal_to_session(old_session_id, agent.session_id, reason="compression")
+                except Exception as _goal_err:
+                    logger.debug("Could not migrate goal on compression: %s", _goal_err)
+                # Auto-number the title for the continuation session
+                if old_title:
+                    try:
+                        new_title = agent._session_db.get_next_title_in_lineage(old_title)
+                        agent._session_db.set_session_title(agent.session_id, new_title)
+                    except (ValueError, Exception) as e:
+                        logger.debug("Could not propagate title on compression: %s", e)
             agent._session_db.update_system_prompt(agent.session_id, new_system_prompt)
             # Reset flush cursor — new session starts with no messages written
             agent._last_flushed_db_idx = 0
         except Exception as e:
-            logger.warning("Session DB compression split failed — new session will NOT be indexed: %s", e)
+            # If child creation failed, the code above rolls the live id back
+            # to the still-indexed parent and clears old_session_id, so this is
+            # recovery rather than an unindexed orphan.
+            if locals().get("old_session_id") is None and not in_place:
+                logger.warning(
+                    "Compression rotation aborted and rolled back to the parent "
+                    "session (%s): %s",
+                    agent.session_id or "?",
+                    e,
+                )
+            else:
+                logger.warning(
+                    "Session DB compression split failed — new session will NOT be indexed: %s",
+                    e,
+                )
 
     # Notify the context engine that the session_id rotated because of
     # compression (not a fresh /new). Plugin engines (e.g. hermes-lcm) use
@@ -564,6 +619,7 @@ def compress_context(
                 agent.session_id or "",
                 boundary_reason="compression",
                 old_session_id=_old_sid,
+                platform=getattr(agent, "platform", None) or "cli",
                 conversation_id=getattr(agent, "_gateway_session_key", None),
             )
     except Exception as _ce_err:

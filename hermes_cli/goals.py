@@ -236,6 +236,13 @@ def _get_session_db() -> Optional[Any]:
     return db
 
 
+def _goal_db_get_meta(db: Any, session_id: str) -> Optional[GoalState]:
+    raw = db.get_meta(_meta_key(session_id))
+    if not raw:
+        return None
+    return GoalState.from_json(raw)
+
+
 def load_goal(session_id: str) -> Optional[GoalState]:
     """Load the goal for a session, or None if none exists."""
     if not session_id:
@@ -278,6 +285,43 @@ def clear_goal(session_id: str) -> None:
     state.status = "cleared"
     save_goal(session_id, state)
 
+
+def migrate_goal_to_session(old_session_id: str, new_session_id: str, *, reason: str = "") -> bool:
+    """Carry a persistent /goal from a parent session to its continuation.
+
+    Uses one SessionDB handle for the full migration so compression rotation
+    cannot lose a goal because of helper-level DB/cache drift. Best-effort and
+    never raises; compression must continue even if goal migration fails.
+    """
+    if not old_session_id or not new_session_id or old_session_id == new_session_id:
+        return False
+    try:
+        db = _get_session_db()
+        if db is None:
+            return False
+        old_key = _meta_key(old_session_id)
+        new_key = _meta_key(new_session_id)
+        raw = db.get_meta(old_key)
+        if not raw:
+            return False
+        state = GoalState.from_json(raw)
+        if getattr(state, "status", None) == "cleared":
+            return False
+        if db.get_meta(new_key):
+            return False
+        db.set_meta(new_key, state.to_json())
+        state.status = "cleared"
+        db.set_meta(old_key, state.to_json())
+        logger.debug(
+            "GoalManager: migrated goal %s -> %s (%s)",
+            old_session_id,
+            new_session_id,
+            reason or "rotation",
+        )
+        return True
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.debug("GoalManager: goal migration failed: %s", exc)
+        return False
 
 # ──────────────────────────────────────────────────────────────────────
 # Judge
@@ -907,6 +951,7 @@ __all__ = [
     "load_goal",
     "save_goal",
     "clear_goal",
+    "migrate_goal_to_session",
     "judge_goal",
     "run_kanban_goal_loop",
 ]
