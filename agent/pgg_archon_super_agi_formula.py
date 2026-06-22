@@ -21,7 +21,7 @@ _SCHEMA = "PGGArchonSuperAGIFormulaReport/v1"
 _GATE_SCHEMA = "PGGArchonSuperAGIProgressiveGate/v1"
 
 _DEFAULT_WEIGHTS = {
-    "delta_g_apex": 1.0, "m_mimo": 1.0, "phi_mcp": 1.0,
+    "delta_g_apex": 1.0, "m_model": 1.0, "phi_mcp": 1.0,
     "f_github": 1.0, "s_fix": 1.0, "omega_rust_go": 1.0,
     "error_decay": 1.0, "hallucination_noise": 1.4, "system_drag": 1.0,
 }
@@ -79,7 +79,7 @@ else:
         weights.update({k: _unit(v, default=weights.get(k, 1.0)) for k, v in _mapping(sig.get("weights")).items()})
 
         delta_g_apex = _num(sig.get("delta_g_apex"), default=75.0)
-        m_mimo = _unit(sig.get("m_mimo"), default=1.0)
+        m_model = _unit(sig.get("m_model"), default=1.0)
         phi_mcp = _unit(sig.get("phi_mcp"), default=1.0)
         f_github = _unit(sig.get("f_github"), default=0.5)
         s_fix = _num(sig.get("s_fix"), default=80.0)
@@ -88,7 +88,7 @@ else:
         hallucination_noise = _num(sig.get("hallucination_noise"), default=15.0)
         system_drag = _num(sig.get("system_drag"), default=10.0)
 
-        spiral_gain = delta_g_apex * m_mimo * phi_mcp * f_github
+        spiral_gain = delta_g_apex * m_model * phi_mcp * f_github
         self_fix_kernel_gain = s_fix * omega_rust_go
         drag = (
             error_decay * weights["error_decay"]
@@ -100,10 +100,10 @@ else:
 
         report = {
             "schema": _SCHEMA,
-            "formula": "Ψ_SUPER_AGI(t+1)=ΔG_APEX·M_MIMO·Φ_MCP·F_GitHub + S_fix·Ω_RustGo - Σ(ErrorDecay+HallucinationNoise+SystemDrag)",
+            "formula": "Ψ_SUPER_AGI(t+1)=ΔG_APEX·M_provider·Φ_MCP·F_GitHub + S_fix·Ω_RustGo - Σ(ErrorDecay+HallucinationNoise+SystemDrag)",
             "inputs": {
                 "delta_g_apex": delta_g_apex,
-                "m_mimo": m_mimo,
+                "m_model": m_model,
                 "phi_mcp": phi_mcp,
                 "f_github": f_github,
                 "s_fix": s_fix,

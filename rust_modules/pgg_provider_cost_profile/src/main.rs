@@ -154,24 +154,6 @@ fn build_profiles() -> Vec<ProviderCostProfile> {
             D_TEXT,
             "用户指定贵；仅静态链fallback或explicit criminal/civil。",
         ),
-        make_profile(
-            "mimo",
-            "MiMo V2.5 Pro",
-            ResType::PayPackage,
-            InfType::TextInf,
-            K_PAY_PACKAGE,
-            D_TEXT,
-            "包月；第三方审计/辅助复核通道。边际成本低但非主执行。",
-        ),
-        make_profile(
-            "agnes",
-            "Agnes 2.0 Flash",
-            ResType::PayPackage,
-            InfType::TextInf,
-            K_PAY_PACKAGE,
-            D_TEXT,
-            "包月；辅助审计通道。边际成本低。",
-        ),
     ]
 }
 

@@ -69,7 +69,6 @@ class ProviderProfile:
     # content (multipart with image_url parts).  Defaults to True for
     # backward compatibility.  Set to False for providers that accept
     # multimodal user messages but reject list-type tool content
-    # (e.g. Xiaomi MiMo, which returns 400 "text is not set").
     supports_vision_tool_messages: bool = True
 
     # ── Model catalog ─────────────────────────────────────────

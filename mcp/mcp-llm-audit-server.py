@@ -1,12 +1,11 @@
 """
 Multi-LLM Audit MCP Server — wraps existing Hermes providers as MCP tools
-Each provider (GPT-5.5, Claude, DeepSeek, MiMo, Agnes) becomes a callable MCP tool
+Each provider (GPT-5.5, Claude, DeepSeek) becomes a callable MCP tool
 for multi-model audit chains.
 
 Usage via Hermes CLI (after config): 
   hermes mcp add llm-audit --command python3 --args /path/to/mcp-llm-audit-server.py
 
-Then available as MCP tools: audit_gpt55, audit_claude, audit_deepseek, audit_mimo, audit_agnes
 """
 import json, sys, os, subprocess
 from pathlib import Path
@@ -20,8 +19,6 @@ PROVIDERS = {
     "gpt55": {"provider": "custom:gpt55_5yuantoken", "model": "gpt-5.5", "desc": "GPT-5.5 主力审计"},
     "claude": {"provider": "custom:claude_opus46_5yuantoken", "model": "claude-opus-4-6", "desc": "Claude Opus 4-6 深度审计"},
     "deepseek": {"provider": "custom:deepseek_v4_flash", "model": "deepseek-v4-flash", "desc": "DeepSeek V4 快速审计"},
-    "mimo": {"provider": "custom:mimo_v25_pro_auditor", "model": "mimo-v2.5-pro", "desc": "MiMo V2.5 Pro 第三方审计"},
-    "agnes": {"provider": "custom:agnes_20_flash", "model": "agnes-2.0-flash", "desc": "Agnes 2.0 Flash 辅助审计"},
 }
 
 TOOLS = []
@@ -90,7 +87,7 @@ def main():
             "name": "llm-audit",
             "version": "0.1.0",
             "providers": list(PROVIDERS.keys()),
-            "description": "Multi-LLM audit MCP server — GPT-5.5/Claude/DeepSeek/MiMo/Agnes"
+            "description": "Multi-LLM audit MCP server — GPT-5.5/Claude/DeepSeek"
         }))
         return
     

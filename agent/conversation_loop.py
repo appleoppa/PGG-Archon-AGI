@@ -971,7 +971,7 @@ def run_conversation(
                 agent._reset_stream_delivery_tracking()
                 # api_messages is built once, before this retry loop, while the
                 # primary provider is active.  A mid-conversation fallback can
-                # switch to a require-side provider (DeepSeek / Kimi / MiMo) that
+                # switch to a require-side provider (DeepSeek / Kimi / provider) that
                 # rejects assistant turns lacking reasoning_content.  Re-apply the
                 # echo-back pad for the *current* provider here (idempotent no-op
                 # unless the active provider needs it) so the fallback request
@@ -2741,7 +2741,7 @@ def run_conversation(
                 # this on the next pass and try fallback or bail.
                 #
                 # IMPORTANT: Nous Portal multiplexes multiple upstream
-                # providers (DeepSeek, Kimi, MiMo, Hermes).  A 429 can
+                # providers (DeepSeek, Kimi, provider, Hermes).  A 429 can
                 # also mean an UPSTREAM provider is out of capacity
                 # for one specific model -- transient, clears in
                 # seconds, nothing to do with the caller's quota.
@@ -4059,7 +4059,7 @@ def run_conversation(
                     #      was mid-task narration, not a final answer)
                     # Instead of giving up, nudge the model to continue by
                     # appending a user-level hint.  This is the #9400 case:
-                    # weaker models (mimo-v2-pro, GLM-5, etc.) sometimes
+                    # weaker models (provider-model, GLM-5, etc.) sometimes
                     # return empty after tool results instead of continuing
                     # to the next step.  One retry with a nudge usually
                     # fixes it.
@@ -4156,7 +4156,7 @@ def run_conversation(
                     # times before attempting fallback.  This covers
                     # both truly empty responses (no content, no
                     # reasoning) AND reasoning-only responses after
-                    # prefill exhaustion — models like mimo-v2-pro
+                    # prefill exhaustion — models like provider-model
                     # always populate reasoning fields via OpenRouter,
                     # so the old `not _has_structured` guard blocked
                     # retries for every reasoning model after prefill.

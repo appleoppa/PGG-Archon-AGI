@@ -399,14 +399,6 @@ PROVIDER_REGISTRY: Dict[str, ProviderConfig] = {
         api_key_env_vars=("HF_TOKEN",),
         base_url_env_var="HF_BASE_URL",
     ),
-    "xiaomi": ProviderConfig(
-        id="xiaomi",
-        name="Xiaomi MiMo",
-        auth_type="api_key",
-        inference_base_url="https://api.xiaomimimo.com/v1",
-        api_key_env_vars=("XIAOMI_API_KEY",),
-        base_url_env_var="XIAOMI_BASE_URL",
-    ),
     "tencent-tokenhub": ProviderConfig(
         id="tencent-tokenhub",
         name="Tencent TokenHub",
@@ -1502,7 +1494,6 @@ def resolve_provider(
         "opencode": "opencode-zen", "zen": "opencode-zen",
         "qwen-portal": "qwen-oauth", "qwen-cli": "qwen-oauth", "qwen-oauth": "qwen-oauth", "google-gemini-cli": "google-gemini-cli", "gemini-cli": "google-gemini-cli", "gemini-oauth": "google-gemini-cli",
         "hf": "huggingface", "hugging-face": "huggingface", "huggingface-hub": "huggingface",
-        "mimo": "xiaomi", "xiaomi-mimo": "xiaomi",
         "tencent": "tencent-tokenhub", "tokenhub": "tencent-tokenhub",
         "tencent-cloud": "tencent-tokenhub", "tencentmaas": "tencent-tokenhub",
         "aws": "bedrock", "aws-bedrock": "bedrock", "amazon-bedrock": "bedrock", "amazon": "bedrock",

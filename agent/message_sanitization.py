@@ -80,7 +80,7 @@ def _sanitize_messages_surrogates(messages: list) -> bool:
     metadata/arguments, AND any additional string or nested structured fields
     (``reasoning``, ``reasoning_content``, ``reasoning_details``, etc.) so
     retries don't fail on a non-content field.  Byte-level reasoning models
-    (xiaomi/mimo, kimi, glm) can emit lone surrogates in reasoning output
+    (provider, kimi, glm) can emit lone surrogates in reasoning output
     that flow through to ``api_messages["reasoning_content"]`` on the next
     turn and crash json.dumps inside the OpenAI SDK.
     """
@@ -124,7 +124,7 @@ def _sanitize_messages_surrogates(messages: list) -> bool:
                         found = True
         # Walk any additional string / nested fields (reasoning,
         # reasoning_content, reasoning_details, etc.) — surrogates from
-        # byte-level reasoning models (xiaomi/mimo, kimi, glm) can lurk
+        # byte-level reasoning models (provider, kimi, glm) can lurk
         # in these fields and aren't covered by the per-field checks above.
         # Matches _sanitize_messages_non_ascii's coverage (PR #10537).
         for key, value in msg.items():

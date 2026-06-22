@@ -52,7 +52,7 @@ class FailoverReason(enum.Enum):
     # Request format
     format_error = "format_error"        # 400 bad request — abort or strip + retry
     invalid_encrypted_content = "invalid_encrypted_content"  # Responses replay blob rejected — strip replay state and retry
-    multimodal_tool_content_unsupported = "multimodal_tool_content_unsupported"  # Provider rejected list-type content in tool messages (e.g. Xiaomi MiMo) — downgrade to text and retry
+    multimodal_tool_content_unsupported = "multimodal_tool_content_unsupported"  # Provider rejected list-type content in tool messages (e.g. provider) — downgrade to text and retry
 
     # Provider-specific
     thinking_signature = "thinking_signature"  # Anthropic thinking block sig invalid
@@ -182,7 +182,7 @@ _IMAGE_TOO_LARGE_PATTERNS = [
 # ``content`` to be a string.  Some (Anthropic native, Codex Responses,
 # Gemini native, first-party OpenAI) extend this to accept a content-parts
 # list (text + image_url) so screenshots from computer_use survive.  Others
-# (Xiaomi MiMo, some Alibaba endpoints, a long tail of OpenAI-compatible
+# (provider, some Alibaba endpoints, a long tail of OpenAI-compatible
 # providers) reject the list with a 400 — the patterns below are the most
 # common error shapes we see.  Recovery: strip image parts from tool
 # messages in-place, record the (provider, model) for the rest of the
@@ -190,7 +190,7 @@ _IMAGE_TOO_LARGE_PATTERNS = [
 #
 # See: https://github.com/NousResearch/hermes-agent/issues/27344
 _MULTIMODAL_TOOL_CONTENT_PATTERNS = [
-    # Xiaomi MiMo: {"error":{"code":"400","message":"Param Incorrect","param":"text is not set"}}
+    # provider: {"error":{"code":"400","message":"Param Incorrect","param":"text is not set"}}
     "text is not set",
     # Generic "tool message must be string" shapes
     "tool message content must be a string",

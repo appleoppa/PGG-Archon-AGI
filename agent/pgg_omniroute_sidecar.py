@@ -100,7 +100,7 @@ def _suggest(complexity: dict | None, cost: dict | None) -> str | None:
         return f"推荐低成本: {cheap} (Score_Q={result.get('score_q'):.2f}, Tier={tier})"
     elif tier == "M":
         # 中复杂度 → 推平衡 provider
-        mid = cost_order[len(cost_order)//2] if len(cost_order) > 2 else "mimo"
+        mid = cost_order[len(cost_order)//2] if len(cost_order) > 2 else "ark"
         return f"推荐平衡: {mid} (Score_Q={result.get('score_q'):.2f}, Tier={tier})"
     else:
         # 高复杂度 → 推强模型

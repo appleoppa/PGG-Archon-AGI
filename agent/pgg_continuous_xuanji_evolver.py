@@ -160,7 +160,7 @@ STEP_SPECS: list[dict[str, Any]] = [
         "query": "LLM gateway routing fallback observability",
         "genes": [
             ("routing_provider_health_probe_v1", "Provider 健康探针", "路由前用 bounded probe 验证真实 HTTP/可见输出，不能用历史 PASS 判断当前可用。", "bounded_provider_probe"),
-            ("routing_explicit_fallback_policy_v1", "显式降级策略", "主模型失败时按授权链降级并标注边界；禁止暗中把 GPT/Claude/MiMo 等冒充主参与。", "explicit_fallback_chain"),
+            ("routing_explicit_fallback_policy_v1", "显式降级策略", "主模型失败时按授权链降级并标注边界；禁止暗中把 GPT/Claude/provider 等冒充主参与。", "explicit_fallback_chain"),
             ("routing_cost_quality_ledger_v1", "路由成本质量账本", "每次 provider 选择应记录成本/延迟/成功率/输出质量，用数据优化路由。", "provider_decision_ledger"),
         ],
     },

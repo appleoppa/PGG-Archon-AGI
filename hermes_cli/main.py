@@ -2874,7 +2874,6 @@ def select_provider_and_model(args=None):
         "opencode-go",
         "alibaba",
         "huggingface",
-        "xiaomi",
         "arcee",
         "gmi",
         "nvidia",

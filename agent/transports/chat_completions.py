@@ -513,7 +513,7 @@ class ChatCompletionsTransport(ProviderTransport):
         anthropic_max = params.get("anthropic_max_output")
         # Per-model default cap — profiles override get_max_tokens() when
         # they front several backends with different completion-token limits
-        # (e.g. opencode-go: mimo-v2.5-pro = 131072).
+        # (e.g. opencode-go: provider-model = 131072).
         profile_max = profile.get_max_tokens(model)
 
         if ephemeral is not None and max_tokens_fn:

@@ -60,8 +60,6 @@ def build_current_evidence(*, rust_compile_passed: bool = False, python_import_s
                     claude_attempted = True
                     claude_visible = status == "OK_VISIBLE"
                     failed_recorded = failed_recorded or status != "OK_VISIBLE"
-                if "mimo" in provider and status == "OK_VISIBLE":
-                    judge_visible = True
         except Exception:
             failed_recorded = True
 

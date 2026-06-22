@@ -19,7 +19,7 @@ macro_rules! obj {
 fn unit(v: &Value, d: f64) -> f64 { clamp(fin(v, d), 0.0, 2.0) }
 
 static DEFAULT_WEIGHTS: &[(&str, f64)] = &[
-    ("delta_g_apex", 1.0), ("m_mimo", 1.0), ("phi_mcp", 1.0),
+    ("delta_g_apex", 1.0), ("m_model", 1.0), ("phi_mcp", 1.0),
     ("f_github", 1.0), ("s_fix", 1.0), ("omega_rust_go", 1.0),
     ("error_decay", 1.0), ("hallucination_noise", 1.4), ("system_drag", 1.0),
 ];
@@ -47,7 +47,7 @@ fn build_super_agi_formula_report(s: &str) -> PyResult<String> {
     }
 
     let delta_g_apex = fin(o.get("delta_g_apex").unwrap_or(&json!(75.0)), 75.0);
-    let m_mimo = unit(o.get("m_mimo").unwrap_or(&json!(1.0)), 1.0);
+    let m_model = unit(o.get("m_model").unwrap_or(&json!(1.0)), 1.0);
     let phi_mcp = unit(o.get("phi_mcp").unwrap_or(&json!(1.0)), 1.0);
     let f_github = unit(o.get("f_github").unwrap_or(&json!(0.5)), 0.5);
     let s_fix = fin(o.get("s_fix").unwrap_or(&json!(80.0)), 80.0);
@@ -57,7 +57,7 @@ fn build_super_agi_formula_report(s: &str) -> PyResult<String> {
     let hallucination_noise = fin(o.get("hallucination_noise").unwrap_or(&json!(15.0)), 15.0);
     let system_drag = fin(o.get("system_drag").unwrap_or(&json!(10.0)), 10.0);
 
-    let spiral_gain = delta_g_apex * m_mimo * phi_mcp * f_github;
+    let spiral_gain = delta_g_apex * m_model * phi_mcp * f_github;
     let self_fix_kernel = s_fix * omega_rust_go;
     let drag = error_decay * w.get("error_decay").copied().unwrap_or(1.0)
         + hallucination_noise * w.get("hallucination_noise").copied().unwrap_or(1.4)
@@ -67,11 +67,11 @@ fn build_super_agi_formula_report(s: &str) -> PyResult<String> {
 
     let mut report = BTreeMap::new();
     report.insert("schema".to_string(), json!("PGGArchonSuperAGIFormulaReport/v1"));
-    report.insert("formula".to_string(), json!("Ψ_SUPER_AGI(t+1)=ΔG_APEX·M_MIMO·Φ_MCP·F_GitHub + S_fix·Ω_RustGo - Σ(ErrorDecay+HallucinationNoise+SystemDrag)"));
+    report.insert("formula".to_string(), json!("Ψ_SUPER_AGI(t+1)=ΔG_APEX·M_provider·Φ_MCP·F_GitHub + S_fix·Ω_RustGo - Σ(ErrorDecay+HallucinationNoise+SystemDrag)"));
 
     let mut inputs = BTreeMap::new();
     inputs.insert("delta_g_apex".to_string(), json!(r3(delta_g_apex)));
-    inputs.insert("m_mimo".to_string(), json!(r3(m_mimo)));
+    inputs.insert("m_model".to_string(), json!(r3(m_model)));
     inputs.insert("phi_mcp".to_string(), json!(r3(phi_mcp)));
     inputs.insert("f_github".to_string(), json!(r3(f_github)));
     inputs.insert("s_fix".to_string(), json!(r3(s_fix)));
@@ -194,14 +194,14 @@ mod tests {
     }
 
     #[test] fn report_high_score() {
-        let sig = r#"{"delta_g_apex":95,"m_mimo":1.5,"phi_mcp":1.2,"f_github":1.0,"s_fix":90,"omega_rust_go":1.0,"error_decay":5,"hallucination_noise":3,"system_drag":2}"#;
+        let sig = r#"{"delta_g_apex":95,"m_model":1.5,"phi_mcp":1.2,"f_github":1.0,"s_fix":90,"omega_rust_go":1.0,"error_decay":5,"hallucination_noise":3,"system_drag":2}"#;
         let r = build_super_agi_formula_report(sig).unwrap();
         let v = j(&r);
         assert!(v["components"]["normalized_score"].as_f64().unwrap() > 80.0);
     }
 
     #[test] fn report_low_score() {
-        let sig = r#"{"delta_g_apex":10,"m_mimo":0.3,"phi_mcp":0.2,"f_github":0.1,"s_fix":5,"omega_rust_go":0.1,"error_decay":50,"hallucination_noise":60,"system_drag":40}"#;
+        let sig = r#"{"delta_g_apex":10,"m_model":0.3,"phi_mcp":0.2,"f_github":0.1,"s_fix":5,"omega_rust_go":0.1,"error_decay":50,"hallucination_noise":60,"system_drag":40}"#;
         let r = build_super_agi_formula_report(sig).unwrap();
         let v = j(&r);
         assert!(v["components"]["normalized_score"].as_f64().unwrap() < 20.0);
@@ -214,7 +214,7 @@ mod tests {
     }
 
     #[test] fn gate_pass_t0() {
-        let rep = build_super_agi_formula_report(r#"{"delta_g_apex":100,"m_mimo":2.0,"phi_mcp":2.0,"f_github":2.0,"s_fix":100,"omega_rust_go":2.0,"error_decay":1,"hallucination_noise":1,"system_drag":1}"#).unwrap();
+        let rep = build_super_agi_formula_report(r#"{"delta_g_apex":100,"m_model":2.0,"phi_mcp":2.0,"f_github":2.0,"s_fix":100,"omega_rust_go":2.0,"error_decay":1,"hallucination_noise":1,"system_drag":1}"#).unwrap();
         let safety = r#"{"manual_git_commit_review":true,"no_secret_reading":true,"no_production_skill_override":true,"no_core_loop_forced_modify":true,"no_untrusted_mcp_auto_register":true,"rollback_required":true}"#;
         let g = build_super_agi_progressive_gate(&rep, "T0", safety).unwrap();
         let v = j(&g);
@@ -246,7 +246,7 @@ mod tests {
     }
 
     #[test] fn gate_max_open_tier() {
-        let rep = build_super_agi_formula_report(r#"{"delta_g_apex":100,"m_mimo":2.0,"phi_mcp":2.0,"f_github":2.0,"s_fix":100,"omega_rust_go":2.0,"error_decay":1,"hallucination_noise":1,"system_drag":1}"#).unwrap();
+        let rep = build_super_agi_formula_report(r#"{"delta_g_apex":100,"m_model":2.0,"phi_mcp":2.0,"f_github":2.0,"s_fix":100,"omega_rust_go":2.0,"error_decay":1,"hallucination_noise":1,"system_drag":1}"#).unwrap();
         let safety = r#"{"manual_git_commit_review":true,"no_secret_reading":true,"no_production_skill_override":true,"no_core_loop_forced_modify":true,"no_untrusted_mcp_auto_register":true,"rollback_required":true}"#;
         let g = build_super_agi_progressive_gate(&rep, "T1", safety).unwrap();
         let v = j(&g);

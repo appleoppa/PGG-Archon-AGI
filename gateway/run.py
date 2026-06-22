@@ -15404,7 +15404,7 @@ class GatewayRunner(GatewayKanbanWatchersMixin, GatewaySlashCommandsMixin):
         #
         # Also never suppress when the final response is "(empty)" — this
         # means the model failed to produce content after tool calls (common
-        # with mimo-v2-pro, GLM-5, etc.).  The stream consumer may have
+        # with provider-model, GLM-5, etc.).  The stream consumer may have
         # sent intermediate text ("Let me search for that…") alongside the
         # tool call, setting already_sent=True, but that text is NOT the
         # final answer.  Suppressing delivery here leaves the user staring

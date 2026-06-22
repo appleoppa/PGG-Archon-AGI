@@ -177,13 +177,6 @@ export const PROVIDER_GROUPS: ProviderPrefix[] = [
     priority: 18
   },
   {
-    prefix: 'XIAOMI_',
-    name: 'Xiaomi MiMo',
-    description: 'MiMo-V2.5 and Xiaomi proprietary models',
-    docsUrl: 'https://platform.xiaomimimo.com',
-    priority: 19
-  },
-  {
     prefix: 'ARCEEAI_',
     name: 'Arcee AI',
     description: 'Arcee-hosted small + medium models',

@@ -215,7 +215,7 @@ version: 0.1.0-draft
         report = {
             "schema": _SCHEMA, "draft_name": draft_name, "objective": objective, "plan": plan,
             "draft": {"filename": f"{draft_name}.SKILL.md", "content": draft_content, "sha256": draft_hash, "status": "draft_only"},
-            "formulas": {"apex_ak": "APEX_AK = Ω_A · EVM_full - ΣΔ_all", "mimo_mcp": "Agent_APEX+MIMO+MCP = Model • Harness ∘ M_IMO ∘ F_auto ∘ Φ_MCP", "self_fix": "S_fix = Error -> Policy"},
+            "formulas": {"apex_ak": "APEX_AK = Ω_A · EVM_full - ΣΔ_all", "model_mcp": "Agent_APEX+provider+MCP = Model • Harness ∘ M_MODEL ∘ F_auto ∘ Φ_MCP", "self_fix": "S_fix = Error -> Policy"},
             "side_effects": "draft_only_no_active_skill_write",
             "capability_boundary": "Generates isolated optskill drafts only; does not install active skills, edit memory, mutate core loop, register MCP services, or claim AGI completion.",
             "ts": time.time(),

@@ -61,8 +61,6 @@ OPENROUTER_MODELS: list[tuple[str, str]] = [
     ("minimax/minimax-m3",                     ""),
     # Z-AI
     ("z-ai/glm-5.1",                           ""),
-    # Xiaomi
-    ("xiaomi/mimo-v2.5-pro",                   ""),
     # Tencent
     ("tencent/hy3-preview",                    ""),
     # StepFun
@@ -179,8 +177,6 @@ _PROVIDER_MODELS: dict[str, list[str]] = {
         "minimax/minimax-m3",
         # Z-AI
         "z-ai/glm-5.1",
-        # Xiaomi
-        "xiaomi/mimo-v2.5-pro",
         # Tencent
         "tencent/hy3-preview",
         # StepFun
@@ -339,13 +335,6 @@ _PROVIDER_MODELS: dict[str, list[str]] = {
         "deepseek-chat",
         "deepseek-reasoner",
     ],
-    "xiaomi": [
-        "mimo-v2.5-pro",
-        "mimo-v2.5",
-        "mimo-v2-pro",
-        "mimo-v2-omni",
-        "mimo-v2-flash",
-    ],
     "tencent-tokenhub": [
         "hy3-preview",
     ],
@@ -404,10 +393,6 @@ _PROVIDER_MODELS: dict[str, list[str]] = {
         "kimi-k2.5",
         "glm-5.1",
         "glm-5",
-        "mimo-v2.5-pro",
-        "mimo-v2.5",
-        "mimo-v2-pro",
-        "mimo-v2-omni",
         "minimax-m2.7",
         "minimax-m2.5",
         "qwen3.7-max",
@@ -459,7 +444,6 @@ _PROVIDER_MODELS: dict[str, list[str]] = {
         "deepseek-ai/DeepSeek-V3.2",
         "MiniMaxAI/MiniMax-M2.5",
         "zai-org/GLM-5",
-        "XiaomiMiMo/MiMo-V2-Flash",
         "moonshotai/Kimi-K2-Thinking",
         "moonshotai/Kimi-K2.6",
     ],
@@ -916,7 +900,6 @@ CANONICAL_PROVIDERS: list[ProviderEntry] = [
     ProviderEntry("openai-api",     "OpenAI API",               "OpenAI API (api.openai.com, API key)"),
     ProviderEntry("alibaba",        "Qwen Cloud",               "Qwen Cloud / DashScope (Qwen + multi-provider)"),
     ProviderEntry("xai-oauth",      "xAI Grok OAuth (SuperGrok / Premium+)", "xAI Grok OAuth (SuperGrok / Premium+ subscription)"),
-    ProviderEntry("xiaomi",         "Xiaomi MiMo",              "Xiaomi MiMo (MiMo-V2.5 and V2 models: pro, omni, flash)"),
     ProviderEntry("tencent-tokenhub", "Tencent TokenHub",       "Tencent TokenHub (Hy3 Preview via tokenhub.tencentmaas.com)"),
     ProviderEntry("nvidia",         "NVIDIA NIM",               "NVIDIA NIM (Nemotron models via build.nvidia.com or local NIM)"),
     ProviderEntry("copilot",        "GitHub Copilot",           "GitHub Copilot (Uses GITHUB_TOKEN or gh auth token)"),
@@ -1122,8 +1105,6 @@ _PROVIDER_ALIASES = {
     "huggingface-hub": "huggingface",
     "novita-ai": "novita",
     "novitaai": "novita",
-    "mimo": "xiaomi",
-    "xiaomi-mimo": "xiaomi",
     "tencent": "tencent-tokenhub",
     "tokenhub": "tencent-tokenhub",
     "tencent-cloud": "tencent-tokenhub",
@@ -2071,7 +2052,7 @@ def provider_model_ids(provider: Optional[str], *, force_refresh: bool = False) 
 
     Tries live API endpoints for providers that support them (Codex, Nous),
     falling back to static lists. For providers in ``_MODELS_DEV_PREFERRED``
-    (opencode-go/zen, xiaomi, deepseek, smaller inference providers, etc.),
+    (opencode-go/zen, deepseek, smaller inference providers, etc.),
     models.dev entries are merged on top of curated so new models released
     on the platform appear in ``/model`` without a Hermes release.
     """

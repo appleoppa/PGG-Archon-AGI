@@ -239,7 +239,7 @@ fn build_optskill_draft_report(objective: &str, error_signals_json: &str, contex
 
     let mut formulas = BTreeMap::new();
     formulas.insert("apex_ak".to_string(), json!("APEX_AK = Ω_A · EVM_full - ΣΔ_all"));
-    formulas.insert("mimo_mcp".to_string(), json!("Agent_APEX+MIMO+MCP = Model • Harness ∘ M_IMO ∘ F_auto ∘ Φ_MCP"));
+    formulas.insert("model_mcp".to_string(), json!("Agent_APEX+provider+MCP = Model • Harness ∘ M_MODEL ∘ F_auto ∘ Φ_MCP"));
     formulas.insert("self_fix".to_string(), json!("S_fix = Error -> Policy"));
     report.insert("formulas".to_string(), json!(formulas));
     report.insert("side_effects".to_string(), json!("draft_only_no_active_skill_write"));

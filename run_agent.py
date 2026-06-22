@@ -4258,7 +4258,6 @@ class AIAgent:
     def _provider_supports_vision_tool_messages(self) -> bool:
         """Return True if the active provider accepts list-type tool content.
 
-        Some providers (e.g. Xiaomi MiMo) support multimodal user messages
         but reject list-type tool message content with 400 errors.  This
         checks the provider profile's ``supports_vision_tool_messages`` field.
         """
@@ -4412,7 +4411,6 @@ class AIAgent:
 
         if self._model_supports_vision():
             # Vision-capable on paper — but if the provider rejects list-type
-            # tool content (e.g. Xiaomi MiMo's 400 "text is not set"), or if
             # we've already learned this lesson in-session, short-circuit to
             # a text summary so we don't burn a round-trip relearning it.
             if not self._provider_supports_vision_tool_messages():
@@ -4466,7 +4464,6 @@ class AIAgent:
         """Downgrade list-type tool messages to text summaries in-place.
 
         Recovery path for providers that reject list-type tool message content
-        (e.g. Xiaomi MiMo's 400 "text is not set"; see issue #27344).  Walks
         ``api_messages`` for any ``role: "tool"`` message whose ``content`` is
         a list containing image parts, replaces the content with the existing
         text part(s) (or a minimal placeholder if none survive), and records
@@ -4540,7 +4537,6 @@ class AIAgent:
         """True when using an anthropic-compatible endpoint that preserves dots in model names.
         Alibaba/DashScope keeps dots (e.g. qwen3.5-plus).
         MiniMax keeps dots (e.g. MiniMax-M2.7).
-        Xiaomi MiMo keeps dots (e.g. mimo-v2.5, mimo-v2.5-pro).
         OpenCode Go/Zen keeps dots for non-Claude models (e.g. minimax-m2.5-free).
         ZAI/Zhipu keeps dots (e.g. glm-4.7, glm-5.1).
         AWS Bedrock uses dotted inference-profile IDs
@@ -4554,7 +4550,6 @@ class AIAgent:
             "alibaba", "minimax", "minimax-cn",
             "opencode-go", "opencode-zen",
             "zai", "bedrock",
-            "xiaomi",
         }:
             return True
         base = (getattr(self, "base_url", "") or "").lower()
@@ -4564,7 +4559,6 @@ class AIAgent:
             or "minimax" in base
             or "opencode.ai/zen/" in base
             or "bigmodel.cn" in base
-            or base_url_host_matches(base, "xiaomimimo.com")
             # AWS Bedrock runtime endpoints — defense-in-depth when
             # ``provider`` is unset but ``base_url`` still names Bedrock.
             or "bedrock-runtime." in base
@@ -4678,7 +4672,6 @@ class AIAgent:
             "google/gemma-4",
             "qwen/qwen3",
             "tencent/hy3-preview",
-            "xiaomi/",
         )
         return any(model.startswith(prefix) for prefix in reasoning_model_prefixes)
 
@@ -4771,7 +4764,6 @@ class AIAgent:
 
         DeepSeek v4 thinking and Kimi / Moonshot thinking both reject replays
         of assistant tool-call messages that omit ``reasoning_content`` (refs
-        #15250, #17400). Xiaomi MiMo thinking mode has the same requirement.
 
         Result cached on the AIAgent instance keyed by (provider, model,
         base_url); invalidated whenever ``switch_model()`` /
@@ -4788,7 +4780,6 @@ class AIAgent:
         result = (
             self._needs_deepseek_tool_reasoning()
             or self._needs_kimi_tool_reasoning()
-            or self._needs_mimo_tool_reasoning()
         )
         self._thinking_pad_cache = (key, result)
         return result
@@ -4828,21 +4819,6 @@ class AIAgent:
             or base_url_host_matches(self.base_url, "api.deepseek.com")
         )
 
-    def _needs_mimo_tool_reasoning(self) -> bool:
-        """Return True when the current provider is Xiaomi MiMo thinking mode.
-
-        MiMo thinking mode requires ``reasoning_content`` on every assistant
-        tool-call message when replaying history; omitting it causes HTTP 400.
-        Refs: https://platform.xiaomimimo.com/docs/zh-CN/usage-guide/passing-back-reasoning_content
-        """
-        provider = (self.provider or "").lower()
-        model = (self.model or "").lower()
-        return (
-            provider == "xiaomi"
-            or "mimo" in model
-            or base_url_host_matches(self.base_url, "api.xiaomimimo.com")
-            or base_url_host_matches(self.base_url, "xiaomimimo.com")
-        )
 
     def _copy_reasoning_content_for_api(self, source_msg: dict, api_msg: dict) -> None:
         """Forwarder — see ``agent.agent_runtime_helpers.copy_reasoning_content_for_api``."""

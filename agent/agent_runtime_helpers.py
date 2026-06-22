@@ -2180,7 +2180,7 @@ def reapply_reasoning_echo_for_provider(agent, api_messages: list) -> int:
 
     ``api_messages`` is built once, before the retry loop, while the *primary*
     provider is active.  If a mid-conversation fallback then switches to a
-    require-side provider (DeepSeek / Kimi / MiMo thinking mode), assistant
+    require-side provider (DeepSeek / Kimi / provider thinking mode), assistant
     turns that were built when the prior provider did NOT need the echo-back go
     out without ``reasoning_content`` and the new provider rejects them with
     HTTP 400 ("The reasoning_content in the thinking mode must be passed back").

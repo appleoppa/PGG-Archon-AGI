@@ -705,7 +705,6 @@ def _apply_main_model_assignment(
       *different* provider — that URL belonged to the old provider. When the
       provider is unchanged and no new URL is supplied, the existing
       ``base_url`` is preserved. This keeps a user's custom endpoint (e.g. a
-      Xiaomi MiMo Token Plan host, ``https://token-plan-*.xiaomimimo.com/v1``)
       alive when they merely re-pick a model under the same provider — picking
       a model previously wiped it, forcing the registry default and breaking
       Token Plan keys.

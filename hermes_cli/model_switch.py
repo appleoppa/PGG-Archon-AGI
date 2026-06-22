@@ -147,8 +147,6 @@ MODEL_ALIASES: dict[str, ModelIdentity] = {
     # Step Plan (StepFun)
     "step":      ModelIdentity("stepfun", "step"),
 
-    # Xiaomi
-    "mimo":      ModelIdentity("xiaomi", "mimo"),
 
     # Arcee
     "trinity":   ModelIdentity("arcee-ai", "trinity"),
@@ -342,13 +340,7 @@ def _model_sort_key(model_id: str, prefix: str) -> tuple:
     that prefers higher versions.  Suffix tokens (``pro``, ``omni``, etc.)
     are used as tiebreakers, with common quality indicators ranked.
 
-    Examples (with prefix ``"mimo"``)::
 
-        mimo-v2.5-pro   → (-2.5, 0, 'pro')     # highest version wins
-        mimo-v2.5       → (-2.5, 1, '')          # no suffix = lower than pro
-        mimo-v2-pro     → (-2.0, 0, 'pro')
-        mimo-v2-omni    → (-2.0, 1, 'omni')
-        mimo-v2-flash   → (-2.0, 1, 'flash')
     """
     # Strip the prefix (and optional "/" separator for aggregator slugs)
     rest = model_id[len(prefix):]

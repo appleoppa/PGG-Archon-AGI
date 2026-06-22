@@ -59,7 +59,7 @@ def _qr_route(task: str) -> Dict[str, Any]:
 
 
 # 自动降级策略（苹果哥 2026-06-12 v2 — 办案工作流）：
-#   默认降级链：A(Ark主LLM) → B(MiMo/Agnes替补审计)
+#   默认降级链：A(Ark主LLM) → C(DeepSeek兜底)
 #   DeepSeek Tier=C，专门用于法律办案主动调用，
 #   不作为通用自动降级的一部分
 _FALLOVER_TIER_ORDER = ["A", "B"]
