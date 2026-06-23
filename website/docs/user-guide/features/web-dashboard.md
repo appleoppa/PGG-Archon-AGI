@@ -234,6 +234,17 @@ Create and manage scheduled cron jobs that run agent prompts on a recurring sche
 - **Trigger now** — immediately execute a job outside its normal schedule
 - **Delete** — permanently remove a cron job
 
+### Profiles
+
+Create and manage [profiles](../profiles.md) — isolated Hermes instances with their own config, skills, and sessions.
+
+- **Profile cards** — each shows its model/provider, skill count, gateway state, description, and badges (active, default, alias)
+- **Create** — name + optional clone-from-default / clone-everything / no-bundled-skills, description, and model; the dedicated Profile Builder page (`/profiles/new`) offers the full flow (model, MCPs, skills)
+- **Manage skills & tools** — jumps to the Skills page scoped to that profile
+- **Set as active** — flips the sticky default that future CLI/gateway runs pick up (same as `hermes profile use`)
+- **Edit model / description / SOUL** — inline editors writing into that profile
+- **Rename / Delete** — named profiles only
+
 ### Skills
 
 Browse, search, and toggle installed skills and toolsets, and install new ones from the hub. Skills are loaded from `~/.hermes/skills/` and grouped by category.
