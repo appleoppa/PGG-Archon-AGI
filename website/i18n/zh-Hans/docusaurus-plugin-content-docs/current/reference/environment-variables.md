@@ -428,7 +428,7 @@ description: "Hermes Agent 使用的所有环境变量完整参考"
 | `MSGRAPH_SCOPE` | 客户端凭证 token 请求的 OAuth2 范围（默认：`https://graph.microsoft.com/.default`）。 |
 | `MSGRAPH_AUTHORITY_URL` | Microsoft 身份平台 authority（默认：`https://login.microsoftonline.com`）。仅对国家/主权云覆盖（例如 GCC High 使用 `https://login.microsoftonline.us`）。 |
 
-### Microsoft Graph Webhook 监听器
+### Microsoft Graph Webhook 监听器 {#microsoft-graph-teams-meetings}
 
 Graph 事件（Teams 会议、日历、聊天等）的入站变更通知监听器。设置和安全加固详见 [Microsoft Graph Webhook 监听器](/user-guide/messaging/msgraph-webhook)。
 
