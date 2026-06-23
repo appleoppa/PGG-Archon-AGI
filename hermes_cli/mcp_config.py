@@ -84,11 +84,22 @@ def _get_mcp_servers(config: Optional[dict] = None) -> Dict[str, dict]:
     return servers
 
 
-def _save_mcp_server(name: str, server_config: dict):
-    """Add or update a server entry in config.yaml."""
+def _save_mcp_server(name: str, server_config: dict) -> bool:
+    """Add or update a server entry in config.yaml.
+
+    Returns False and does not save when the entry matches a high-signal MCP
+    abuse shape (network exfiltration / OS persistence / known IOC).
+    """
+    from hermes_cli.mcp_security import validate_mcp_server_entry
+
+    warnings = validate_mcp_server_entry(name, server_config)
+    if warnings:
+        logger.warning("Rejected suspicious MCP server '%s': %s", name, "; ".join(warnings))
+        return False
     config = load_config()
     config.setdefault("mcp_servers", {})[name] = server_config
     save_config(config)
+    return True
 
 
 def _remove_mcp_server(name: str) -> bool:
@@ -208,6 +219,12 @@ def _probe_single_server(
     Returns list of ``(tool_name, description)`` tuples.
     Raises on connection failure.
     """
+    from hermes_cli.mcp_security import validate_mcp_server_entry
+
+    warnings = validate_mcp_server_entry(name, config)
+    if warnings:
+        raise ValueError("; ".join(warnings))
+
     from tools.mcp_tool import (
         _ensure_mcp_loop,
         _run_on_mcp_loop,
@@ -390,6 +407,15 @@ def cmd_mcp_add(args):
                         "Authorization": f"Bearer ${{{env_key}}}"
                     }
 
+    # ── Security preflight ─────────────────────────────────────────────
+    from hermes_cli.mcp_security import validate_mcp_server_entry
+    security_warnings = validate_mcp_server_entry(name, server_config)
+    if security_warnings:
+        _error("MCP server config rejected; NOT saved")
+        for warning in security_warnings:
+            _warning(warning)
+        return
+
     # ── Discovery: connect and list tools ─────────────────────────────
 
     print()
@@ -467,7 +493,9 @@ def cmd_mcp_add(args):
     # ── Save ──────────────────────────────────────────────────────────
 
     server_config["enabled"] = True
-    _save_mcp_server(name, server_config)
+    if not _save_mcp_server(name, server_config):
+        _error("MCP server config rejected; NOT saved")
+        return
 
     print()
     _success(f"Saved '{name}' to {display_hermes_home()}/config.yaml ({tool_count}/{total} tools enabled)")

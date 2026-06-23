@@ -4275,6 +4275,27 @@ def migrate_config(interactive: bool = True, quiet: bool = False) -> Dict[str, A
     """
     results = {"env_added": [], "config_added": [], "warnings": []}
 
+    # ── Security: disable suspicious MCP servers before any startup can spawn them ──
+    try:
+        from hermes_cli.mcp_security import validate_mcp_server_entry
+        config = load_config()
+        servers = config.get("mcp_servers")
+        changed = False
+        if isinstance(servers, dict):
+            for name, entry in servers.items():
+                if not isinstance(entry, dict):
+                    continue
+                warnings = validate_mcp_server_entry(name, entry)
+                if warnings and entry.get("enabled") is not False:
+                    entry["enabled"] = False
+                    results["warnings"].append(f"Disabled suspicious MCP server '{name}'")
+                    changed = True
+            if changed:
+                config["mcp_servers"] = servers
+                save_config(config)
+    except Exception:
+        pass
+
     # ── Always: sanitize .env (split concatenated keys) ──
     try:
         fixes = sanitize_env_file()

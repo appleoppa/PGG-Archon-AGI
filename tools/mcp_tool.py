@@ -2104,6 +2104,8 @@ class MCPServerTask:
 # ---------------------------------------------------------------------------
 
 _servers: Dict[str, MCPServerTask] = {}
+_server_connecting: set[str] = set()
+_server_connect_errors: Dict[str, str] = {}
 
 # Circuit breaker: consecutive error counts per server.  After
 # _CIRCUIT_BREAKER_THRESHOLD consecutive failures, the handler returns
@@ -2680,7 +2682,19 @@ def _load_mcp_config() -> Dict[str, dict]:
             load_hermes_dotenv()
         except Exception:
             pass
-        return {name: _interpolate_env_vars(cfg) for name, cfg in servers.items()}
+        filtered = {}
+        try:
+            from hermes_cli.mcp_security import validate_mcp_server_entry
+        except Exception:
+            validate_mcp_server_entry = None
+        for name, cfg in servers.items():
+            if validate_mcp_server_entry is not None:
+                warnings = validate_mcp_server_entry(name, cfg)
+                if warnings:
+                    logger.warning("Skipping suspicious MCP server '%s': %s", name, "; ".join(warnings))
+                    continue
+            filtered[name] = _interpolate_env_vars(cfg)
+        return filtered
     except Exception as exc:
         logger.debug("Failed to load MCP config: %s", exc)
         return {}
@@ -3630,13 +3644,28 @@ def register_mcp_servers(servers: Dict[str, dict]) -> List[str]:
         return []
 
     # Only attempt servers that aren't already connected and are enabled
-    # (enabled: false skips the server entirely without removing its config)
+    # (enabled: false skips the server entirely without removing its config).
+    # Security gate is duplicated here so explicit registration cannot bypass
+    # the config-loader filter.
+    try:
+        from hermes_cli.mcp_security import validate_mcp_server_entry
+    except Exception:
+        validate_mcp_server_entry = None
+
     with _lock:
-        new_servers = {
-            k: v
-            for k, v in servers.items()
-            if k not in _servers and _parse_boolish(v.get("enabled", True), default=True)
-        }
+        new_servers = {}
+        for k, v in servers.items():
+            if k in _servers or k in _server_connecting:
+                continue
+            if not _parse_boolish(v.get("enabled", True), default=True):
+                continue
+            if validate_mcp_server_entry is not None:
+                warnings = validate_mcp_server_entry(k, v)
+                if warnings:
+                    logger.warning("Skipping suspicious MCP server '%s': %s", k, "; ".join(warnings))
+                    continue
+            new_servers[k] = v
+        _server_connecting.update(new_servers.keys())
         # Track which servers opt-in to parallel tool calls (idempotent).
         for srv_name, srv_cfg in servers.items():
             if _parse_boolish(srv_cfg.get("supports_parallel_tool_calls", False), default=False):
@@ -3684,6 +3713,9 @@ def register_mcp_servers(servers: Dict[str, dict]) -> List[str]:
     try:
         _run_on_mcp_loop(_discover_all, timeout=120)
     finally:
+        with _lock:
+            for _name in list(new_servers.keys()):
+                _server_connecting.discard(_name)
         if _was_interrupted:
             _set_interrupt(True)
 

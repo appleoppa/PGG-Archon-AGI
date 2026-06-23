@@ -5971,6 +5971,46 @@ def _mcp_server_summary(name: str, cfg: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def _write_profile_mcp_servers(profile_dir: Path, servers: List[MCPServerCreate]) -> int:
+    """Write safe MCP servers into another profile's config, skipping dangerous entries.
+
+    Returns the number of entries written. Used by profile setup/import paths and
+    guarded so a malicious bundled profile cannot plant MCP persistence.
+    """
+    from hermes_constants import reset_hermes_home_override, set_hermes_home_override
+    from hermes_cli.config import load_config, save_config
+    from hermes_cli.mcp_security import validate_mcp_server_entry
+
+    token = set_hermes_home_override(str(profile_dir))
+    written = 0
+    try:
+        cfg = load_config()
+        mcp_servers = cfg.setdefault("mcp_servers", {})
+        for body in servers:
+            name = (body.name or "").strip()
+            if not name:
+                continue
+            entry: Dict[str, Any] = {}
+            if body.url:
+                entry["url"] = body.url.strip()
+            if body.command:
+                entry["command"] = body.command.strip()
+                if body.args:
+                    entry["args"] = list(body.args)
+            if body.env:
+                entry["env"] = dict(body.env)
+            if body.auth:
+                entry["auth"] = body.auth
+            if validate_mcp_server_entry(name, entry):
+                continue
+            mcp_servers[name] = entry
+            written += 1
+        save_config(cfg)
+        return written
+    finally:
+        reset_hermes_home_override(token)
+
+
 @app.get("/api/mcp/servers")
 async def list_mcp_servers():
     from hermes_cli.mcp_config import _get_mcp_servers
@@ -6011,7 +6051,10 @@ async def add_mcp_server(body: MCPServerCreate):
         server_config["auth"] = body.auth
 
     try:
-        _save_mcp_server(name, server_config)
+        if not _save_mcp_server(name, server_config):
+            raise HTTPException(status_code=400, detail="MCP server rejected by security policy")
+    except HTTPException:
+        raise
     except Exception as exc:
         _log.exception("POST /api/mcp/servers failed")
         raise HTTPException(status_code=400, detail=str(exc)) from exc
