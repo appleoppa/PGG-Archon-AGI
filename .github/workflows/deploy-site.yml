@@ -11,6 +11,11 @@ on:
       - 'optional-skills/**'
       - '.github/workflows/deploy-site.yml'
   workflow_dispatch:
+    inputs:
+      skills_index_run_id:
+        description: "Optional upstream skills-index run id for traceability"
+        required: false
+        type: string
 
 permissions:
   pages: write

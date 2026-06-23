@@ -1,10 +1,11 @@
 name: Docs Site Checks
 
 on:
+  # No paths filter — the job must always run so the required check
+  # reports a status (path-gated workflows leave checks "pending" forever
+  # when no matching files change, which blocks merge).
   pull_request:
-    paths:
-      - 'website/**'
-      - '.github/workflows/docs-site-checks.yml'
+    branches: [main]
   workflow_dispatch:
 
 permissions:
