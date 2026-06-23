@@ -491,7 +491,7 @@ def _lift_max_output_tokens(entry: Dict[str, Any], result: Dict[str, Any]) -> No
 
 def _get_named_custom_provider(requested_provider: str) -> Optional[Dict[str, Any]]:
     requested_norm = _normalize_custom_provider_name(requested_provider or "")
-    if not requested_norm or requested_norm == "custom":
+    if not requested_norm:
         return None
 
     # Raw names should only map to custom providers when they are not already
@@ -499,7 +499,7 @@ def _get_named_custom_provider(requested_provider: str) -> Optional[Dict[str, An
     # ``custom:local`` always target the saved custom provider.
     if requested_norm == "auto":
         return None
-    if not requested_norm.startswith("custom:"):
+    if not requested_norm.startswith("custom:") and requested_norm != "custom":
         try:
             canonical = auth_mod.resolve_provider(requested_norm)
         except AuthError:
