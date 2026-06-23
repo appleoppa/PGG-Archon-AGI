@@ -112,6 +112,7 @@ Common options:
 | `--pass-session-id` | Pass the session ID into the system prompt. |
 | `--ignore-user-config` | Ignore `~/.hermes/config.yaml` and use built-in defaults. Credentials in `.env` are still loaded. Useful for isolated CI runs, reproducible bug reports, and third-party integrations. |
 | `--ignore-rules` | Skip auto-injection of `AGENTS.md`, `SOUL.md`, `.cursorrules`, persistent memory, and preloaded skills. Combine with `--ignore-user-config` for a fully isolated run. |
+| `--safe-mode` | Troubleshooting mode: disable ALL customizations — user config, rules/memory injection, plugins, and MCP servers (implies `--ignore-user-config` and `--ignore-rules`). Use to isolate whether a problem comes from your setup or from Hermes itself. |
 | `--source <tag>` | Session source tag for filtering (default: `cli`). Use `tool` for third-party integrations that should not appear in user session lists. |
 | `--max-turns <N>` | Maximum tool-calling iterations per conversation turn (default: 90, or `agent.max_turns` in config). |
 
@@ -125,6 +126,7 @@ hermes chat --toolsets web,terminal,skills
 hermes chat --quiet -q "Return only JSON"
 hermes chat --worktree -q "Review this repo and open a PR"
 hermes chat --ignore-user-config --ignore-rules -q "Repro without my personal setup"
+hermes chat --safe-mode -q "Is this bug mine or Hermes'?"
 ```
 
 ### `hermes -z <prompt>` — scripted one-shot
@@ -517,6 +519,15 @@ hermes cron <list|create|edit|pause|resume|run|remove|status|tick>
 | `remove` | Delete a scheduled job. |
 | `status` | Check whether the cron scheduler is running. |
 | `tick` | Run due jobs once and exit. |
+
+The cron **trigger** is pluggable via the `cron.provider` config key. Empty
+(the default) uses the built-in in-process ticker. Set it to `chronos` (the
+NAS-managed provider for scale-to-zero hosted gateways) — configured via the
+`cron.chronos.*` keys (`portal_url`, `callback_url`, `expected_audience`,
+`nas_jwks_url`) — or name a custom provider under `plugins/cron/<name>/` or
+`$HERMES_HOME/plugins/<name>/`. An unknown or unavailable provider falls back to
+the built-in, so cron is never left without a trigger. See the
+[cron internals](../developer-guide/cron-internals.md#gateway-integration) doc.
 
 ## `hermes kanban`
 
@@ -1353,6 +1364,7 @@ Launch the web dashboard — a browser-based UI for managing configuration, API 
 | `--host` | `127.0.0.1` | Bind address |
 | `--no-open` | — | Don't auto-open the browser |
 | `--insecure` | off | Allow binding to non-localhost hosts. Exposes dashboard credentials on the network; use only behind trusted network controls. |
+| `--isolated` | off | When launched from a named profile (`worker dashboard`), run a dedicated per-profile server instead of routing to the machine dashboard. |
 | `--stop` | — | Stop running `hermes dashboard` processes and exit. |
 | `--status` | — | List running `hermes dashboard` processes and exit. |
 
@@ -1362,6 +1374,10 @@ hermes dashboard
 
 # Custom port, no browser
 hermes dashboard --port 8080 --no-open
+
+# From a profile alias — routes to the machine dashboard with the
+# profile preselected in the sidebar switcher (attach if running)
+worker dashboard
 ```
 
 ## `hermes profile`
