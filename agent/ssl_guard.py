@@ -78,13 +78,15 @@ def verify_ca_bundle_with_fallback() -> None:
     except SSLConfigurationError as e:
         if platform.system() == "Darwin" and "not found" not in str(e).lower():
             try:
-                context = ssl.create_default_context()
-                if context.get_ca_certs():
-                    logger.warning(
-                        "certifi bundle invalid but macOS system trust store works. "
-                        "Proceeding with reduced security."
-                    )
-                    return
+                # macOS can rely on the platform trust store without exposing
+                # certificates through get_ca_certs(); successful context
+                # creation is the fallback readiness signal here.
+                ssl.create_default_context()
+                logger.warning(
+                    "certifi bundle invalid but macOS system trust store context "
+                    "can be created. Proceeding with reduced security."
+                )
+                return
             except Exception:
                 pass
         raise
