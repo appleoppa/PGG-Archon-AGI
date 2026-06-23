@@ -676,7 +676,7 @@ def register(ctx):
 
 **活跃提供商限制：** 记忆插件 CLI 命令仅在其提供商是配置中活跃的 `memory.provider` 时才会出现。如果用户尚未设置你的提供商，你的 CLI 命令不会出现在帮助输出中。
 
-### 注册斜杠命令
+### 注册斜杠命令 {#register-slash-commands}
 
 插件可以注册会话内斜杠命令——用户在对话中输入的命令（如 `/lcm status` 或 `/ping`）。这些命令在 CLI 和网关（Telegram、Discord 等）中均可使用。
 
@@ -1051,7 +1051,7 @@ tts:
 
 **完整指南：** [TTS 自定义命令提供商](/user-guide/features/tts#custom-command-providers) · [STT](/user-guide/features/tts#voice-message-transcription-stt)。
 
-## 通过 pip 分发
+## 通过 pip 分发 {#distribute-via-pip}
 
 如需公开分享插件，在你的 Python 包中添加 entry point：
 
