@@ -304,7 +304,7 @@ display:
 🐍 execute_code...
 ```
 
-## 后台会话
+## 后台会话 {#background-sessions}
 
 在独立的后台会话中运行 prompt，让 agent 独立处理，同时保持主聊天响应：
 

@@ -416,6 +416,28 @@ description: "Hermes Agent 使用的所有环境变量完整参考"
 | `GATEWAY_ALLOWED_USERS` | 跨所有平台允许的逗号分隔用户 ID |
 | `GATEWAY_ALLOW_ALL_USERS` | 无需白名单允许所有用户（`true`/`false`，默认：`false`） |
 
+### Web Dashboard 与 Hermes Desktop {#web-dashboard--hermes-desktop}
+
+用于 [Web Dashboard](/user-guide/features/web-dashboard) 认证，以及 [Hermes Desktop 连接远程后端](/user-guide/features/web-dashboard#connecting-hermes-desktop-to-a-remote-backend)。按 secrets-only 约定，凭据应写入 `~/.hermes/.env`；OAuth `client_id` 更适合写在 `config.yaml` 的 `dashboard.oauth` 下（设置环境变量时仍以环境变量优先）。
+
+| 变量 | 描述 |
+|----------|-------------|
+| `HERMES_DASHBOARD_BASIC_AUTH_USERNAME` | 内置用户名/密码 Dashboard 认证提供商（`plugins/dashboard_auth/basic`）的用户名。与密码一起设置时启用该 provider。 |
+| `HERMES_DASHBOARD_BASIC_AUTH_PASSWORD` | basic provider 的明文密码（加载时在内存中哈希）。 |
+| `HERMES_DASHBOARD_BASIC_AUTH_PASSWORD_HASH` | basic provider 的 scrypt 密码哈希（优先，避免明文静态保存）。 |
+| `HERMES_DASHBOARD_BASIC_AUTH_SECRET` | basic provider 无状态会话 token 的签名密钥。显式设置后会话可跨重启保留；为空时每进程随机生成。 |
+| `HERMES_DASHBOARD_BASIC_AUTH_TTL_SECONDS` | basic provider 的访问 token 生命周期。 |
+| `HERMES_DASHBOARD_OAUTH_CLIENT_ID` | Dashboard OAuth client id；配置后启用 Nous provider。可用 `hermes dashboard register` 生成。 |
+| `HERMES_DASHBOARD_PUBLIC_URL` | 反向代理或公网部署时 Dashboard 的完整公开 URL，用于构造 OAuth callback。 |
+| `HERMES_DASHBOARD_OIDC_ISSUER` | 自托管 OIDC provider 的 issuer URL。 |
+| `HERMES_DASHBOARD_OIDC_CLIENT_ID` | 自托管 OIDC provider 的公开 client id。 |
+| `HERMES_DASHBOARD_OIDC_SCOPES` | 自托管 OIDC provider 请求的 scopes。 |
+| `HERMES_DESKTOP_REMOTE_URL` | Desktop 侧远程后端 base URL，例如 `http://host:9119`。设置后覆盖应用内 Gateway URL；仍需在 Gateway 设置面板登录。 |
+| `HERMES_DESKTOP_HERMES` | Desktop 后端命令覆盖。 |
+| `HERMES_DESKTOP_HERMES_ROOT` | `hermes desktop --hermes-root` 使用的源码 checkout 覆盖。 |
+| `HERMES_DESKTOP_IGNORE_EXISTING` | 设为 `1` 时让 Desktop 在后端解析时忽略 PATH 中已有的 `hermes`。 |
+| `HERMES_DESKTOP_CWD` | Desktop 聊天会话的初始项目目录。 |
+
 ### Microsoft Graph（Teams 会议）
 
 用于即将推出的 Teams 会议摘要流水线的 Microsoft Graph REST 客户端的仅应用凭证。Azure 门户操作步骤和所需 API 权限详见[注册 Microsoft Graph 应用程序](/guides/microsoft-graph-app-registration)。
