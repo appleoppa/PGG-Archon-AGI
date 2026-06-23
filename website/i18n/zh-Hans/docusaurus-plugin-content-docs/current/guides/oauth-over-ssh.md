@@ -27,7 +27,7 @@ hermes auth add xai-oauth --no-browser
 
 `56121` 是 xAI OAuth 使用的端口。Spotify 请将其替换为 `43827`。Hermes 会在 `Waiting for callback on ...` 这一行打印它实际绑定的端口——从那里复制。
 
-## 仅限浏览器的远程环境（Cloud Shell / Codespaces / EC2 Instance Connect）
+## 仅限浏览器的远程环境（Cloud Shell / Codespaces / EC2 Instance Connect） {#browser-only-remote-cloud-shell--codespaces--ec2-instance-connect}
 
 如果你没有常规的 SSH 客户端——例如你在 GCP Cloud Shell、GitHub Codespaces、AWS EC2 Instance Connect、Gitpod 或其他基于浏览器的控制台中运行 Hermes——上述 SSH 隧道不可用。请改用 `--manual-paste`：
 

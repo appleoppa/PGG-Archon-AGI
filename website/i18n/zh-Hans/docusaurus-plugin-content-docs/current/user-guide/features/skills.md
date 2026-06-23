@@ -260,7 +260,7 @@ skills:
 
 所有四个 skills 都出现在你的 skill 索引中。如果你在本地创建一个名为 `my-custom-workflow` 的新 skill，它会遮蔽外部版本。
 
-## Skill 捆绑包
+## Skill 捆绑包 {#skill-bundles}
 
 Skill 捆绑包是将多个 skills 归组在单个斜杠命令下的小型 YAML 文件。当你运行 `/<bundle-name>` 时，捆绑包中列出的每个 skill 都会同时加载——当某个特定任务总是受益于同一组 skills 时非常有用。
 
@@ -345,7 +345,7 @@ hermes bundles reload
 
 捆绑包只是一个 YAML 别名——它不会为你安装 skills。Skills 本身必须已经存在（在 `~/.hermes/skills/` 或外部 skill 目录中）。否则捆绑包调用只会跳过缺失的 skills。
 
-## Agent 管理的 Skills（skill_manage 工具）
+## Agent 管理的 Skills（skill_manage 工具） {#agent-managed-skills-skill_manage-tool}
 
 agent 可以通过 `skill_manage` 工具创建、更新和删除自己的 skills。这是 agent 的**程序性记忆**——当它找到一个非平凡的工作流时，它会将该方法保存为 skill 以供将来复用。
 
