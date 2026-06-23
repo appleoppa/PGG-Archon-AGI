@@ -598,7 +598,7 @@ hermes skills update react   # Update one specific installed hub skill
 Skills hub 操作使用 GitHub API，未认证用户的速率限制为每小时 60 次请求。如果在安装或搜索时看到速率限制错误，请在 `.env` 文件中设置 `GITHUB_TOKEN` 以将限制提高到每小时 5,000 次请求。发生此情况时，错误消息会包含可操作的提示。
 :::
 
-### 发布自定义 skill tap
+### 发布自定义 skill tap {#publishing-a-custom-skill-tap}
 
 如果你想分享一组精选的 skills——为你的团队、组织或公开分享——你可以将它们发布为 **tap**：其他 Hermes 用户通过 `hermes skills tap add <owner/repo>` 添加的 GitHub 仓库。无需服务器，无需注册表注册，无需发布流水线。只需一个包含 `SKILL.md` 文件的目录。
 

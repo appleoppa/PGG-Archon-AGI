@@ -407,7 +407,7 @@ hermes send --list                  # 所有平台
 hermes send --list telegram         # 按平台过滤
 ```
 
-## `hermes cron`
+## `hermes cron` {#hermes-cron}
 
 ```bash
 hermes cron <list|create|edit|pause|resume|run|remove|status|tick>
