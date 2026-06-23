@@ -361,6 +361,52 @@ hermes status [--all] [--deep]
 | `--all` | 以可分享的脱敏格式显示所有详情。 |
 | `--deep` | 运行可能耗时更长的深度检查。 |
 
+## `hermes send`
+
+```bash
+hermes send --to <target> "message text"
+hermes send --to <target> --file <path>
+echo "message" | hermes send --to <target>
+hermes send --list [platform]
+```
+
+向已配置的消息平台发送一次性消息，不启动 agent 或 gateway 循环。它复用 gateway 已配置的凭据（`~/.hermes/.env` + `~/.hermes/config.yaml`），因此运维脚本、cron 任务、CI hook 和监控 daemon 可直接发送状态更新，而无需重新实现各平台 REST 客户端。
+
+对 bot-token 平台（Telegram、Discord、Slack、Signal、SMS、WhatsApp-CloudAPI），不要求 gateway 正在运行——`hermes send` 会直接调用平台 REST endpoint。需要持久 adapter 的插件平台仍要求 gateway 存活。
+
+| 选项 | 说明 |
+|--------|-------------|
+| `-t`, `--to <TARGET>` | 投递目标。格式：`platform`（使用 home channel）、`platform:chat_id`、`platform:chat_id:thread_id` 或 `platform:#channel-name`。示例：`telegram`、`telegram:-1001234567890`、`discord:#ops`、`slack:C0123ABCD`、`signal:+155****4567`。 |
+| `-f`, `--file <PATH>` | 从 `PATH` 读取消息正文（仅文本文件——日志、报告、Markdown）。传 `-` 可强制从 stdin 读取。要发送图片或二进制文件，请在消息正文中包含 `MEDIA:<path>`。 |
+| `-s`, `--subject <LINE>` | 在消息正文前添加主题/标题行。 |
+| `-l`, `--list [platform]` | 列出所有平台的已配置目标（或仅列出指定平台）。 |
+| `-q`, `--quiet` | 成功时不输出 stdout，适合脚本使用（仅依赖 exit code）。 |
+| `--json` | 输出原始 JSON 结果，而非人类可读文本。 |
+
+如果既未提供位置参数 `message`，也未提供 `--file`，且 stdin 不是 TTY，则 `hermes send` 会从 stdin 读取。退出码：`0` 表示成功，`1` 表示投递/后端失败，`2` 表示用法错误。
+
+### 发送图片和其他媒体
+
+`--file` 仅用于*文本*正文。要把图片、文档、视频或音频文件作为平台原生附件发送，请在消息文本中使用 `MEDIA:<local_path>` 指令引用它：
+
+```bash
+hermes send --to telegram "deploy finished MEDIA:/tmp/report.pdf"
+hermes send --to discord:#ops "screenshot MEDIA:/tmp/screenshot.png"
+```
+
+gateway 会从展示文本中移除有效的 `MEDIA:` 标签，并在目标 adapter 支持媒体投递时，将引用文件通过目标平台转发。
+
+示例：
+
+```bash
+hermes send --to telegram "deploy finished"
+echo "RAM 92%" | hermes send --to telegram:-1001234567890
+hermes send --to discord:#ops --file /tmp/report.md
+hermes send --to slack:#eng --subject "[CI]" --file build.log
+hermes send --list                  # 所有平台
+hermes send --list telegram         # 按平台过滤
+```
+
 ## `hermes cron`
 
 ```bash
