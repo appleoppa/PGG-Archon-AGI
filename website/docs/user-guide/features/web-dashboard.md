@@ -245,6 +245,8 @@ Create and manage [profiles](../profiles.md) — isolated Hermes instances with 
 - **Edit model / description / SOUL** — inline editors writing into that profile
 - **Rename / Delete** — named profiles only
 
+The Profiles API is exposed under `/api/hermes/profiles`: `GET /api/hermes/profiles` lists profile names, active state, model, alias, avatar metadata, and gateway status; `/api/hermes/profiles/{name}` and related subroutes handle profile detail, avatar, export, rename, runtime status, and gateway/runtime restart actions. Do not assume every dashboard API family accepts an arbitrary `profile` parameter; use the documented Profiles routes for profile management.
+
 ### Skills
 
 Browse, search, and toggle installed skills and toolsets, and install new ones from the hub. Skills are loaded from `~/.hermes/skills/` and grouped by category.
