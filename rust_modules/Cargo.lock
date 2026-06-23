@@ -1195,15 +1195,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "pgg_task_cognitive_preflight_gate"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "serde",
- "serde_json",
-]
-
-[[package]]
 name = "pgg_token_cost_governance_status"
 version = "0.1.0"
 dependencies = [
