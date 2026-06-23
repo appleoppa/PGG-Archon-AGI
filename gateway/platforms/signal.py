@@ -595,13 +595,17 @@ class SignalAdapter(BasePlatformAdapter):
             chat_id_alt=group_id if is_group else None,
         )
 
-        # Determine message type from media
+        # Determine message type from media. Non-image/audio attachments must
+        # be treated as DOCUMENT so gateway/run.py injects file context instead
+        # of sending an empty text-only turn.
         msg_type = MessageType.TEXT
         if media_types:
             if any(mt.startswith("audio/") for mt in media_types):
                 msg_type = MessageType.VOICE
             elif any(mt.startswith("image/") for mt in media_types):
                 msg_type = MessageType.PHOTO
+            else:
+                msg_type = MessageType.DOCUMENT
 
         # Parse timestamp from envelope data (milliseconds since epoch)
         ts_ms = envelope_data.get("timestamp", 0)

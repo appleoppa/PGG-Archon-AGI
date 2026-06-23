@@ -936,6 +936,21 @@ def _reload_runtime_env_preserving_config_authority() -> None:
         os.environ["HERMES_MAX_ITERATIONS"] = str(agent_cfg["max_turns"])
 
 
+def _current_max_iterations(default: int = 500) -> int:
+    """Return current gateway max iterations after refreshing runtime env.
+
+    Long-lived gateway processes reload credentials before turns; this helper
+    keeps max-iteration reads on the same path so config.yaml remains
+    authoritative over stale .env values.
+    """
+    _reload_runtime_env_preserving_config_authority()
+    raw = os.getenv("HERMES_MAX_ITERATIONS")
+    try:
+        return int(raw) if raw is not None else default
+    except (TypeError, ValueError):
+        return default
+
+
 _DOCKER_VOLUME_SPEC_RE = re.compile(r"^(?P<host>.+):(?P<container>/[^:]+?)(?::(?P<options>[^:]+))?$")
 _DOCKER_MEDIA_OUTPUT_CONTAINER_PATHS = {"/output", "/outputs"}
 
@@ -10152,7 +10167,7 @@ class GatewayRunner(GatewayKanbanWatchersMixin, GatewaySlashCommandsMixin):
             disabled_toolsets = agent_cfg.get("disabled_toolsets") or None
 
             pr = self._provider_routing
-            max_iterations = int(os.getenv("HERMES_MAX_ITERATIONS", "90"))
+            max_iterations = _current_max_iterations(default=90)
             reasoning_config = self._resolve_session_reasoning_config(source=source)
             self._reasoning_config = reasoning_config
             self._service_tier = self._load_service_tier()
