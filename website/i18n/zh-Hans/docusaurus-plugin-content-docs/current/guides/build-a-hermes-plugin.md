@@ -375,7 +375,7 @@ with open(_DATA_FILE) as f:
     _DATA = yaml.safe_load(f)
 ```
 
-### 捆绑技能
+### 捆绑技能 {#bundle-skills}
 
 插件可以随附技能文件，代理通过 `skill_view("plugin:skill")` 加载。在 `__init__.py` 中注册：
 
@@ -418,7 +418,7 @@ skill_view("my-workflow")              # → 内置版本（不受影响）
 旧的 `shutil.copy2` 模式（将技能复制到 `~/.hermes/skills/`）仍然有效，但存在与内置技能名称冲突的风险。新插件请优先使用 `ctx.register_skill()`。
 :::
 
-### 根据环境变量决定是否启用
+### 根据环境变量决定是否启用 {#gate-on-environment-variables}
 
 如果你的插件需要 API 密钥：
 
@@ -452,7 +452,7 @@ requires_env:
 
 两种格式可在同一列表中混用。已设置的变量会被静默跳过。
 
-### 懒加载可选 Python 依赖
+### 懒加载可选 Python 依赖 {#lazy-install-optional-python-dependencies}
 
 如果你的插件封装了一个并非所有用户都会安装的 SDK（供应商 SDK、重型 ML 库、平台特定包），不要在模块顶部 `import` 它。在工具处理器内部使用 `tools.lazy_deps.ensure(...)` 辅助函数——Hermes 会在首次使用时安装该包，并受用户 `security.allow_lazy_installs` 配置的控制。
 
@@ -541,7 +541,7 @@ def register(ctx):
 
 所有回调都应接受 `**kwargs` 以保持向前兼容性。如果钩子回调崩溃，会被记录日志并跳过。其他钩子和代理继续正常运行。
 
-### `pre_llm_call` 上下文注入
+### `pre_llm_call` 上下文注入 {#pre_llm_call-context-injection}
 
 这是唯一一个返回值有意义的钩子。当 `pre_llm_call` 回调返回包含 `"context"` 键的字典（或纯字符串）时，Hermes 会将该文本注入**当前轮次的用户消息**中。这是记忆插件、RAG 集成、护栏以及任何需要向模型提供额外上下文的插件所使用的机制。
 

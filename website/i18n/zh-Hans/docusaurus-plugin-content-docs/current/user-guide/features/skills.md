@@ -53,7 +53,7 @@ Level 2: skill_view(name, path)  → Specific reference file       (varies)
 
 agent 只在真正需要时才加载完整的 skill 内容。
 
-## SKILL.md 格式
+## SKILL.md 格式 {#skillmd-format}
 
 ```markdown
 ---
@@ -90,7 +90,7 @@ Trigger conditions for this skill.
 How to confirm it worked.
 ```
 
-### 平台特定 Skills
+### 平台特定 Skills {#external-skill-directories}
 
 Skills 可以使用 `platforms` 字段将自身限制在特定操作系统上：
 
@@ -107,7 +107,7 @@ platforms: [macos, linux]     # macOS and Linux
 
 设置后，该 skill 会在不兼容的平台上自动从系统提示词、`skills_list()` 和斜杠命令中隐藏。若省略，则在所有平台上加载。
 
-## Skill 输出与媒体传递
+## Skill 输出与媒体传递 {#skill-output-and-media-delivery}
 
 当 skill 响应（或任何 agent 响应）包含指向媒体文件的裸绝对路径时——例如 `/home/user/screenshots/diagram.png`——gateway 会自动检测到它，将其从可见文本中剥离，并以原生方式将文件传递给用户的聊天界面（Telegram 图片、Discord 附件等），而不是在消息中留下原始路径。
 
