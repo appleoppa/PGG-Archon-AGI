@@ -181,17 +181,17 @@ def main() -> int:
     evm = gate_json([str(VENV_PYTHON), "-m", "agent.pgg_archon_evm_runtime_gate"], "evm_gate")
     results["evm_gate"] = summarize_gate(evm, ["evm_gate", "status", "status_basis", "evidence", "gaps"])
 
-    asi_cmd = [
+    capability_cmd = [
         str(VENV_PYTHON),
         "-c",
         (
             f"import sys; sys.path.insert(0,{str(ROOT)!r}); "
-            "from agent.pgg_archon_apex_asi_gate import PggApexAsiGate; "
-            "import json; print(json.dumps(PggApexAsiGate().evaluate()))"
+            "from agent.pgg_archon_apex_capability_gate import PggApexCapabilityGate; "
+            "import json; print(json.dumps(PggApexCapabilityGate().evaluate()))"
         ),
     ]
-    asi = gate_json(asi_cmd, "asi_gate")
-    results["asi_gate"] = summarize_gate(asi, ["score", "status", "evidence", "gaps"])
+    capability = gate_json(capability_cmd, "capability_gate")
+    results["capability_gate"] = summarize_gate(capability, ["score", "status", "evidence", "gaps"])
 
     sigma = gate_json([str(HERMES_BIN / "pgg_defect_reduction")], "sigma_delta_all")
     results["sigma_delta_all"] = summarize_gate(sigma, ["sigma_delta", "status"])
@@ -212,7 +212,7 @@ def main() -> int:
             4,
         )
         gate_scores = []
-        for gate_name in ["apexagi_gate", "engineering_gate", "evm_gate", "asi_gate", "sigma_delta_all"]:
+        for gate_name in ["apexagi_gate", "engineering_gate", "evm_gate", "capability_gate", "sigma_delta_all"]:
             c = results.get(gate_name, {})
             score = c.get("score")
             if score is None and gate_name == "evm_gate" and c.get("evm_gate") is not None:

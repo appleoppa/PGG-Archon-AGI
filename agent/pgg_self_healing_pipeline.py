@@ -159,12 +159,12 @@ def fix_apex_v10_evidence() -> dict:
         if r["rc"] == 0:
             d = _extract_first_json_object(r["output"])
             apex_core = d.get("components", {}).get("apex_core_gate", {}).get("score", 85)
-            asi = d.get("components", {}).get("asi_gate", {}).get("score", 80)
-            score = min(100, (apex_core + asi) / 2)
+            capability = d.get("components", {}).get("capability_gate", {}).get("score", 80)
+            score = min(100, (apex_core + capability) / 2)
     except: pass
     
     v = {
-        "h_err": round(1.0 - (score/100 * 0.3), 4),   # H_err drops as core/asi rise
+        "h_err": round(1.0 - (score/100 * 0.3), 4),   # H_err drops as core/capability rise
         "p_asm": round(0.75 + (score/100 * 0.15), 4),  # P_asm rises with scores
         "d_pro": 0.88,
         "phi_apex": 0,

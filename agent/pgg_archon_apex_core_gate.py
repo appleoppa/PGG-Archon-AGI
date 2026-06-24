@@ -133,7 +133,7 @@ def _measure_omega_self() -> float:
     """自检能力 — 门禁评分加权平均"""
     data = _get_goal_data()
     gates = {}
-    for gate_name in ["apexagi_gate", "engineering_gate", "evm_gate", "asi_gate", "sigma_delta_all"]:
+    for gate_name in ["apexagi_gate", "engineering_gate", "evm_gate", "capability_gate", "sigma_delta_all"]:
         comps = data.get("components", {})
         c = comps.get(gate_name, {})
         score = c.get("score")

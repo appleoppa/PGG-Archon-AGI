@@ -18,7 +18,7 @@ EXPECTED_COMPONENTS = {
     "apexagi_gate",
     "engineering_gate",
     "evm_gate",
-    "asi_gate",
+    "capability_gate",
     "apex_core_gate",
     "apex_v10_gate",
     "sigma_delta_all",
