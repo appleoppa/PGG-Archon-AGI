@@ -38,6 +38,7 @@ from agent.pgg_archon_gene_fusion_engine import validate_standard_gene
 # ── Config ────────────────────────────────────────────────────────────
 
 INTAKE_SOURCE_DIRS = [
+    Path('/Users/appleoppa/.hermes/workspace/hermes-github-evolution/genes'),
     Path('/Users/appleoppa/.hermes/hermes-agent/agent'),
 ]
 
@@ -64,6 +65,104 @@ def _source_hash(filepath: str) -> str:
         return ''
 
 
+def _as_list(value: Any, *, default: list[Any] | None = None) -> list[Any]:
+    """Return value as a list while preserving structured JSON items."""
+    if isinstance(value, list):
+        return value
+    if value is None:
+        return list(default or [])
+    return [value]
+
+
+def _json_gene_id(raw: dict[str, Any], fpath: Path) -> str:
+    """Derive a stable candidate id for JSON-origin genes.
+
+    Uses repo as the primary key so the same repo doesn't generate
+    multiple gene IDs across different evolver run snapshots.
+    Falls back to gene name/file stem only when repo is absent.
+    """
+    # Check for explicit id fields first
+    for key in ('id', 'gene_id', 'gene', 'gene_name', 'name'):
+        val = raw.get(key)
+        if val and not str(val).startswith('json_gene_'):
+            return str(val)
+    if raw.get('repo'):
+        repo_slug = str(raw['repo']).replace('/', '_').replace(' ', '_')
+        return f'json_gene_{repo_slug}'
+    # Only use hash for items without a repo (truly unidentifiable)
+    return f'json_gene_{fpath.stem}_{_hash(raw)[:12]}'
+
+
+def _json_candidate_from_dict(raw: dict[str, Any], fpath: Path, sh: str) -> dict[str, Any]:
+    """Normalize a JSON gene object into the standard candidate dict shape."""
+    raw_constraints = raw.get('constraints')
+    constraints: dict[str, Any] = dict(raw_constraints) if isinstance(raw_constraints, dict) else {}
+    constraints.setdefault('boundary', raw.get('boundary', 'json_gene_intake; local file parse only'))
+    constraints.setdefault('source_json_file', str(fpath))
+    for key in ('repo', 'url', 'language', 'status', 'verification'):
+        if key in raw and key not in constraints:
+            constraints[key] = raw[key]
+
+    signals = raw.get('signals_match') or raw.get('traits') or raw.get('signals')
+    if signals is None:
+        signals = [
+            raw.get('gene'), raw.get('gene_name'), raw.get('name'),
+            raw.get('repo'), raw.get('language'), raw.get('status'),
+        ]
+    signals_list = [s for s in _as_list(signals) if s]
+
+    strategy = raw.get('strategy') or raw.get('mechanism') or raw.get('repair_mechanism')
+    if strategy is None:
+        strategy = raw.get('repair_note') or raw.get('lesson') or 'absorb structured JSON gene signal'
+
+    validation = raw.get('validation')
+    if validation is None and raw.get('verification') is not None:
+        validation = [f"verification: {json.dumps(raw.get('verification'), ensure_ascii=False, sort_keys=True)}"]
+    if validation is None:
+        validation = ['json_parse_succeeded']
+
+    return {
+        **raw,
+        'type': raw.get('type') if raw.get('type') in {'apex_gene', 'pgg_gene', 'apex_gene_candidate'} else 'pgg_gene',
+        'id': _json_gene_id(raw, fpath),
+        'category': raw.get('category') or f'json_gene::{fpath.name}',
+        'signals_match': signals_list or [fpath.stem],
+        'preconditions': _as_list(raw.get('preconditions'), default=['json_gene_file_exists']),
+        'strategy': _as_list(strategy),
+        'constraints': constraints,
+        'validation': _as_list(validation),
+        'source_file': str(fpath),
+        'source_hash': sh,
+        'scan_file': str(fpath),
+        'scanned_at': _now(),
+        'origin': raw.get('origin', 'json_gene_intake_loop'),
+    }
+
+
+def _scan_json_candidates(fpath: Path, sh: str) -> list[dict[str, Any]]:
+    """Parse .json files into candidate dicts without using Python AST scan_source()."""
+    try:
+        data = json.loads(fpath.read_text(encoding='utf-8'))
+    except (OSError, json.JSONDecodeError):
+        return []
+
+    raw_items: list[Any]
+    if isinstance(data, list):
+        raw_items = data
+    elif isinstance(data, dict) and isinstance(data.get('genes'), list):
+        raw_items = data['genes']
+    elif isinstance(data, dict):
+        raw_items = [data]
+    else:
+        return []
+
+    candidates: list[dict[str, Any]] = []
+    for item in raw_items:
+        if isinstance(item, dict):
+            candidates.append(_json_candidate_from_dict(item, fpath, sh))
+    return candidates
+
+
 # ── Core intake steps ─────────────────────────────────────────────────
 
 def scan_for_candidates(
@@ -79,21 +178,25 @@ def scan_for_candidates(
     dirs = source_dirs or INTAKE_SOURCE_DIRS
     db = sqlite3.connect(str(dedup_db))
     try:
-        # Collect all existing source_hash values from GeneDB
-        existing_hashes = set()
+        # Collect existing gene names for dedup (primary dedup mechanism).
+        existing_names: set[str] = set()
         try:
-            for row in db.execute('SELECT gene_hash FROM evolution_genes WHERE gene_hash IS NOT NULL'):
-                existing_hashes.add(str(row[0]).strip())
+            for row in db.execute('SELECT name FROM genes'):
+                n = str(row[0]).strip()
+                if n:
+                    existing_names.add(n)
         except sqlite3.OperationalError:
-            pass  # column might not exist
+            pass
 
         candidates: list[dict[str, Any]] = []
-        seen_hashes: set[str] = set()  # in-memory dedup for this pass
+        seen_names: set[str] = set()  # in-memory name dedup for this batch
 
         for source_dir in dirs:
             if not source_dir.exists():
                 continue
-            for fpath in sorted(source_dir.rglob('*.py')):
+            for fpath in sorted(
+                p for p in source_dir.rglob('*') if p.suffix in {'.py', '.json'}
+            ):
                 # Skip private/init files unless they have public content
                 if any(skip in str(fpath) for skip in SKIP_DIRS):
                     continue
@@ -101,14 +204,20 @@ def scan_for_candidates(
                     break
 
                 sh = _source_hash(str(fpath))
-                if sh in existing_hashes or sh in seen_hashes:
-                    continue
-                seen_hashes.add(sh)
 
-                genes = scan_source(str(fpath))
+                if fpath.suffix == '.json':
+                    genes = _scan_json_candidates(fpath, sh)
+                else:
+                    genes = scan_source(str(fpath))
                 for g in genes:
                     g['source_hash'] = sh
                     g['scan_file'] = str(fpath)
+                    gene_name = g.get('name') or g.get('id', '')
+                    # Skip if gene name already exists in DB or in this batch
+                    if gene_name and (gene_name in existing_names or gene_name in seen_names):
+                        continue
+                    if gene_name:
+                        seen_names.add(gene_name)
                     candidates.append(g)
                     if len(candidates) >= max_candidates:
                         break
@@ -124,12 +233,12 @@ def score_candidates(
 ) -> list[dict[str, Any]]:
     """Attach fitness/confidence to candidate genes.
 
-    Conservative scoring: ordinary scanned symbols stay below promotion range,
-    while genuinely structured candidates with high-confidence methods,
-    validation evidence, preconditions, and source references can cross the
-    review threshold (>=700). This fixes the previous supply problem where all
-    intake-loop candidates clustered at 500-599 and could never reach dual
-    review/promotion proof without manual score inflation.
+    Scoring has two tracks:
+    - Code genes (strategy items are dicts with 'confidence') use the
+      original high/medium/medium-confidence weighted formula.
+    - JSON metadata genes (strategy items are plain strings, no code snippet)
+      get a lower ceiling so they never auto-promote but still register
+      as low-priority candidates for manual review.
     """
     scored: list[dict[str, Any]] = []
     for g in candidates:
@@ -146,19 +255,58 @@ def score_candidates(
         validation_count = len(validation) if isinstance(validation, list) else 0
         has_source = bool(g.get('source_file') or g.get('scan_file') or g.get('source_hash'))
 
-        base_fitness = (
-            500
-            + high_count * 45
-            + medium_count * 25
-            + method_count * 8
-            + min(signal_count, 8) * 10
-            + min(precondition_count, 4) * 12
-            + min(validation_count, 4) * 25
-            + (25 if has_source else 0)
+        # Detect JSON metadata genes: strategy items are plain strings, not dicts
+        is_metadata_gene = (
+            isinstance(strategy, list)
+            and len(strategy) > 0
+            and all(isinstance(s, str) for s in strategy)
+            and not any(isinstance(s, dict) for s in strategy)
         )
-        # Cap weak candidates even if they have many shallow methods.
-        if high_count == 0 and validation_count == 0:
-            base_fitness = min(base_fitness, 640)
+
+        if is_metadata_gene:
+            # Metadata genes: structured info (repo, traits, verification hashes)
+            # but no executable code. Score by signal richness + verification depth.
+            repo_url = g.get('repo') or g.get('url') or ''
+            verification = g.get('verification') or g.get('validation') or []
+            verification_depth = 0
+            if isinstance(verification, dict):
+                verification_depth = len(verification)
+            elif isinstance(verification, list):
+                verification_depth = len(verification)
+            text_hashes = 0
+            if isinstance(verification, dict):
+                text_hashes = len(verification.get('text_hashes', {}))
+            workflow_files = 0
+            if isinstance(verification, dict):
+                workflow_files = len(verification.get('workflow_files_seen', []))
+
+            base_fitness = (
+                300  # lower base for metadata
+                + min(signal_count, 8) * 15   # signals matter more
+                + min(precondition_count, 4) * 10
+                + min(validation_count, 4) * 15
+                + (20 if repo_url else 0)     # repo reference
+                + min(text_hashes, 10) * 8    # verified file hashes
+                + min(workflow_files, 5) * 10  # CI/workflow files seen
+                + (15 if has_source else 0)
+            )
+            # Cap metadata genes below promotion threshold (35*100=3500 → quality=35)
+            # They should never auto-promote without human review.
+            base_fitness = min(base_fitness, 599)  # quality max = 5.99
+        else:
+            base_fitness = (
+                500
+                + high_count * 45
+                + medium_count * 25
+                + method_count * 8
+                + min(signal_count, 8) * 10
+                + min(precondition_count, 4) * 12
+                + min(validation_count, 4) * 25
+                + (25 if has_source else 0)
+            )
+            # Cap weak candidates even if they have many shallow methods.
+            if high_count == 0 and validation_count == 0:
+                base_fitness = min(base_fitness, 640)
         fitness = max(0, min(999, base_fitness))
         g['fitness'] = fitness
         g['intake_score'] = fitness
@@ -186,7 +334,7 @@ def dedup_by_template_hash(
         except sqlite3.OperationalError:
             pass
 
-        # Also dedup by gene_id
+        # Also dedup by gene_id (numeric) and gene name
         existing_ids = set()
         try:
             for row in db.execute('SELECT gene_id FROM evolution_genes'):
@@ -194,14 +342,31 @@ def dedup_by_template_hash(
         except sqlite3.OperationalError:
             pass
 
+        existing_gene_names: set[str] = set()
+        try:
+            for row in db.execute('SELECT name FROM genes'):
+                n = str(row[0]).strip()
+                if n:
+                    existing_gene_names.add(n)
+        except sqlite3.OperationalError:
+            pass
+
         unique: list[dict[str, Any]] = []
         seen_hashes: set[str] = set()
         seen_ids: set[str] = set()
+        seen_names: set[str] = set()
         for g in candidates:
             gid = g.get('id', '')
+            gene_name = g.get('name') or g.get('id') or ''
+            # Skip if numeric gene_id already in evolution_genes
             if gid in existing_ids or gid in seen_ids:
                 continue
+            # Skip if gene name already in genes table or this batch
+            if gene_name and (gene_name in existing_gene_names or gene_name in seen_names):
+                continue
             seen_ids.add(gid)
+            if gene_name:
+                seen_names.add(gene_name)
             unique.append(g)
         return unique
     finally:
@@ -463,10 +628,12 @@ def run_intake_loop(
                 if not validation:
                     validation = ['pending_intake_loop_review']
                 gid = g.get('id', '')
+                gene_name = g.get('name') or g.get('id') or gid
+                # Check if gene name already exists in genes table (proper dedup)
                 if con.execute(
-                    'SELECT 1 FROM evolution_genes WHERE gene_id = ?', (gid,)
+                    'SELECT 1 FROM genes WHERE name = ?', (str(gene_name)[:200],)
                 ).fetchone():
-                    continue  # skip if already exists (belt-and-suspenders)
+                    continue  # skip if already exists
                 # Insert as candidate
                 now_ts = _now()
                 source_refs = json.dumps({
@@ -490,49 +657,58 @@ def run_intake_loop(
                 }
                 std_validation = validate_standard_gene(std_gene)
                 if std_validation['status'] != 'PASS':
-                    # Log the blockage as blocked record, skip normal insert
+                    # Log the blockage as blocked record (pgg_archon.db schema)
+                    # First ensure gene record exists in genes table
+                    gene_name = g.get('name') or g.get('id') or gid
                     con.execute(
-                        'INSERT OR IGNORE INTO evolution_genes(gene_id,cycle_id,created_at,defect_no,defect_name,gene_name,absorbed_knowledge,source_refs_json,repair_mechanism,severity_rank,apex_variables,gate_type,reusable_rule,status,evidence_grade,verification_status,boundary,gene_hash,fitness) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
-                        (gid, 'GENE_INTAKE_LOOP_CYCLE_20260612', now_ts, 0, 'blocked_by_standard_template_gate', gid,
-                         '', source_refs, str(std_validation), 1,
-                         '', 'intake_loop_blocked', '', 'blocked', 'D', 'gate_blocked_standard_template', BOUNDARY,
-                         g.get('source_hash', ''), 0),
+                        'INSERT OR IGNORE INTO genes(name,pattern_type,source_repo,code_snippet,quality_score,extracted_at) VALUES(?,?,?,?,?,?)',
+                        (str(gene_name)[:200], 'blocked_intake', g.get('source_file',''), str(std_validation)[:1000], 0, now_ts),
                     )
+                    row = con.execute('SELECT id FROM genes WHERE name=? ORDER BY id DESC LIMIT 1', (str(gene_name)[:200],)).fetchone()
+                    egid = row[0] if row else None
+                    if egid:
+                        con.execute(
+                            'INSERT OR IGNORE INTO evolution_genes(gene_id,state,created_at,evidence_ref,review_status,review_reason,fitness_before) VALUES(?,?,?,?,?,?,?)',
+                            (egid, 'blocked', now_ts, source_refs, 'gate_blocked_standard_template', str(std_validation), 0),
+                        )
                     con.commit()
                     continue
 
                 fitness = g.get('fitness', 500) or 500
+                # Skip low-fitness candidates — they clutter DB without evolution value
+                if fitness < 400:
+                    continue
                 # Auto-promote high-fitness candidates (> 900)
                 auto_promote = fitness > 900
-                status = 'verified' if auto_promote else 'candidate'
+                status_str = 'verified' if auto_promote else 'candidate'
                 verification = 'auto_promoted_by_intake_loop' if auto_promote else 'pending_intake_loop_review'
-                evidence_grade = 'A' if auto_promote else 'B (intake loop)'
                 
                 # Serialize standard template JSON into absorbed_knowledge
                 std_knowledge = json.dumps(std_gene, ensure_ascii=False)
 
+                # Insert into genes table first (pgg_archon.db schema)
+                gene_name = g.get('name') or g.get('id') or gid
+                quality = min(999, max(0, fitness)) / 10.0  # normalize fitness 0-999 → quality 0-99.9
+                # Check if gene already exists before inserting
+                existing_row = con.execute(
+                    'SELECT id FROM genes WHERE name=?', (str(gene_name)[:200],)
+                ).fetchone()
+                if existing_row:
+                    continue  # already in DB, skip
                 con.execute(
-                    '''INSERT OR IGNORE INTO evolution_genes
-                    (gene_id,cycle_id,created_at,defect_no,defect_name,gene_name,
-                     absorbed_knowledge,source_refs_json,repair_mechanism,
-                     severity_rank,apex_variables,gate_type,reusable_rule,
-                     status,evidence_grade,verification_status,boundary,gene_hash,fitness)
-                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',
-                    (
-                        gid, 'GENE_INTAKE_LOOP_CYCLE_20260612', now_ts,
-                        0, 'automated code scan intake',
-                        g.get('id', ''), std_knowledge,
-                        source_refs, str(g.get('strategy', [])),
-                        1, '', 'gene_intake_loop',
-                        '', status, evidence_grade,
-                        verification, BOUNDARY,
-                        g.get('source_hash', ''),
-                        fitness,
-                    ),
+                    'INSERT INTO genes(name,pattern_type,source_repo,code_snippet,quality_score,extracted_at) VALUES(?,?,?,?,?,?)',
+                    (str(gene_name)[:200], 'intake_loop_candidate', g.get('source_file',''), std_knowledge[:10000], quality, now_ts),
                 )
-                written_count += 1
-                if auto_promote:
-                    promoted_count += 1
+                row = con.execute('SELECT id FROM genes WHERE name=? ORDER BY id DESC LIMIT 1', (str(gene_name)[:200],)).fetchone()
+                new_gene_db_id = row[0] if row else None
+                if new_gene_db_id:
+                    con.execute(
+                        'INSERT OR IGNORE INTO evolution_genes(gene_id,state,created_at,evidence_ref,review_status,review_confidence,fitness_after) VALUES(?,?,?,?,?,?,?)',
+                        (new_gene_db_id, status_str, now_ts, source_refs, verification, fitness, quality),
+                    )
+                    written_count += 1
+                    if auto_promote:
+                        promoted_count += 1
             con.commit()
             write_info = {
                 'written_count': written_count,

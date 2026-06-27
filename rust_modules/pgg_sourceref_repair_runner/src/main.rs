@@ -125,16 +125,28 @@ fn classify_debt(old_ref: &Option<String>, source_refs_json: &str) -> String {
 
 fn read_debt_rows(db_path: &Path, limit: usize) -> Result<Vec<DebtRow>, String> {
     let con = Connection::open(db_path).map_err(|e| format!("open db: {e}"))?;
-    let mut stmt = con.prepare(
-        "SELECT gene_id,gene_name,status,verification_status,evidence_grade,source_refs_json,repair_mechanism,reusable_rule,boundary,absorbed_knowledge \
-         FROM evolution_genes \
-         WHERE lower(status) LIKE '%blocked%' \
-            OR lower(verification_status) LIKE '%source_missing%' \
-            OR lower(verification_status) LIKE '%blocked_source%' \
-            OR lower(evidence_grade) LIKE '%source missing%' \
-            OR source_refs_json LIKE '%source_file%' \
-         ORDER BY created_at DESC LIMIT ?1"
-    ).map_err(|e| format!("prepare inventory: {e}"))?;
+    let mut stmt = con
+        .prepare(
+            "SELECT CAST(eg.gene_id AS TEXT),
+                COALESCE(g.name, 'gene_' || eg.gene_id),
+                eg.state,
+                eg.review_status,
+                CAST(COALESCE(eg.review_confidence, '') AS TEXT),
+                COALESCE(eg.evidence_ref, ''),
+                COALESCE(eg.mutation_vector, ''),
+                COALESCE(eg.review_reason, ''),
+                COALESCE(eg.review_channel, ''),
+                COALESCE(g.code_snippet, '')
+         FROM evolution_genes eg
+         LEFT JOIN genes g ON eg.gene_id = g.id
+         WHERE lower(eg.state) LIKE '%blocked%'
+            OR lower(COALESCE(eg.review_status, '')) LIKE '%source_missing%'
+            OR lower(COALESCE(eg.review_status, '')) LIKE '%blocked_source%'
+            OR lower(COALESCE(eg.review_reason, '')) LIKE '%source missing%'
+            OR COALESCE(eg.evidence_ref, '') LIKE '%source_file%'
+         ORDER BY eg.created_at DESC LIMIT ?1",
+        )
+        .map_err(|e| format!("prepare inventory: {e}"))?;
     let rows = stmt
         .query_map(params![limit as i64], |row| {
             let source_refs_json: String = row.get::<_, Option<String>>(5)?.unwrap_or_default();
@@ -495,11 +507,11 @@ fn execute_proposals(
         for p in &selected {
             let old_raw: String = con
                 .query_row(
-                    "SELECT source_refs_json FROM evolution_genes WHERE gene_id=?1",
+                    "SELECT COALESCE(evidence_ref, '') FROM evolution_genes WHERE gene_id=?1",
                     params![p.gene_id],
                     |r| r.get::<_, Option<String>>(0),
                 )
-                .map_err(|e| format!("fetch source_refs_json {}: {e}", p.gene_id))?
+                .map_err(|e| format!("fetch evidence_ref {}: {e}", p.gene_id))?
                 .unwrap_or_else(|| "{}".into());
             let mut refs: Value = serde_json::from_str(&old_raw).unwrap_or_else(|_| json!({}));
             if !refs.is_object() {
@@ -511,7 +523,7 @@ fn execute_proposals(
                 "phase14_source_ref_repaired:{}",
                 proposal_path.to_string_lossy()
             );
-            con.execute("UPDATE evolution_genes SET source_refs_json=?1, verification_status=CASE WHEN verification_status LIKE '%' || ?2 || '%' THEN verification_status ELSE verification_status || ';' || ?2 END WHERE gene_id=?3", params![serde_json::to_string(&refs).unwrap(), marker, p.gene_id]).map_err(|e| format!("update {}: {e}", p.gene_id))?;
+            con.execute("UPDATE evolution_genes SET evidence_ref=?1, review_status=CASE WHEN COALESCE(review_status, '') LIKE '%' || ?2 || '%' THEN review_status ELSE COALESCE(review_status, '') || ';' || ?2 END WHERE gene_id=?3", params![serde_json::to_string(&refs).unwrap(), marker, p.gene_id]).map_err(|e| format!("update {}: {e}", p.gene_id))?;
             changed += 1;
         }
     }
@@ -540,8 +552,13 @@ mod tests {
     fn fixture_db(dir: &Path, missing_ref: &str) -> PathBuf {
         let db = dir.join("genes.sqlite3");
         let con = Connection::open(&db).unwrap();
-        con.execute_batch("CREATE TABLE evolution_genes(gene_id TEXT PRIMARY KEY,created_at TEXT,gene_name TEXT,status TEXT,verification_status TEXT,evidence_grade TEXT,source_refs_json TEXT,repair_mechanism TEXT,reusable_rule TEXT,boundary TEXT,absorbed_knowledge TEXT);").unwrap();
-        con.execute("INSERT INTO evolution_genes(gene_id,created_at,gene_name,status,verification_status,evidence_grade,source_refs_json,repair_mechanism,reusable_rule,boundary,absorbed_knowledge) VALUES (?1,'2026-06-14','Sample Gate','blocked','blocked_source_missing_phase13','D (source missing)',?2,'','','','')", params!["GENE-1", json!({"source_file": missing_ref}).to_string()]).unwrap();
+        con.execute_batch("CREATE TABLE genes(id INTEGER PRIMARY KEY AUTOINCREMENT,name TEXT NOT NULL,pattern_type TEXT,source_repo TEXT,code_snippet TEXT,quality_score REAL DEFAULT 0.0,extracted_at TEXT NOT NULL);CREATE TABLE evolution_genes(id INTEGER PRIMARY KEY AUTOINCREMENT,gene_id INTEGER NOT NULL,parent_gene_id INTEGER,state TEXT NOT NULL,generation INTEGER DEFAULT 0,mutation_vector TEXT,fitness_before REAL,fitness_after REAL,promoted_at TEXT,retired_at TEXT,evidence_ref TEXT,created_at TEXT NOT NULL,review_status TEXT DEFAULT 'pending',review_channel TEXT,review_confidence INTEGER,review_reason TEXT,reviewed_at TEXT,FOREIGN KEY (gene_id) REFERENCES genes(id));").unwrap();
+        con.execute(
+            "INSERT INTO genes(id,name,extracted_at) VALUES (1,'Sample Gate','2026-06-14')",
+            [],
+        )
+        .unwrap();
+        con.execute("INSERT INTO evolution_genes(gene_id,state,evidence_ref,created_at,review_status,review_confidence,review_reason,mutation_vector) VALUES (1,'blocked',?1,'2026-06-14','blocked_source_missing_phase13',0,'source missing','')", params![json!({"source_file": missing_ref}).to_string()]).unwrap();
         db
     }
 
@@ -581,7 +598,7 @@ mod tests {
         let con = Connection::open(&db).unwrap();
         let raw: String = con
             .query_row(
-                "SELECT source_refs_json FROM evolution_genes WHERE gene_id='GENE-1'",
+                "SELECT evidence_ref FROM evolution_genes WHERE gene_id=1",
                 [],
                 |r| r.get(0),
             )

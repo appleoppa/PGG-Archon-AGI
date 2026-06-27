@@ -87,13 +87,14 @@ for tool_name, cfg_name in PROVIDER_MAP.items():
             "properties": {
                 "prompt": {"type": "string", "description": "Audit prompt"},
                 "system": {"type": "string", "description": "System prompt (optional)"},
+                "max_output_tokens": {"type": "integer", "description": "Optional output cap; default 1200 to avoid MCP timeout"},
             },
             "required": ["prompt"],
         },
     })
 
 
-def call_provider(cfg, prompt, system, timeout=120):
+def call_provider(cfg, prompt, system, timeout=115, max_output_tokens=None):
     """Direct HTTP POST using the provider's declared api_mode.
 
     Supported modes:
@@ -110,6 +111,9 @@ def call_provider(cfg, prompt, system, timeout=120):
     api_mode = cfg.get("api_mode", "chat_completions")
     model = cfg.get("model", "")
     base_url = cfg.get("base_url", "")
+    if max_output_tokens is None:
+        # Keep MCP calls below the outer tool timeout; callers can override.
+        max_output_tokens = int(os.environ.get("HERMES_LLM_AUDIT_MAX_OUTPUT_TOKENS", "1200"))
 
     if api_mode == "anthropic_messages":
         # Anthropic Messages API
@@ -122,7 +126,7 @@ def call_provider(cfg, prompt, system, timeout=120):
         body = json.dumps({
             "model": model,
             "messages": messages,
-            "max_tokens": 4096,
+            "max_tokens": max_output_tokens,
         }).encode("utf-8")
         headers = {
             "Content-Type": "application/json",
@@ -138,7 +142,7 @@ def call_provider(cfg, prompt, system, timeout=120):
             "model": model,
             "instructions": system or "You are a strict auditor.",
             "input": prompt,
-            "max_output_tokens": 4096,
+            "max_output_tokens": max_output_tokens,
         }).encode("utf-8")
         headers = {
             "Content-Type": "application/json",
@@ -154,7 +158,7 @@ def call_provider(cfg, prompt, system, timeout=120):
         body = json.dumps({
             "model": model,
             "messages": messages,
-            "max_tokens": 4096,
+            "max_tokens": max_output_tokens,
             "temperature": 0.3,
         }).encode("utf-8")
         headers = {
@@ -163,6 +167,13 @@ def call_provider(cfg, prompt, system, timeout=120):
         }
     else:
         return f"ERROR: unsupported api_mode '{api_mode}' for model '{model}'"
+
+    # Some provider front doors (notably 5yuantoken behind Cloudflare) reject
+    # Python urllib's default User-Agent with HTTP 403 / Cloudflare 1010 even
+    # when the same key and payload work via curl. Send a normal non-secret
+    # client identity so MCP audit calls match the verified direct smoke path.
+    headers.setdefault("Accept", "application/json")
+    headers.setdefault("User-Agent", "Hermes-Agent-MCP-Audit/1.0")
 
     req = urllib.request.Request(url, data=body, headers=headers, method="POST")
     try:
@@ -221,7 +232,8 @@ def handle_call_tool(req):
 
     prompt = args.get("prompt", "")
     system = args.get("system", "You are a strict auditor. Be concise, specific, and evidence-based.")
-    output = call_provider(cfg, prompt, system)
+    max_output_tokens = args.get("max_output_tokens")
+    output = call_provider(cfg, prompt, system, max_output_tokens=max_output_tokens)
 
     return {
         "jsonrpc": "2.0", "id": req.get("id"),

@@ -72,9 +72,10 @@ class HealthMonitor:
         resources = self._collect_resources()
         launchd = self._collect_launchd_services()
         gene_db = self._collect_gene_db_health()
+        fusion_auto_closer = self._collect_fusion_auto_closer()
         symlinks = self._collect_bin_symlinks()
         akashic_stats = self._collect_akashic_stats()
-        alerts = self._evaluate_alerts(resources, launchd, symlinks)
+        alerts = self._evaluate_alerts(resources, launchd, symlinks, fusion_auto_closer)
         level = self._severity_level(alerts)
 
         report = {
@@ -85,6 +86,7 @@ class HealthMonitor:
             "resources": resources,
             "launchd": launchd,
             "gene_db": gene_db,
+            "fusion_auto_closer": fusion_auto_closer,
             "bin_symlinks": symlinks,
             "akashic_stats": akashic_stats,
             "alerts": alerts,
@@ -274,13 +276,22 @@ class HealthMonitor:
                     GROUP BY state
                     """
                 ).fetchall()
+            raw_counts: dict[str, int] = {}
             for status, n in rows:
-                counts[str(status)] = int(n or 0)
+                raw_counts[str(status)] = int(n or 0)
+            # Merge 'verified' into 'active' — per pgg_aris_reflection.py convention these
+            # represent the same lifecycle stage (a verified gene IS an active gene).
+            # Health monitor previously reported active=0 because verified rows were dropped.
+            for status in counts:
+                counts[status] = raw_counts.get(status, 0)
+            counts["active"] = counts.get("active", 0) + raw_counts.get("verified", 0)
+            counts["verified"] = raw_counts.get("verified", 0)
             return {
                 "db_path": str(self.db_path),
                 "exists": True,
                 "counts": counts,
-                "total_tracked": sum(counts.values()),
+                "total_tracked": sum(v for k, v in counts.items() if k != "verified"),
+                "note": "active count includes both 'active' and 'verified' states (same lifecycle stage)",
             }
         except Exception as exc:
             return {
@@ -290,6 +301,24 @@ class HealthMonitor:
                 "total_tracked": 0,
                 "error": f"{type(exc).__name__}: {exc}",
             }
+
+
+    def _collect_fusion_auto_closer(self) -> dict[str, Any]:
+        # Read Rust fusion auto closer core status without triggering provider/DB writes.
+        binary = Path.home() / ".hermes" / "bin" / "pgg-fusion-auto-closer"
+        if not binary.exists():
+            return {"status": "WATCH_BINARY_MISSING", "binary": str(binary), "exists": False}
+        try:
+            proc = _run([str(binary), "--status"], timeout=12)
+            raw = proc.stdout.strip() or proc.stderr.strip()
+            if proc.returncode != 0:
+                return {"status": "ERROR", "binary": str(binary), "returncode": proc.returncode, "detail": raw[:300]}
+            data = json.loads(raw)
+            if not isinstance(data, dict):
+                return {"status": "ERROR_NON_OBJECT", "binary": str(binary)}
+            return data
+        except Exception as exc:
+            return {"status": "ERROR", "binary": str(binary), "error": f"{type(exc).__name__}: {exc}"}
 
     # ─── Symlink and readable local data checks ────────────────────────────
 
@@ -370,7 +399,7 @@ class HealthMonitor:
 
     # ─── Alerts and Feishu card ───────────────────────────────────────────
 
-    def _evaluate_alerts(self, resources: dict[str, Any], launchd: dict[str, Any], symlinks: dict[str, Any]) -> list[dict[str, Any]]:
+    def _evaluate_alerts(self, resources: dict[str, Any], launchd: dict[str, Any], symlinks: dict[str, Any], fusion_auto_closer: dict[str, Any] | None = None) -> list[dict[str, Any]]:
         alerts: list[dict[str, Any]] = []
         cpu_percent = _safe_float(resources.get("cpu_percent"))
         disk_percent = _safe_float(resources.get("disk_percent"))
@@ -418,6 +447,15 @@ class HealthMonitor:
                 "message": f"Broken symlink {item.get('name')} -> {item.get('target')}",
                 "path": item.get("path"),
                 "target": item.get("target"),
+            })
+
+
+        if fusion_auto_closer and fusion_auto_closer.get("status") != "PASS":
+            alerts.append({
+                "level": "yellow",
+                "type": "fusion_auto_closer_watch",
+                "message": f"fusion_auto_closer status={fusion_auto_closer.get('status')}",
+                "status": fusion_auto_closer.get("status"),
             })
 
         return alerts

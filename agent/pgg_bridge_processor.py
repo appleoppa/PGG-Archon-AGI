@@ -22,10 +22,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-DB_PATH = Path("/Users/appleoppa/.hermes/workspace/04_knowledge/开智/02-进化基因/apex_evolution_genes.sqlite3")
+DB_PATH = Path("/Users/appleoppa/.hermes/data/pgg_archon.db")
 ENV_PATH = Path("/Users/appleoppa/.hermes/.env")
 BRIDGE_DIR = Path(os.path.expanduser("~/.hermes/workspace/execution-bridge"))
-LOCK_PATH = Path("/Users/appleoppa/.hermes/workspace/04_knowledge/开智/02-进化基因/apex_evolution_genes.lock")
+LOCK_PATH = Path("/Users/appleoppa/.hermes/data/pgg_archon.lock")
 
 
 @contextmanager
@@ -154,7 +154,7 @@ def _build_review_prompt(gene: dict[str, Any], rules_extra: str = "") -> str:
         '2. Must have evidence_grade (non-empty) ✅\n'
         '3. Must have source_refs_json (non-empty, >10 chars) ✅\n'
         '4. fitness >= 700\n'
-        '5. Dream fusion offspring (dream_auto_fusion_*) fitness>1000 & evidence>=B → auto-approve\n'
+        '5. Auto-fusion offspring must pass the same evidence review; no auto-approve shortcut.\n'
         '6. Gene intake genes (pgg_gene_*) fitness>800 & evidence>=B → auto-approve\n'
         + rules_extra
         + '\n'
@@ -186,7 +186,7 @@ DEEPSEEK_ARBITRATE_PROMPT = (
     '2. Must have evidence_grade (non-empty) ✅\n'
     '3. Must have source_refs_json (non-empty, >10 chars) ✅\n'
     '4. fitness >= 700\n'
-    '5. Dream fusion offspring (dream_auto_fusion_*) fitness>1000 & evidence>=B → approve\n'
+    '5. Auto-fusion offspring must pass the same evidence review; no auto-approve shortcut.\n'
     '6. Gene intake genes (pgg_gene_*) fitness>800 & evidence>=B → approve\n'
     '\n'
     'Respond ONLY with JSON:\n'
@@ -225,7 +225,7 @@ def _claude_review_gene(gene: dict[str, Any]) -> dict[str, Any]:
         '2. Must have evidence_grade (non-empty) ✅\n'
         '3. Must have source_refs_json (non-empty, >10 chars) ✅\n'
         '4. fitness >= 700\n'
-        '5. Dream fusion offspring (dream_auto_fusion_*) fitness>1000 & evidence>=B → auto-approve\n'
+        '5. Auto-fusion offspring must pass the same evidence review; no auto-approve shortcut.\n'
         '6. Gene intake genes (pgg_gene_*) fitness>800 & evidence>=B → auto-approve\n'
         + CLAUDE_RULES_EXTRA
     )
@@ -288,15 +288,14 @@ def _rule_review_gene(gene: dict[str, Any]) -> dict[str, Any]:
     fitness = gene["fitness"]
     evidence = str(gene["evidence_grade"] or "").upper()
 
-    # 梦境融合子代：fitness>1000 + evidence>=B → approve
-    if "dream_auto_fusion" in gid or "dream_auto_fusion" in name:
-        if fitness >= RULE_AUTO_APPROVE_FITNESS and evidence >= RULE_AUTO_APPROVE_EVIDENCE:
-            return {"decision": "approve", "confidence": 85, "reason": "rule: dream_fusion_high_fitness"}
-
     # 基因摄入pgg_gene：fitness>800 + evidence>=B → approve
     if "pgg_gene" in gid:
         if fitness >= 800 and evidence >= "B":
             return {"decision": "approve", "confidence": 80, "reason": "rule: pgg_gene_sufficient"}
+
+    # 自动融合基因必须走完整审核 (LLM或人工)，不能跳过
+    if "auto_fusion" in gid.lower() or "auto_fusion" in name.lower():
+        return {"decision": "hold", "confidence": 20, "reason": "rule: auto_fusion_requires_full_review"}
 
     # 其他高fitness基因
     if fitness >= RULE_AUTO_APPROVE_FITNESS and evidence >= RULE_AUTO_APPROVE_EVIDENCE:

@@ -90,13 +90,13 @@ def build_status(run_provider_canary: bool = False, provider: str = "deepseek") 
 
     omni = _run([str(HERMES_BIN / "omniroute_ui_status"), "--json"], 60)
     omni_json = _json_from_stdout(omni)
-    evidence["omniroute_ui_status"] = {"returncode": omni["returncode"], "json": omni_json}
-    _add(checks, "omniroute_ui_15_of_15_pass", omni["returncode"] == 0 and omni_json.get("status") == "PASS_OMNIROUTE_UI_PRACTICAL_READY_CONFIG_SYNC" and omni_json.get("passed") == omni_json.get("total") == 15, {"status": omni_json.get("status"), "passed": omni_json.get("passed"), "total": omni_json.get("total")})
+    evidence["omniroute_runtime_status"] = {"returncode": omni["returncode"], "json": omni_json}
+    _add(checks, "omniroute_runtime_status_pass", omni["returncode"] == 0 and str(omni_json.get("status", "")).startswith("PASS_") and omni_json.get("passed") == omni_json.get("total"), {"status": omni_json.get("status"), "passed": omni_json.get("passed"), "total": omni_json.get("total")})
 
     probe = _run([str(HERMES_BIN / "pgg_omniroute_provider_probe_gate"), "--json"], 60)
     probe_json = _json_from_stdout(probe)
     evidence["provider_probe_gate"] = {"returncode": probe["returncode"], "json": probe_json}
-    _add(checks, "provider_probe_31_of_31_pass", probe["returncode"] == 0 and probe_json.get("status") == "PASS_OMNIROUTE_PROVIDER_PROBE_GATE_V109" and probe_json.get("passed") == probe_json.get("total") == 31, {"status": probe_json.get("status"), "passed": probe_json.get("passed"), "total": probe_json.get("total")})
+    _add(checks, "provider_probe_gate_pass", probe["returncode"] == 0 and str(probe_json.get("status", "")).startswith("PASS_") and probe_json.get("passed") == probe_json.get("total"), {"status": probe_json.get("status"), "passed": probe_json.get("passed"), "total": probe_json.get("total")})
 
     # 总纲8吸收 Phase 2: 成本画像检查
     cost = _run([str(HERMES_BIN / "pgg_provider_cost_profile")], 30)

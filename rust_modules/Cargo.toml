@@ -65,4 +65,6 @@ members = [
     "pgg_neuron_autoevolve_guard",
     "pgg_launchd_omnibus",
     "pgg_debt_ledger_runner",
+    "pgg_fusion_session_consumer",
+    "pgg_fusion_auto_closer",
 ]

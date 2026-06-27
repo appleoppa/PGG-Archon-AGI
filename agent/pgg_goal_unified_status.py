@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import os
+import sqlite3
 import subprocess
 import sys
 from datetime import datetime
@@ -24,6 +25,7 @@ if not _ROOT_VENV_PYTHON.exists():
     _ROOT_VENV_PYTHON = _H / "hermes-agent/venv/bin/python"
 VENV_PYTHON = _ROOT_VENV_PYTHON if _ROOT_VENV_PYTHON.exists() else Path(sys.executable)
 HERMES_BIN = Path.home() / ".hermes/bin"
+PGG_ARCHON_DB = Path("/Users/appleoppa/.hermes/data/pgg_archon.db")
 
 
 def status_class(status: Any) -> str:
@@ -78,6 +80,74 @@ def gate_json(cmd: list[str], name: str, timeout: int = 10) -> dict[str, Any]:
 
 def summarize_gate(data: dict[str, Any], fields: list[str]) -> dict[str, Any]:
     return {k: data.get(k) for k in fields if k in data}
+
+
+def check_gene_db_quality(db_path: Path = PGG_ARCHON_DB) -> dict[str, Any]:
+    """Check GeneDB for auto_fusion quality inflation and active empty code."""
+    if not db_path.exists():
+        return {"status": "ERROR_DB_MISSING", "db": str(db_path)}
+    con = sqlite3.connect(str(db_path))
+    con.row_factory = sqlite3.Row
+    try:
+        gene_cols = {row[1] for row in con.execute("PRAGMA table_info(genes)").fetchall()}
+        if not gene_cols:
+            return {"status": "ERROR_SCHEMA_MISSING", "db": str(db_path), "detail": "genes table missing"}
+        auto_fusion_quality_positive = con.execute(
+            """SELECT COUNT(*) AS c
+               FROM genes
+               WHERE pattern_type='auto_fusion' AND COALESCE(quality_score,0) > 0"""
+        ).fetchone()["c"]
+        active_empty_code = 0
+        if "code_snippet" in gene_cols:
+            active_empty_code = con.execute(
+                """SELECT COUNT(*) AS c
+                   FROM genes g
+                   LEFT JOIN gene_lifecycle gl ON CAST(gl.gene_id AS TEXT)=CAST(g.id AS TEXT)
+                   WHERE COALESCE(gl.state, 'candidate') IN ('active','promoted')
+                     AND COALESCE(TRIM(g.code_snippet),'') = ''"""
+            ).fetchone()["c"]
+        blockers = []
+        if int(auto_fusion_quality_positive) > 0:
+            # Check if any unreviewed auto_fusion offspring remain
+            eg_cols = {row[1] for row in con.execute("PRAGMA table_info(evolution_genes)").fetchall()}
+            if "review_status" in eg_cols:
+                unrevised = con.execute(
+                    """SELECT COUNT(*) AS c FROM evolution_genes eg
+                       JOIN genes g ON eg.gene_id = g.id
+                       WHERE g.pattern_type = 'auto_fusion' AND COALESCE(g.quality_score,0) > 0
+                         AND (eg.review_status IS NULL OR eg.review_status = 'pending')"""
+                ).fetchone()["c"]
+                if int(unrevised) > 0:
+                    blockers.append(f"AUTO_FUSION_PENDING_REVIEW({unrevised})")
+                # else: all auto_fusion offspring reviewed — no blocker
+            else:
+                blockers.append("AUTO_FUSION_QUALITY_SCORE_GT_0_REVIEW_REQUIRED")
+        if int(active_empty_code) > 0:
+            blockers.append("ACTIVE_EMPTY_CODE_SNIPPET_REVIEW_REQUIRED")
+        return {
+            "status": "WATCH" if blockers else "PASS",
+            "auto_fusion_quality_positive": int(auto_fusion_quality_positive),
+            "active_empty_code_snippet": int(active_empty_code),
+            "blockers": blockers,
+            "db": str(db_path),
+        }
+    except Exception as e:
+        return {"status": "ERROR", "detail": str(e)[:200], "db": str(db_path)}
+    finally:
+        con.close()
+
+
+def check_fusion_auto_closer() -> dict[str, Any]:
+    # Read-only core visibility gate for Rust GPT-5.5 fusion auto closer.
+    binary = HERMES_BIN / "pgg-fusion-auto-closer"
+    if not binary.exists():
+        return {"status": "WATCH", "detail": "binary missing", "binary": str(binary)}
+    out, rc = run([str(binary), "--status"], 10)
+    data = load_json_or_error(out, "fusion_auto_closer")
+    if rc != 0:
+        data.setdefault("status", "ERROR")
+        data["detail"] = out[:300]
+    return summarize_gate(data, ["status", "schema", "binary", "supervisor", "ledger", "db", "boundary"])
 
 
 def main() -> int:
@@ -222,8 +292,13 @@ def main() -> int:
             if score is not None:
                 gate_scores.append(float(score))
         omega_self = round(min(1.0, (sum(gate_scores) / len(gate_scores)) / 100.0), 4) if gate_scores else 0.70
-        interim_blocked_count = sum(1 for c in comparable.values() if status_class(c.get("status")) == "BLOCKED")
-        phi_anti_illusion = 0.90 if interim_blocked_count == 0 else 0.86
+        # 调用 apex_core_gate 模块的真实 Φ 度量函数（含 health/memory/sigma/secret/CVE/manifest 全部证据）
+        try:
+            from agent.pgg_archon_apex_core_gate import _measure_phi_anti_illusion
+            phi_anti_illusion = _measure_phi_anti_illusion()
+        except Exception:
+            interim_blocked_count = sum(1 for c in comparable.values() if status_class(c.get("status")) == "BLOCKED")
+            phi_anti_illusion = 0.90 if interim_blocked_count == 0 else 0.86
         core_config = {
             "delta_g_base": delta_g_base,
             "lambda_effective": _measure_lambda_effective(),
@@ -243,6 +318,12 @@ def main() -> int:
     except Exception as e:
         results["apex_core_gate"] = {"status": "ERROR", "detail": str(e)[:200]}
         results["apex_v10_gate"] = {"status": "ERROR", "detail": str(e)[:200]}
+
+    # 19. GeneDB quality — auto_fusion score inflation + active empty code snippets
+    results["gene_db_quality"] = check_gene_db_quality()
+
+    # 20. Core fusion auto closer — read-only Rust standalone GPT-5.5 crossover status surface
+    results["fusion_auto_closer"] = check_fusion_auto_closer()
 
     pass_count = sum(1 for v in results.values() if isinstance(v, dict) and status_class(v.get("status")) == "PASS")
     total = len(results)

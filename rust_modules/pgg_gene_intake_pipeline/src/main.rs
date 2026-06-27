@@ -16,8 +16,12 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 // ── Config ────────────────────────────────────────────────────────────
 
+/// ！！！废弃告警：此Rust模块仍指向旧DB（apex_evolution_genes.sqlite3），
+/// 而自循环已全部迁移至 pgg_archon.db。
+/// 新基因 seeding 已由 Python agent.pgg_gene_seeder 替代。
+/// 保留此文件仅用于历史追溯，不参与任何自进化循环。
 const DEFAULT_DB: &str =
-    "/Users/appleoppa/.hermes/workspace/04_knowledge/开智/02-进化基因/apex_evolution_genes.sqlite3";
+    "/Users/appleoppa/.hermes/data/pgg_archon.db";
 const BACKUP_DIR: &str = "/Users/appleoppa/.hermes/workspace/pgg-archon-governance/metabolic-evolution-phase15-intake-pipeline";
 
 // Candidates with fitness >= this are eligible for promotion

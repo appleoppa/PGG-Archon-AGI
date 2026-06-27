@@ -6,8 +6,8 @@ L2 logic-hole review: inspect recent auto-fusion genes for precondition/constrai
 L3 architecture-boundary review: scan auto_fusion distribution and detect candidate
     pile-up / verified shortage.
 
-Boundary: local JSON + SQLite reads only; no network, no provider/scheduler/core
-mutation, no AGI/T5/ASI claims.
+Boundary: local JSON + SQLite reads, plus promotion_chain safety block records;
+no network, no provider/scheduler/core mutation, no AGI/T5/ASI claims.
 """
 from __future__ import annotations
 
@@ -18,10 +18,10 @@ import time
 from pathlib import Path
 from typing import Any, Mapping
 
-DEFAULT_DB = Path("/Users/appleoppa/.hermes/workspace/04_knowledge/开智/02-进化基因/apex_evolution_genes.sqlite3")
+DEFAULT_DB = Path("/Users/appleoppa/.hermes/data/pgg_archon.db")
 DEFAULT_LATEST = Path("/Users/appleoppa/.hermes/data/self-evolution-loop/latest.json")
 DEFAULT_LOG_DIR = Path("/Users/appleoppa/.hermes/data/pgg_aris_reflection")
-BOUNDARY = "pgg_aris_reflection; local read-only reflection; no LLM/network; no AGI/T5/ASI claim"
+BOUNDARY = "pgg_aris_reflection; local reflection plus promotion_chain aris_auto_block records; no LLM/network; no AGI/T5/ASI claim"
 SCHEMA = "PGGARISReflection/v1"
 
 
@@ -107,6 +107,7 @@ class ArisReflector:
             errors.append(l3[0]["detail"])
 
         recommendation = self._recommend(float(l1.get("deviation_score", 1.0)), l2, l3)
+        block_records = self._record_aris_auto_blocks(l3)
         result = {
             "schema": SCHEMA,
             "created_at": _now(),
@@ -114,6 +115,7 @@ class ArisReflector:
             "l2_issues": l2,
             "l3_blockers": l3,
             "recommendation": recommendation,
+            "aris_auto_block_records": block_records,
             "errors": errors,
             "details": {"l1": l1, **details},
             "boundary": BOUNDARY,
@@ -202,6 +204,9 @@ class ArisReflector:
     def _columns(self, con: sqlite3.Connection) -> set[str]:
         return {row[1] for row in con.execute("PRAGMA table_info(evolution_genes)").fetchall()}
 
+    def _table_columns(self, con: sqlite3.Connection, table: str) -> set[str]:
+        return {row[1] for row in con.execute(f"PRAGMA table_info({table})").fetchall()}
+
     def _l2_logic_holes(self) -> list[dict[str, Any]]:
         con = self._connect()
         try:
@@ -212,10 +217,12 @@ class ArisReflector:
 
             if "origin" in cols:
                 where = "origin = 'auto_fusion'"
+            elif "mutation_vector" in cols:
+                where = "mutation_vector = 'auto_fusion'"
             elif "absorbed_knowledge" in cols:
                 where = "absorbed_knowledge LIKE '%auto_fusion%' OR gate_type LIKE '%fusion%' OR gate_type LIKE '%dream_mode%'"
             else:
-                where = "category LIKE '%fusion%'"
+                where = "0"
 
             rows = con.execute(
                 f"SELECT {select_cols} FROM evolution_genes WHERE {where} ORDER BY {order_col} DESC LIMIT ?",
@@ -270,15 +277,25 @@ class ArisReflector:
         con = self._connect()
         try:
             cols = self._columns(con)
+            gene_cols = self._table_columns(con, "genes")
+            status_col = "status" if "status" in cols else "state" if "state" in cols else "'unknown'"
             if "origin" in cols:
-                where = "origin = 'auto_fusion'"
+                where = "eg.origin = 'auto_fusion'"
+            elif "mutation_vector" in cols:
+                where = "eg.mutation_vector = 'auto_fusion' OR g.pattern_type = 'auto_fusion'"
             elif "absorbed_knowledge" in cols:
-                where = "absorbed_knowledge LIKE '%auto_fusion%' OR gate_type LIKE '%fusion%' OR gate_type LIKE '%dream_mode%'"
+                where = "eg.absorbed_knowledge LIKE '%auto_fusion%' OR eg.gate_type LIKE '%fusion%' OR eg.gate_type LIKE '%dream_mode%' OR g.pattern_type = 'auto_fusion'"
+            elif "pattern_type" in gene_cols:
+                where = "g.pattern_type = 'auto_fusion'"
             else:
-                where = "category LIKE '%fusion%'"
+                where = "0"
 
             status_rows = con.execute(
-                f"SELECT status, COUNT(*) AS n FROM evolution_genes WHERE {where} GROUP BY status"
+                f"""SELECT {status_col} AS status, COUNT(*) AS n
+                    FROM evolution_genes eg
+                    LEFT JOIN genes g ON CAST(eg.gene_id AS TEXT)=CAST(g.id AS TEXT)
+                    WHERE {where}
+                    GROUP BY {status_col}"""
             ).fetchall()
             dist = {str(r["status"]): int(r["n"]) for r in status_rows}
             total = sum(dist.values())
@@ -313,6 +330,16 @@ class ArisReflector:
             rejected = dist.get("rejected", 0)
             if _safe_ratio(rejected, total) >= 0.50:
                 blockers.append({"type": "fusion_rejection_dominance", "severity": "medium", "rejected": rejected, "total": total})
+            if "code_snippet" in gene_cols:
+                empty_code = con.execute(
+                    f"""SELECT COUNT(*) AS n
+                        FROM genes g
+                        LEFT JOIN evolution_genes eg ON CAST(eg.gene_id AS TEXT)=CAST(g.id AS TEXT)
+                        WHERE ({where})
+                          AND COALESCE(TRIM(g.code_snippet),'') = ''"""
+                ).fetchone()["n"]
+                if int(empty_code) > 0:
+                    blockers.append({"type": "empty_code_snippet", "severity": "high", "count": int(empty_code)})
             if not blockers:
                 blockers.append({"type": "no_l3_blocker_detected", "severity": "none", "distribution": dist, "total": total})
             return blockers
@@ -321,8 +348,50 @@ class ArisReflector:
 
     # ── recommendation/logging ──────────────────────────────────────────
 
-    @staticmethod
-    def _recommend(l1_score: float, l2_issues: list[dict[str, Any]], l3_blockers: list[dict[str, Any]]) -> str:
+    def _record_aris_auto_blocks(self, l3: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        actionable = [b for b in l3 if b.get("type") in {"candidate_pileup", "verified_shortage"}]
+        if not actionable:
+            return []
+        con = self._connect()
+        records: list[dict[str, Any]] = []
+        try:
+            con.execute(
+                """CREATE TABLE IF NOT EXISTS promotion_chain (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    gene_id TEXT,
+                    from_state TEXT,
+                    to_state TEXT,
+                    reason TEXT,
+                    actor TEXT,
+                    created_at TEXT
+                )"""
+            )
+            cols = self._table_columns(con, "promotion_chain")
+            created_at = _now()
+            for blocker in actionable:
+                reason = "aris_auto_block:" + json.dumps(blocker, ensure_ascii=False, sort_keys=True)
+                values = {
+                    "gene_id": "aris_auto_block",
+                    "from_state": "reflection",
+                    "to_state": "blocked",
+                    "reason": reason,
+                    "actor": "pgg_aris_reflection",
+                    "created_at": created_at,
+                }
+                insert_cols = [c for c in ("gene_id", "from_state", "to_state", "reason", "actor", "created_at") if c in cols]
+                if not insert_cols:
+                    continue
+                con.execute(
+                    f"INSERT INTO promotion_chain ({', '.join(insert_cols)}) VALUES ({', '.join(['?'] * len(insert_cols))})",
+                    [values[c] for c in insert_cols],
+                )
+                records.append({"type": blocker.get("type"), "reason": reason, "created_at": created_at})
+            con.commit()
+            return records
+        finally:
+            con.close()
+
+    def _recommend(self, l1_score: float, l2_issues: list[dict[str, Any]], l3_blockers: list[dict[str, Any]]) -> str:
         serious_l3 = [b for b in l3_blockers if b.get("severity") in {"high", "medium"}]
         if l1_score >= 0.5:
             return "BLOCK_SELF_EVOLUTION_AND_REPAIR_L1_DEVIATION"
