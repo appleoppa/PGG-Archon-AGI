@@ -168,21 +168,34 @@ fi
 
 echo -e "${CYAN}→${NC} Setting up virtual environment..."
 
-if [ -d "venv" ]; then
-    echo -e "${CYAN}→${NC} Removing old venv..."
-    rm -rf venv
+VENV_DIR="$SCRIPT_DIR/.venv"
+LEGACY_VENV_DIR="$SCRIPT_DIR/venv"
+
+if [ -L "$LEGACY_VENV_DIR" ]; then
+    rm -f "$LEGACY_VENV_DIR"
+elif [ -d "$LEGACY_VENV_DIR" ] && [ ! -d "$VENV_DIR" ]; then
+    echo -e "${CYAN}→${NC} Migrating legacy venv → .venv..."
+    mv "$LEGACY_VENV_DIR" "$VENV_DIR"
+elif [ -d "$LEGACY_VENV_DIR" ]; then
+    echo -e "${YELLOW}⚠${NC} Leaving existing real legacy venv directory untouched"
+fi
+
+if [ -d "$VENV_DIR" ]; then
+    echo -e "${CYAN}→${NC} Removing old .venv..."
+    rm -rf "$VENV_DIR"
 fi
 
 if is_termux; then
-    "$PYTHON_PATH" -m venv venv
-    echo -e "${GREEN}✓${NC} venv created with stdlib venv"
+    "$PYTHON_PATH" -m venv "$VENV_DIR"
+    echo -e "${GREEN}✓${NC} .venv created with stdlib venv"
 else
-    $UV_CMD venv venv --python "$PYTHON_VERSION"
-    echo -e "${GREEN}✓${NC} venv created (Python $PYTHON_VERSION)"
+    $UV_CMD venv "$VENV_DIR" --python "$PYTHON_VERSION"
+    echo -e "${GREEN}✓${NC} .venv created (Python $PYTHON_VERSION)"
 fi
 
-export VIRTUAL_ENV="$SCRIPT_DIR/venv"
-SETUP_PYTHON="$SCRIPT_DIR/venv/bin/python"
+ln -sfn .venv "$LEGACY_VENV_DIR"
+export VIRTUAL_ENV="$VENV_DIR"
+SETUP_PYTHON="$VENV_DIR/bin/python"
 
 # ============================================================================
 # Dependencies
@@ -251,7 +264,7 @@ else
         # at first use.
         # Also: stream stderr through directly so the user sees uv's
         # progress UI instead of staring at a frozen prompt.
-        if UV_PROJECT_ENVIRONMENT="$SCRIPT_DIR/venv" $UV_CMD sync --extra all --locked; then
+        if UV_PROJECT_ENVIRONMENT="$VENV_DIR" $UV_CMD sync --extra all --locked; then
             echo -e "${GREEN}✓${NC} Dependencies installed (hash-verified via uv.lock)"
         else
             echo -e "${YELLOW}⚠${NC} Lockfile sync failed (see uv output above)."
@@ -347,7 +360,7 @@ fi
 
 echo -e "${CYAN}→${NC} Setting up hermes command..."
 
-HERMES_BIN="$SCRIPT_DIR/venv/bin/hermes"
+HERMES_BIN="$VENV_DIR/bin/hermes"
 COMMAND_LINK_DIR="$(get_command_link_dir)"
 COMMAND_LINK_DISPLAY_DIR="$(get_command_link_display_dir)"
 mkdir -p "$COMMAND_LINK_DIR"
@@ -404,7 +417,7 @@ mkdir -p "$HERMES_SKILLS_DIR"
 
 echo ""
 echo "Syncing bundled skills to ~/.hermes/skills/ ..."
-if "$SCRIPT_DIR/venv/bin/python" "$SCRIPT_DIR/tools/skills_sync.py" 2>/dev/null; then
+if "$SETUP_PYTHON" "$SCRIPT_DIR/tools/skills_sync.py" 2>/dev/null; then
     echo -e "${GREEN}✓${NC} Skills synced"
 else
     # Fallback: copy if sync script fails (missing deps, etc.)
@@ -458,5 +471,5 @@ echo
 if [[ $REPLY =~ ^[Yy]$ ]] || [[ -z $REPLY ]]; then
     echo ""
     # Run directly with venv Python (no activation needed)
-    "$SCRIPT_DIR/venv/bin/python" -m hermes_cli.main setup
+    "$SETUP_PYTHON" -m hermes_cli.main setup
 fi

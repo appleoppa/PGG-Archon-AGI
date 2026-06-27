@@ -170,6 +170,7 @@ def _ensure_windows_gateway_venv_imports() -> None:
     candidates: list[Path] = []
     if os.environ.get("VIRTUAL_ENV"):
         candidates.append(Path(os.environ["VIRTUAL_ENV"]))
+    candidates.append(project_root / ".venv")
     candidates.append(project_root / "venv")
 
     seen: set[str] = set()
@@ -5391,7 +5392,9 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
             # run as a self-restart loop guard and the gateway stays stopped.
             watcher_env.pop("_HERMES_GATEWAY", None)
             project_root = Path(__file__).resolve().parent.parent
-            venv_dir = Path(watcher_env.get("VIRTUAL_ENV") or project_root / "venv")
+            venv_dir = Path(watcher_env.get("VIRTUAL_ENV") or project_root / ".venv")
+            if not venv_dir.exists():
+                venv_dir = project_root / "venv"
             site_packages = venv_dir / "Lib" / "site-packages"
             if site_packages.exists():
                 watcher_env["VIRTUAL_ENV"] = str(venv_dir)

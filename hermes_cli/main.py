@@ -6186,7 +6186,7 @@ def _update_via_zip(args):
     if not uv_bin:
         uv_bin = _ensure_uv_for_termux(pip_cmd)
     if uv_bin:
-        uv_env = {**os.environ, "VIRTUAL_ENV": str(PROJECT_ROOT / "venv")}
+        uv_env = {**os.environ, "VIRTUAL_ENV": str(_project_venv_dir())}
         if _is_termux_env(uv_env):
             uv_env.pop("PYTHONPATH", None)
             uv_env.pop("PYTHONHOME", None)
@@ -6915,7 +6915,7 @@ def _recover_from_interrupted_install() -> None:
 
             uv_bin = ensure_uv()
             if uv_bin:
-                uv_env = {**os.environ, "VIRTUAL_ENV": str(PROJECT_ROOT / "venv")}
+                uv_env = {**os.environ, "VIRTUAL_ENV": str(_project_venv_dir())}
                 if _is_termux_env(uv_env):
                     uv_env.pop("PYTHONPATH", None)
                     uv_env.pop("PYTHONHOME", None)
@@ -6998,11 +6998,66 @@ def _is_windows() -> bool:
     return sys.platform == "win32"
 
 
+def _project_venv_dir() -> Path:
+    """Return the canonical Hermes project virtualenv for this checkout.
+
+    Historical installer paths used ``PROJECT_ROOT/venv`` while modern uv
+    project workflows default to ``PROJECT_ROOT/.venv``.  The update path must
+    target the environment that actually boots Hermes instead of hard-coding one
+    spelling; otherwise upgrades can reinstall dependencies into a newly-created
+    side venv and leave the live .venv missing modules.
+    """
+    candidates: list[Path] = []
+    for raw in (sys.prefix, os.environ.get("VIRTUAL_ENV", "")):
+        if not raw:
+            continue
+        try:
+            p = Path(raw).resolve()
+            p.relative_to(PROJECT_ROOT.resolve())
+        except Exception:
+            continue
+        if (p / "pyvenv.cfg").exists() or (p / "bin").exists() or (p / "Scripts").exists():
+            candidates.append(p)
+    candidates.extend([PROJECT_ROOT / ".venv", PROJECT_ROOT / "venv"])
+    for candidate in candidates:
+        if candidate.is_dir():
+            return candidate
+    return PROJECT_ROOT / ".venv"
+
+
+def _ensure_legacy_venv_compat(venv_dir=None) -> None:
+    """Keep ``venv`` compatibility when the real environment is ``.venv``.
+
+    Several long-lived integrations and third-party launchers still probe the
+    legacy ``venv`` path.  When the live environment is ``.venv``, maintain a
+    lightweight symlink rather than letting each consumer guess differently.
+    Non-symlink directories/files are left untouched to avoid deleting a real
+    user-created environment.
+    """
+    if _is_windows():
+        return
+    venv_dir = (venv_dir or _project_venv_dir()).resolve()
+    preferred = (PROJECT_ROOT / ".venv").resolve()
+    legacy = PROJECT_ROOT / "venv"
+    if venv_dir != preferred or not preferred.is_dir():
+        return
+    try:
+        if legacy.is_symlink():
+            target = os.readlink(legacy)
+            if target in {".venv", str(preferred)}:
+                return
+            legacy.unlink()
+        elif legacy.exists():
+            return
+        os.symlink(".venv", legacy)
+    except OSError as exc:
+        logger.debug("Could not maintain venv -> .venv compatibility symlink: %s", exc)
+
+
 def _venv_scripts_dir() -> Path | None:
-    """Return the venv Scripts directory if we're running inside the project venv."""
-    venv_dir = PROJECT_ROOT / "venv"
-    if not venv_dir.is_dir():
-        return None
+    """Return the active project venv Scripts/bin directory."""
+    venv_dir = _project_venv_dir()
+    _ensure_legacy_venv_compat(venv_dir)
     scripts = venv_dir / ("Scripts" if _is_windows() else "bin")
     return scripts if scripts.is_dir() else None
 
@@ -9280,7 +9335,7 @@ def _cmd_update_impl(args, gateway_mode: bool):
         install_group = "all"
 
         if uv_bin:
-            uv_env = {**os.environ, "VIRTUAL_ENV": str(PROJECT_ROOT / "venv")}
+            uv_env = {**os.environ, "VIRTUAL_ENV": str(_project_venv_dir())}
             if _is_termux_env(uv_env):
                 uv_env.pop("PYTHONPATH", None)
                 uv_env.pop("PYTHONHOME", None)
