@@ -1,0 +1,8 @@
+[package]
+name = "pgg_project_session_settle"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "pgg_project_session_settle"
+path = "src/main.rs"
