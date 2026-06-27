@@ -1,0 +1,13 @@
+[package]
+name = "hermes_pgg_schema_validator"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "hermes_pgg_schema_validator"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+pyo3 = { version = "0.29.0", features = ["abi3-py311"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

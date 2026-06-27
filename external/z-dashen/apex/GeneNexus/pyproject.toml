@@ -1,0 +1,13 @@
+[build-system]
+requires = ["setuptools>=45", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "gene-nexus"
+version = "1.1.0"
+description = "璇玑基因枢纽 - APEX V10.3 Skill生成器"
+requires-python = ">=3.7"
+dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/ApexSpiral/GeneNexus"

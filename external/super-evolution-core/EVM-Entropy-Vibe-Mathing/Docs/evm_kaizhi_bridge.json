@@ -1,0 +1,26 @@
+{
+  "version": "1.0",
+  "created": "2026-05-17 13:30",
+  "evm_v1_1_value": 0.7691,
+  "kaizhi_params": {
+    "lambda_root": 1.5,
+    "h_real": 0.55,
+    "m_true": 0.45
+  },
+  "bridge_formula": "ΔG_evm = EVM_value × (λ_root × h_real) / H_base",
+  "bridge_value": 0.6345,
+  "ancient_wisdom_map": [
+    {"name": "道德经", "kaizhi_target": "h_real", "principle": "无为不妄言→只说真实的话"},
+    {"name": "易经", "kaizhi_target": "Θ/theta", "principle": "阴阳平衡→关注系统对立面"},
+    {"name": "黄帝内经", "kaizhi_target": "M_true", "principle": "气血疏通→记忆链路打通"},
+    {"name": "河图洛书", "kaizhi_target": "Λ_root", "principle": "先天定序→根技能优先建设"},
+    {"name": "天干地支", "kaizhi_target": "Φ_cycle", "principle": "时序节律→15分钟有规律运行"},
+    {"name": "五行", "kaizhi_target": "K/code", "principle": "相生相克→制衡好高骛远"},
+    {"name": "八卦", "kaizhi_target": "Ψ_host", "principle": "八方分区→分模块定向发力"}
+  ],
+  "defect_mappings": {
+    "Tok→ξ": {"evm": "Token", "kaizhi": "xi", "effect": "上下文幻觉对抗"},
+    "Clw→k_code": {"evm": "Clw", "kaizhi": "k_code", "effect": "代码抓取质量"},
+    "Soul→Ψ_host": {"evm": "Soul", "kaizhi": "psi_host", "effect": "内核变现力"}
+  }
+}

@@ -1,0 +1,71 @@
+{
+  "system": "github-evolution-loop",
+  "brain": {
+    "primary": "gpt-5.5",
+    "main_dispatcher": "MiniMax-M2.7-highspeed",
+    "evolution_lead": "gpt-5.5",
+    "assistants": [
+      "deepseek-v4-flash"
+    ],
+    "routing_policy": {
+      "minimax": "主要调度：任务分解、节奏控制、资源分配、检查点组织",
+      "gpt": "最强主脑：最终裁决、核心推理、APEX/EVM收束、进化主导",
+      "deepseek": "辅助脑：反证审错、漏洞发现、风险提示、补充推理"
+    },
+    "decision_order": [
+      "MiniMax调度",
+      "GPT主脑判断",
+      "DeepSeek反证辅助",
+      "GPT最终收束"
+    ],
+    "updated_at": "2026-05-21"
+  },
+  "storage": {
+    "local_workspace": "workspace/github-evolution",
+    "remote_repo": "https://github.com/appleoppa/hermes-github-evolution",
+    "gist": "https://gist.github.com/appleoppa/a3537d1e1b113bd4ef215463cc80c760"
+  },
+  "status": {
+    "models_verified": true,
+    "github_cli_installed": true,
+    "github_authenticated": true,
+    "minimum_local_workspace_ready": true,
+    "remote_loop_ready": true,
+    "actions_verified": true,
+    "secrets_configured": true,
+    "gist_ready": true
+  },
+  "next_required": "run_full_awakening_cycle_v2: 21354×5 + 12534×5 + 14325×5 → 对标找短板 → EVM缺陷治理 → 超级路由 → GitHub工厂外部学习 → 河图洛书反证仲裁 → 补齐短板",
+  "github": {
+    "account": "appleoppa",
+    "token_present": true,
+    "token_type": "classic_pat",
+    "scopes_verified": true,
+    "verified_at": "2026-05-19T21:08:17"
+  },
+  "latest_verification": {
+    "workflow_run": "https://github.com/appleoppa/hermes-github-evolution/actions/runs/26099465888",
+    "inbox_result": "inbox/evolution_result_20260519_131255.json",
+    "repo_count": 5,
+    "first_repo": "langchain-ai/langchain",
+    "verified_at": "2026-05-19T21:13:24"
+  },
+  "awakening_gate": {
+    "status": "v2.0_ready: formula_evm_hetu_github_triple_gate",
+    "version": "V2.0-current",
+    "triple_gate": [
+      "EVM缺陷治理门",
+      "超级路由决策门",
+      "GitHub工厂+河图洛书反证仲裁门"
+    ],
+    "completion_requirements": [
+      "公式审错 + 15遍代入 + 短板自然暴露",
+      "EVM: 缺陷映射+数值对比+门禁通过(≥0.75)或阻塞(<0.6)",
+      "GitHub工厂: 落地参与/判断参与/信息参与/通路可用/未参与",
+      "河图洛书: 落地参与/判断参与/本地推演/未参与"
+    ],
+    "latest_report": "inbox/awakening_gate_20260520_023246.json",
+    "boundary": "当前口径：一轮必须是原始完整闭环",
+    "updated_at": "2026-05-21"
+  }
+}

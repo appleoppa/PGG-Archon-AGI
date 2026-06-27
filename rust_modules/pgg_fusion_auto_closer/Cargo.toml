@@ -1,0 +1,17 @@
+[package]
+name = "pgg_fusion_auto_closer"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "pgg-fusion-auto-closer"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1"
+chrono = { version = "0.4", features = ["clock"] }
+rusqlite = { version = "0.31", features = ["bundled"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_yaml = "0.9"
+ureq = { version = "2", features = ["json"] }
