@@ -68,4 +68,5 @@ members = [
     "pgg_fusion_session_consumer",
     "pgg_fusion_auto_closer",
     "pgg_project_session_settle",
+    "pgg_hermes_venv_guard",
 ]

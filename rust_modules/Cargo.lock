@@ -1189,6 +1189,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "pgg_hermes_venv_guard"
+version = "0.1.0"
+
+[[package]]
 name = "pgg_launchd_omnibus"
 version = "0.1.0"
 dependencies = [
